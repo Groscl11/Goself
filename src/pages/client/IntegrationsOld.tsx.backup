@@ -1,0 +1,435 @@
+import { useEffect, useState } from 'react';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { ShoppingBag, Check, AlertCircle, Loader, RefreshCw, Settings } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { clientMenuItems } from './clientMenuItems';
+import { ShopifySetupGuide } from '../../components/ShopifySetupGuide';
+import { RedemptionLinkManager } from '../../components/RedemptionLinkManager';
+
+interface IntegrationConfig {
+  id: string;
+  platform: string;
+  platform_name: string;
+  credentials: {
+    shop_domain?: string;
+    api_key?: string;
+    api_secret?: string;
+    access_token?: string;
+  };
+  webhook_url: string | null;
+  sync_frequency_minutes: number;
+  last_sync_at: string | null;
+  is_active: boolean;
+}
+
+export function Integrations() {
+  const [integrations, setIntegrations] = useState<IntegrationConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showShopifyForm, setShowShopifyForm] = useState(false);
+  const [clientId, setClientId] = useState<string>('');
+  const [editingIntegration, setEditingIntegration] = useState<IntegrationConfig | null>(null);
+
+  const [shopifyForm, setShopifyForm] = useState({
+    shop_domain: '',
+    api_key: '',
+    api_secret: '',
+    access_token: '',
+  });
+
+  useEffect(() => {
+    loadClientId();
+  }, []);
+
+  useEffect(() => {
+    if (clientId) {
+      loadIntegrations();
+    }
+  }, [clientId]);
+
+  const loadClientId = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('client_id')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+      if (profile?.client_id) {
+        setClientId(profile.client_id);
+      }
+    } catch (error) {
+      console.error('Error loading client ID:', error);
+    }
+  };
+
+  const loadIntegrations = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('integration_configs')
+        .select('*')
+        .eq('client_id', clientId);
+
+      if (error) throw error;
+      setIntegrations(data || []);
+    } catch (error) {
+      console.error('Error loading integrations:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleShopifySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/shopify-webhook`;
+
+      const integrationData = {
+        client_id: clientId,
+        platform: 'shopify',
+        platform_name: shopifyForm.shop_domain,
+        credentials: {
+          shop_domain: shopifyForm.shop_domain,
+          api_key: shopifyForm.api_key,
+          api_secret: shopifyForm.api_secret,
+          access_token: shopifyForm.access_token,
+        },
+        webhook_url: webhookUrl,
+        sync_frequency_minutes: 60,
+        is_active: true,
+      };
+
+      if (editingIntegration) {
+        const { error } = await supabase
+          .from('integration_configs')
+          .update({
+            ...integrationData,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editingIntegration.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('integration_configs')
+          .insert([integrationData]);
+
+        if (error) throw error;
+      }
+
+      setShowShopifyForm(false);
+      setEditingIntegration(null);
+      setShopifyForm({
+        shop_domain: '',
+        api_key: '',
+        api_secret: '',
+        access_token: '',
+      });
+      loadIntegrations();
+      alert('Shopify integration configured successfully!');
+    } catch (error) {
+      console.error('Error configuring Shopify:', error);
+      alert('Failed to configure Shopify integration. Please try again.');
+    }
+  };
+
+  const handleEdit = (integration: IntegrationConfig) => {
+    setEditingIntegration(integration);
+    setShopifyForm({
+      shop_domain: integration.credentials.shop_domain || '',
+      api_key: integration.credentials.api_key || '',
+      api_secret: integration.credentials.api_secret || '',
+      access_token: integration.credentials.access_token || '',
+    });
+    setShowShopifyForm(true);
+  };
+
+  const handleToggleActive = async (integration: IntegrationConfig) => {
+    try {
+      const { error } = await supabase
+        .from('integration_configs')
+        .update({
+          is_active: !integration.is_active,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', integration.id);
+
+      if (error) throw error;
+      loadIntegrations();
+    } catch (error) {
+      console.error('Error toggling integration:', error);
+      alert('Failed to update integration status.');
+    }
+  };
+
+  const handleTestConnection = async (integration: IntegrationConfig) => {
+    try {
+      alert('Testing connection to ' + integration.platform_name + '...');
+    } catch (error) {
+      console.error('Error testing connection:', error);
+      alert('Connection test failed.');
+    }
+  };
+
+  const shopifyIntegration = integrations.find((i) => i.platform === 'shopify');
+  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/shopify-webhook`;
+
+  return (
+    <DashboardLayout menuItems={clientMenuItems} title="Integrations">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Integrations</h1>
+          <p className="text-gray-600 mt-2">
+            Connect your e-commerce platform to automatically sync orders and enable reward redemption
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 mb-8">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-green-100 rounded-lg flex items-center justify-center">
+                    <ShoppingBag className="w-8 h-8 text-green-600" />
+                  </div>
+                  <div>
+                    <CardTitle>Shopify</CardTitle>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Integrate with your Shopify store
+                    </p>
+                  </div>
+                </div>
+                {shopifyIntegration ? (
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                        shopifyIntegration.is_active
+                          ? 'bg-green-50 text-green-700'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full mr-2 ${
+                          shopifyIntegration.is_active ? 'bg-green-500' : 'bg-gray-400'
+                        }`}
+                      ></span>
+                      {shopifyIntegration.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                ) : (
+                  <Button onClick={() => setShowShopifyForm(true)}>
+                    <Settings className="w-4 h-4 mr-2" />
+                    Configure
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            {shopifyIntegration && (
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Shop Domain</p>
+                    <p className="font-medium text-gray-900">
+                      {shopifyIntegration.platform_name}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Last Synced</p>
+                    <p className="font-medium text-gray-900">
+                      {shopifyIntegration.last_sync_at
+                        ? new Date(shopifyIntegration.last_sync_at).toLocaleString()
+                        : 'Never'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Webhook URL</p>
+                    <p className="font-mono text-sm text-gray-900 break-all">
+                      {shopifyIntegration.webhook_url}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Sync Frequency</p>
+                    <p className="font-medium text-gray-900">
+                      Every {shopifyIntegration.sync_frequency_minutes} minutes
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4 border-t">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleEdit(shopifyIntegration)}
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    Edit Configuration
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleTestConnection(shopifyIntegration)}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Test Connection
+                  </Button>
+                  <Button
+                    variant={shopifyIntegration.is_active ? 'secondary' : 'primary'}
+                    size="sm"
+                    onClick={() => handleToggleActive(shopifyIntegration)}
+                  >
+                    {shopifyIntegration.is_active ? 'Disable' : 'Enable'}
+                  </Button>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+        </div>
+
+        <ShopifySetupGuide webhookUrl={webhookUrl} />
+
+        <div className="mt-8">
+          <RedemptionLinkManager clientId={clientId} />
+        </div>
+      </div>
+
+      {showShopifyForm && (
+        <div
+          className="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center p-4"
+          onClick={() => {
+            setShowShopifyForm(false);
+            setEditingIntegration(null);
+            setShopifyForm({
+              shop_domain: '',
+              api_key: '',
+              api_secret: '',
+              access_token: '',
+            });
+          }}
+        >
+          <div
+            className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b">
+              <h2 className="text-2xl font-bold text-gray-900">
+                {editingIntegration ? 'Edit' : 'Configure'} Shopify Integration
+              </h2>
+              <p className="text-gray-600 mt-2">
+                Enter your Shopify store credentials to enable automatic order syncing
+              </p>
+            </div>
+
+            <form onSubmit={handleShopifySubmit} className="p-6 space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Shop Domain *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="mystore.myshopify.com"
+                  value={shopifyForm.shop_domain}
+                  onChange={(e) =>
+                    setShopifyForm({ ...shopifyForm, shop_domain: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  API Key *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Enter your Shopify API key"
+                  value={shopifyForm.api_key}
+                  onChange={(e) => setShopifyForm({ ...shopifyForm, api_key: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  API Secret *
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter your Shopify API secret"
+                  value={shopifyForm.api_secret}
+                  onChange={(e) =>
+                    setShopifyForm({ ...shopifyForm, api_secret: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Access Token *
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter your Shopify access token"
+                  value={shopifyForm.access_token}
+                  onChange={(e) =>
+                    setShopifyForm({ ...shopifyForm, access_token: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex gap-3">
+                  <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-blue-900">
+                    <p className="font-semibold mb-1">Where to find your credentials:</p>
+                    <ol className="list-decimal list-inside space-y-1">
+                      <li>Go to your Shopify Admin panel</li>
+                      <li>Navigate to Settings → Apps and sales channels</li>
+                      <li>Click "Develop apps" → Create or select your app</li>
+                      <li>Copy the API credentials from the API credentials tab</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Button type="submit" className="flex-1">
+                  <Check className="w-4 h-4 mr-2" />
+                  {editingIntegration ? 'Update' : 'Save'} Configuration
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setShowShopifyForm(false);
+                    setEditingIntegration(null);
+                    setShopifyForm({
+                      shop_domain: '',
+                      api_key: '',
+                      api_secret: '',
+                      access_token: '',
+                    });
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </DashboardLayout>
+  );
+}

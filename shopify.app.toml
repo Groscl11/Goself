@@ -1,0 +1,66 @@
+# Shopify App Configuration
+# Rewards Loyalty Platform - Complete Widget Suite
+# Learn more: https://shopify.dev/docs/apps/tools/cli/configuration
+
+name = "Loyalty Bolt 2.0"
+client_id = "0341c8495ce44f2a98b3ac0d43fce5bc"
+application_url = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-app"
+embedded = false
+
+[build]
+automatically_update_urls_on_dev = true
+dev_store_url = "YOUR_DEV_STORE_URL_HERE"
+
+[access_scopes]
+# Required scopes for the rewards platform
+scopes = "read_orders,read_customers,read_products,write_script_tags,read_checkouts,write_themes"
+
+[auth]
+redirect_urls = [
+  "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-oauth-callback"
+]
+
+[webhooks]
+api_version = "2024-01"
+
+# App Embed - Appears in "App embeds" section of Theme Customizer
+[[extensions]]
+type = "theme"
+name = "Loyalty Bolt Widget"
+handle = "loyalty-app-embed"
+directory = "extensions/loyalty-app-embed"
+
+# Theme App Extensions - Appear in Theme Customizer
+[[extensions]]
+type = "theme"
+name = "Rewards Announcement Bar"
+handle = "rewards-announcement-bar"
+directory = "extensions/announcement-bar"
+
+[[extensions]]
+type = "theme"
+name = "Rewards Floating Widget"
+handle = "rewards-floating-widget"
+directory = "extensions/floating-widget"
+
+[[extensions]]
+type = "theme"
+name = "Rewards Product Banner"
+handle = "rewards-product-banner"
+directory = "extensions/product-banner"
+
+# Checkout UI Extensions - Appear in Checkout Customizer
+[[extensions]]
+type = "checkout_ui_extension"
+name = "Rewards Cart Widget"
+handle = "rewards-cart-widget"
+directory = "extensions/cart-rewards"
+
+[[extensions]]
+type = "checkout_ui_extension"
+name = "Rewards Thank You Card"
+handle = "rewards-thank-you-card"
+directory = "extensions/thank-you-card"
+
+[pos]
+embedded = false

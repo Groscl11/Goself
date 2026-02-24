@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Widget Test Page</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      background: #f7fafc;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .header h1 {
+      color: #1a202c;
+      margin-bottom: 8px;
+    }
+    .header p {
+      color: #4a5568;
+    }
+    .test-section {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .test-section h2 {
+      color: #1a202c;
+      margin-bottom: 12px;
+      font-size: 20px;
+    }
+    .test-section p {
+      color: #4a5568;
+      margin-bottom: 16px;
+    }
+    .code-block {
+      background: #2d3748;
+      color: #e2e8f0;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      margin-bottom: 16px;
+    }
+    .info-box {
+      background: #ebf8ff;
+      border-left: 4px solid #4299e1;
+      padding: 16px;
+      border-radius: 4px;
+      margin-top: 16px;
+    }
+    .info-box strong {
+      color: #2c5282;
+    }
+    .widget-placeholder {
+      border: 2px dashed #cbd5e0;
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      color: #718096;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Reward Widget Test Page</h1>
+    <p>Test your widgets before deploying to Shopify</p>
+  </div>
+
+  <div class="test-section">
+    <h2>Instructions</h2>
+    <p>Follow these steps to test your widget:</p>
+    <ol>
+      <li>Get your Widget ID from the Shopify Widgets page</li>
+      <li>Replace <code>YOUR_WIDGET_ID_HERE</code> in the code below with your actual widget ID</li>
+      <li>Add the script tag to this page (see examples below)</li>
+      <li>Reload the page to see your widget</li>
+    </ol>
+  </div>
+
+  <div class="test-section">
+    <h2>Test: Floating Widget</h2>
+    <p>This widget appears as a floating button in the bottom-right corner.</p>
+    <div class="code-block">
+      &lt;script src="/widget.js" data-widget-id="YOUR_WIDGET_ID_HERE"&gt;&lt;/script&gt;
+    </div>
+    <div class="info-box">
+      <strong>Expected Result:</strong> A floating reward card should appear in the bottom-right corner of the page.
+    </div>
+  </div>
+
+  <div class="test-section">
+    <h2>Test: Thank You Card</h2>
+    <p>This widget appears inline in the page content.</p>
+    <div id="reward-widget-thankyou-test"></div>
+    <div class="widget-placeholder">
+      Thank You Card widget will appear here
+    </div>
+    <div class="code-block">
+      &lt;div id="reward-widget-YOUR_WIDGET_ID_HERE"&gt;&lt;/div&gt;
+      &lt;script src="/widget.js" data-widget-id="YOUR_WIDGET_ID_HERE"&gt;&lt;/script&gt;
+    </div>
+  </div>
+
+  <div class="test-section">
+    <h2>Test: Product Banner</h2>
+    <p>This widget appears as a promotional banner.</p>
+    <div id="reward-widget-banner-test"></div>
+    <div class="widget-placeholder">
+      Product Banner widget will appear here
+    </div>
+  </div>
+
+  <div class="test-section">
+    <h2>Test: Announcement Bar</h2>
+    <p>This widget appears at the top of the page.</p>
+    <div class="info-box">
+      <strong>Note:</strong> The announcement bar widget automatically inserts itself at the top of the page.
+    </div>
+  </div>
+
+  <div class="test-section">
+    <h2>Troubleshooting</h2>
+    <ul>
+      <li>Check browser console (F12) for any error messages</li>
+      <li>Verify the widget ID is correct and the widget is enabled</li>
+      <li>Make sure the widget.js file is loading (check Network tab in browser dev tools)</li>
+      <li>Ensure your browser allows JavaScript execution</li>
+    </ul>
+  </div>
+
+  <div class="test-section">
+    <h2>Next Steps</h2>
+    <p>Once the widget displays correctly here:</p>
+    <ol>
+      <li>Copy the embed code from the Shopify Widgets page</li>
+      <li>Follow the installation instructions for your widget type</li>
+      <li>Add the code to your Shopify theme</li>
+      <li>Test on your Shopify store</li>
+    </ol>
+  </div>
+
+</body>
+</html>
