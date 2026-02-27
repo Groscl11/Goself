@@ -4,6 +4,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { RoleBasedRoute } from './components/RoleBasedRoute';
 import { PublicRoute } from './components/PublicRoute';
 import { Login } from './pages/Login';
+import ShopifyCallback from './pages/auth/ShopifyCallback';
 import { Signup } from './pages/Signup';
 import { ClientRegistration } from './pages/public/ClientRegistration';
 import { ProgramDiscovery } from './pages/public/ProgramDiscovery';
@@ -115,6 +116,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/auth/shopify-callback" element={<ShopifyCallback />} />
           <Route path="/join/:clientSlug" element={<PublicRoute><ClientRegistration /></PublicRoute>} />
           <Route path="/join/:clientSlug/programs" element={<ProgramDiscovery />} />
           <Route path="/redeem" element={<RewardRedemption />} />

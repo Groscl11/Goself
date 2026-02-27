@@ -255,11 +255,71 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Auto-registration complete for ${shop}`);
 
-    // Redirect to embedded app interface edge function
-    const redirectUrl = `${supabaseUrl}/functions/v1/shopify-app?shop=${shop}&client_id=${clientId}&status=success`;
+    const DASHBOARD_URL = Deno.env.get('DASHBOARD_URL') || 'https://goself.netlify.app';
+
+    // ── SSO: Generate magic link so merchant is auto-logged into Goself ──
+    if (shopDetails.email) {
+      try {
+        // Ensure the merchant has a Supabase auth account
+        // Try to create one; if already exists, generateLink still works
+        const { data: adminUserList } = await supabase.auth.admin.listUsers();
+        const existingUser = adminUserList?.users?.find(
+          (u: any) => u.email === shopDetails.email
+        );
+
+        if (!existingUser) {
+          // Create auth user for this merchant
+          await supabase.auth.admin.createUser({
+            email: shopDetails.email,
+            email_confirm: true,
+            user_metadata: {
+              full_name: shopDetails.shop_owner || shopDetails.name,
+              shop_domain: shop,
+              client_id: clientId,
+              role: 'client',
+            }
+          });
+
+          // Ensure profile row exists with client role
+          await supabase.from('profiles').upsert({
+            id: (await supabase.auth.admin.getUserByEmail(shopDetails.email))
+              .data?.user?.id,
+            email: shopDetails.email,
+            full_name: shopDetails.shop_owner || shopDetails.name,
+            role: 'client',
+            client_id: clientId,
+          }, { onConflict: 'id', ignoreDuplicates: true });
+        }
+
+        // Generate magic link pointing to Goself dashboard SSO callback
+        const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+          type: 'magiclink',
+          email: shopDetails.email,
+          options: {
+            redirectTo: `${DASHBOARD_URL}/auth/shopify-callback?shop=${shop}&client_id=${clientId}`,
+          }
+        });
+
+        if (!linkError && linkData?.properties?.action_link) {
+          console.log(`Magic link generated for ${shopDetails.email}`);
+          // Redirect merchant through the magic link → they land in Goself logged in
+          return new Response(null, {
+            status: 302,
+            headers: { 'Location': linkData.properties.action_link }
+          });
+        } else {
+          console.warn('Magic link generation failed, falling back to direct redirect:', linkError);
+        }
+      } catch (ssoError) {
+        console.error('SSO error, falling back to direct redirect:', ssoError);
+      }
+    }
+
+    // Fallback: direct redirect to dashboard (merchant will need to log in manually)
+    const fallbackUrl = `${DASHBOARD_URL}/login?shop=${shop}&client_id=${clientId}&status=installed`;
     return new Response(null, {
       status: 302,
-      headers: { 'Location': redirectUrl }
+      headers: { 'Location': fallbackUrl }
     });
 
   } catch (error) {
