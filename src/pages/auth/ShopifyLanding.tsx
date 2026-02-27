@@ -1,6 +1,6 @@
 /**
  * ShopifyLanding — handles the root URL when Shopify opens the app
- * Forces correct merchant login by looking up shop in database
+ * Signs out existing session, finds merchant by shop, creates auth user if needed, sends magic link
  */
 
 import { useEffect, useState } from 'react';
@@ -14,6 +14,7 @@ export default function ShopifyLanding() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [status, setStatus] = useState('Connecting to your store...');
+  const [error, setError] = useState('');
 
   const shop = searchParams.get('shop');
   const handled = searchParams.get('_handled');
@@ -28,57 +29,72 @@ export default function ShopifyLanding() {
       return;
     }
 
-    // Step 1: Sign out completely, then hard-reload with _handled=1 to ensure clean state
+    // Step 1: Sign out and hard reload to clear session completely
     if (!handled) {
-      setStatus('Signing out previous session...');
+      setStatus('Preparing your account...');
       await supabase.auth.signOut();
-      const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.set('_handled', '1');
-      window.location.replace(currentUrl.toString());
+      const url = new URL(window.location.href);
+      url.searchParams.set('_handled', '1');
+      window.location.replace(url.toString());
       return;
     }
 
-    // Step 2: Clean state — look up the merchant for this specific shop
-    setStatus(`Looking up ${shop}...`);
+    // Step 2: Session cleared — look up merchant by shop domain
+    setStatus(`Verifying ${shop}...`);
 
     try {
-      const { data: installation, error } = await supabase
+      const { data: installation } = await supabase
         .from('store_installations')
-        .select('client_id, shop_email, shop_name')
+        .select('client_id, shop_email, shop_name, shop_owner')
         .eq('shop_domain', shop)
         .eq('installation_status', 'active')
         .maybeSingle();
 
-      if (error) console.error('DB lookup error:', error);
-
       if (installation?.shop_email) {
-        setStatus(`Sending sign-in link to ${installation.shop_email}...`);
+        const email = installation.shop_email;
+        const clientId = installation.client_id;
 
-        const { error: otpError } = await supabase.auth.signInWithOtp({
-          email: installation.shop_email,
-          options: {
-            emailRedirectTo: `${window.location.origin}/auth/shopify-callback?shop=${shop}&client_id=${installation.client_id}`,
-          }
+        setStatus(`Welcome back, ${installation.shop_name || shop}!`);
+        await new Promise(r => setTimeout(r, 500));
+        setStatus('Generating your secure login...');
+
+        // Call our edge function to create user + generate magic link server-side
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/shopify-merchant-login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            shop_domain: shop,
+            email,
+            client_id: clientId,
+            shop_name: installation.shop_name,
+            shop_owner: installation.shop_owner,
+            redirect_to: `${window.location.origin}/auth/shopify-callback?shop=${shop}&client_id=${clientId}`,
+          })
         });
 
-        if (!otpError) {
-          setStatus('Check your email for a sign-in link!');
-          setTimeout(() => {
-            navigate(`/login?shop=${shop}&from=shopify&email_sent=true`);
-          }, 1500);
-          return;
-        } else {
-          console.error('OTP error:', otpError);
-          setStatus('Error sending link. Redirecting...');
-          setTimeout(() => navigate(`/login?shop=${shop}&from=shopify`), 2000);
+        const data = await res.json();
+
+        if (data.magic_link) {
+          setStatus('Logging you in...');
+          // Redirect through the magic link — auto login, no email needed!
+          window.location.href = data.magic_link;
           return;
         }
+
+        if (data.email_sent) {
+          setStatus('Check your email for a sign-in link!');
+          setTimeout(() => navigate(`/login?shop=${shop}&from=shopify&email_sent=true`), 1500);
+          return;
+        }
+
+        throw new Error(data.error || 'Login failed');
       }
-    } catch (e) {
-      console.error('Store lookup failed:', e);
+    } catch (e: any) {
+      console.error('Merchant login error:', e);
+      // Fall through to OAuth
     }
 
-    // Not installed yet — trigger OAuth
+    // Not installed yet — trigger OAuth install flow
     setStatus('Starting Shopify installation...');
     await new Promise(r => setTimeout(r, 500));
 
@@ -94,7 +110,6 @@ export default function ShopifyLanding() {
     const redirectUri = `${SUPABASE_URL}/functions/v1/shopify-oauth-callback`;
     const state = btoa(JSON.stringify({ app_url: window.location.origin, ts: Date.now() }));
     const oauthUrl = `https://${shop}/admin/oauth/authorize?client_id=${SHOPIFY_API_KEY}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
-
     window.location.href = oauthUrl;
   }
 
@@ -113,6 +128,7 @@ export default function ShopifyLanding() {
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-slate-300 text-sm">{status}</p>
+          {error && <p className="text-red-400 text-xs">{error}</p>}
         </div>
         <p className="text-slate-500 text-xs mt-8">Powered by Goself · Loyalty & Rewards Platform</p>
       </div>
