@@ -6,6 +6,7 @@ import { PublicRoute } from './components/PublicRoute';
 import { Login } from './pages/Login';
 import ShopifyCallback from './pages/auth/ShopifyCallback';
 import ShopifyLanding from './pages/auth/ShopifyLanding';
+import PrivacyPolicy from './pages/public/PrivacyPolicy';
 import { Signup } from './pages/Signup';
 import { ClientRegistration } from './pages/public/ClientRegistration';
 import { ProgramDiscovery } from './pages/public/ProgramDiscovery';
@@ -125,6 +126,7 @@ function App() {
           <Route path="/redeem/:token" element={<RedeemRewards />} />
           <Route path="/claim/:token" element={<ClaimReward />} />
           <Route path="/claim-rewards" element={<SelectRewards />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/redemption-success" element={<RedemptionSuccess />} />
 
           {/* Admin routes */}
