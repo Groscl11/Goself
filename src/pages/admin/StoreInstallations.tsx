@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
@@ -18,9 +19,8 @@ import {
   Search,
   Filter,
   Eye,
-  RefreshCw,
-  Package
-} from 'lucide-react';
+  RefreshCw
+,ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { adminMenuItems } from './adminMenuItems';
 
@@ -74,9 +74,9 @@ interface StoreDetails extends StoreInstallation {
 }
 
 export function StoreInstallations() {
+  const navigate = useNavigate();
   const [stores, setStores] = useState<StoreInstallation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedStore, setSelectedStore] = useState<StoreDetails | null>(null);
@@ -96,9 +96,8 @@ export function StoreInstallations() {
   const loadStores = async () => {
     try {
       setLoading(true);
-      setError(null);
 
-      const { data, error: fetchError } = await supabase
+      const { data, error } = await supabase
         .from('store_installations')
         .select(`
           *,
@@ -109,10 +108,7 @@ export function StoreInstallations() {
         `)
         .order('installed_at', { ascending: false });
 
-      if (fetchError) {
-        console.error('Error fetching stores:', fetchError);
-        throw new Error(`Failed to load stores: ${fetchError.message}`);
-      }
+      if (error) throw error;
 
       const formattedStores: StoreInstallation[] = (data || []).map((store: any) => ({
         ...store,
@@ -135,9 +131,8 @@ export function StoreInstallations() {
         inactive: inactiveStores,
         webhooksHealthy: healthyWebhooks,
       });
-    } catch (err) {
-      console.error('Error loading stores:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load store installations');
+    } catch (error) {
+      console.error('Error loading stores:', error);
     } finally {
       setLoading(false);
     }
@@ -147,41 +142,29 @@ export function StoreInstallations() {
     try {
       const { data: store, error: storeError } = await supabase
         .from('store_installations')
-        .select('*, clients(name, contact_email)')
+        .select('*')
         .eq('id', storeId)
         .single();
 
       if (storeError) throw storeError;
 
-      const { data: plugins, error: pluginsError } = await supabase
+      const { data: plugins } = await supabase
         .from('store_plugins')
         .select('plugin_type, plugin_name, status, installed_at')
         .eq('store_installation_id', storeId)
         .order('installed_at', { ascending: false });
 
-      if (pluginsError) {
-        console.error('Error fetching plugins:', pluginsError);
-      }
-
-      const { data: webhooks, error: webhooksError } = await supabase
+      const { data: webhooks } = await supabase
         .from('store_webhooks')
         .select('webhook_topic, status, total_events_received, last_event_at')
         .eq('store_installation_id', storeId)
         .order('webhook_topic');
 
-      if (webhooksError) {
-        console.error('Error fetching webhooks:', webhooksError);
-      }
-
-      const { data: users, error: usersError } = await supabase
+      const { data: users } = await supabase
         .from('store_users')
         .select('email, full_name, role, status')
         .eq('store_installation_id', storeId)
         .order('role');
-
-      if (usersError) {
-        console.error('Error fetching users:', usersError);
-      }
 
       const storeWithDetails: StoreDetails = {
         ...store,
@@ -191,14 +174,13 @@ export function StoreInstallations() {
         plugins_count: plugins?.length || 0,
         users_count: users?.length || 0,
         webhooks_count: webhooks?.length || 0,
-        clients: store.clients || { name: '', contact_email: '' }
+        clients: stores.find(s => s.id === storeId)?.clients || { name: '', contact_email: '' }
       };
 
       setSelectedStore(storeWithDetails);
       setShowDetails(true);
     } catch (error) {
       console.error('Error loading store details:', error);
-      alert('Failed to load store details. Please try again.');
     }
   };
 
@@ -217,17 +199,13 @@ export function StoreInstallations() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
-      case 'configured':
-      case 'healthy':
         return 'bg-green-100 text-green-800';
       case 'inactive':
-      case 'pending':
-      case 'degraded':
         return 'bg-yellow-100 text-yellow-800';
       case 'suspended':
-      case 'uninstalled':
-      case 'failed':
         return 'bg-red-100 text-red-800';
+      case 'uninstalled':
+        return 'bg-gray-100 text-gray-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -236,19 +214,36 @@ export function StoreInstallations() {
   const getWebhookStatusIcon = (status: string) => {
     switch (status) {
       case 'healthy':
-        return <CheckCircle2 className="w-5 h-5 text-green-600" />;
+        return <CheckCircle2 className="w-4 h-4 text-green-600" />;
       case 'degraded':
-        return <AlertCircle className="w-5 h-5 text-yellow-600" />;
+        return <AlertCircle className="w-4 h-4 text-yellow-600" />;
       case 'failed':
-        return <XCircle className="w-5 h-5 text-red-600" />;
+        return <XCircle className="w-4 h-4 text-red-600" />;
       default:
-        return <AlertCircle className="w-5 h-5 text-gray-400" />;
+        return <AlertCircle className="w-4 h-4 text-gray-400" />;
     }
   };
 
   return (
-    <DashboardLayout menuItems={adminMenuItems} title="Store Installations">
+    <DashboardLayout menuItems={adminMenuItems}>
       <div className="space-y-6">
+        <button onClick={() => navigate('/admin')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
+          <ArrowLeft className="w-4 h-4" /> Back to Admin
+        </button>
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Store Installations</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Track all Shopify stores that have installed your plugins
+            </p>
+          </div>
+          <Button onClick={loadStores} className="flex items-center gap-2">
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </Button>
+        </div>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <Card>
@@ -291,45 +286,37 @@ export function StoreInstallations() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Healthy Webhooks</p>
-                  <p className="text-2xl font-bold text-purple-600">{stats.webhooksHealthy}</p>
+                  <p className="text-sm font-medium text-gray-600">Webhooks Healthy</p>
+                  <p className="text-2xl font-bold text-green-600">{stats.webhooksHealthy}</p>
                 </div>
-                <Webhook className="w-8 h-8 text-purple-600" />
+                <Webhook className="w-8 h-8 text-green-600" />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Stores Table */}
+        {/* Filters */}
         <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Installed Stores</CardTitle>
-              <Button onClick={loadStores} className="flex items-center gap-2">
-                <RefreshCw className="w-4 h-4" />
-                Refresh
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {/* Filters */}
-            <div className="flex gap-4 mb-6">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="Search by domain, name, or email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+          <CardContent className="pt-6">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    type="text"
+                    placeholder="Search stores by domain, name, or email..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Filter className="w-5 h-5 text-gray-400" />
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="all">All Status</option>
                   <option value="active">Active</option>
@@ -339,41 +326,24 @@ export function StoreInstallations() {
                 </select>
               </div>
             </div>
+          </CardContent>
+        </Card>
 
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-red-900">Error Loading Stores</p>
-                  <p className="text-sm text-red-700 mt-1">{error}</p>
-                </div>
-              </div>
-            )}
-
+        {/* Stores Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Installed Stores ({filteredStores.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
             {loading ? (
               <div className="text-center py-12">
-                <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-4" />
-                <p className="text-gray-600">Loading stores...</p>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-4 text-gray-600">Loading stores...</p>
               </div>
             ) : filteredStores.length === 0 ? (
               <div className="text-center py-12">
-                <Store className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Stores Found</h3>
-                <p className="text-gray-500 mb-4">
-                  {stores.length === 0
-                    ? 'No stores have been installed yet.'
-                    : 'No stores match your search criteria.'}
-                </p>
-                {searchTerm || statusFilter !== 'all' ? (
-                  <Button
-                    onClick={() => {
-                      setSearchTerm('');
-                      setStatusFilter('all');
-                    }}
-                  >
-                    Clear Filters
-                  </Button>
-                ) : null}
+                <Store className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">No stores found</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -515,108 +485,78 @@ export function StoreInstallations() {
 
                 {/* Plugins */}
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    Installed Plugins ({selectedStore.plugins.length})
-                  </h3>
-                  {selectedStore.plugins.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                      <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500 text-sm">No plugins installed yet</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                      {selectedStore.plugins.map((plugin, index) => (
-                        <div key={index} className="border border-gray-200 rounded-lg p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Plug className="w-4 h-4 text-blue-600" />
-                              <span className="text-sm font-medium text-gray-900">{plugin.plugin_name}</span>
-                            </div>
-                            <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(plugin.status)}`}>
-                              {plugin.status}
-                            </span>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Installed Plugins ({selectedStore.plugins.length})</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {selectedStore.plugins.map((plugin, index) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Plug className="w-4 h-4 text-blue-600" />
+                            <span className="text-sm font-medium text-gray-900">{plugin.plugin_name}</span>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Type: {plugin.plugin_type}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            Installed: {new Date(plugin.installed_at).toLocaleDateString()}
-                          </p>
+                          <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(plugin.status)}`}>
+                            {plugin.status}
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          Type: {plugin.plugin_type}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Webhooks */}
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    Webhooks ({selectedStore.webhooks.length})
-                  </h3>
-                  {selectedStore.webhooks.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                      <Webhook className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500 text-sm">No webhooks registered</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {selectedStore.webhooks.map((webhook, index) => (
-                        <div key={index} className="border border-gray-200 rounded-lg p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Webhook className="w-4 h-4 text-green-600" />
-                              <span className="text-sm font-medium text-gray-900">{webhook.webhook_topic}</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs text-gray-500">
-                                {webhook.total_events_received} events
-                              </span>
-                              <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(webhook.status)}`}>
-                                {webhook.status}
-                              </span>
-                            </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Webhooks ({selectedStore.webhooks.length})</h3>
+                  <div className="space-y-2">
+                    {selectedStore.webhooks.map((webhook, index) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Webhook className="w-4 h-4 text-green-600" />
+                            <span className="text-sm font-medium text-gray-900">{webhook.webhook_topic}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-500">
+                              {webhook.total_events_received} events
+                            </span>
+                            <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(webhook.status)}`}>
+                              {webhook.status}
+                            </span>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Users */}
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    Store Users ({selectedStore.users.length})
-                  </h3>
-                  {selectedStore.users.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                      <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500 text-sm">No users registered</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {selectedStore.users.map((user, index) => (
-                        <div key={index} className="border border-gray-200 rounded-lg p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Users className="w-4 h-4 text-purple-600" />
-                              <div>
-                                <span className="text-sm font-medium text-gray-900">{user.full_name || user.email}</span>
-                                {user.full_name && (
-                                  <p className="text-xs text-gray-500">{user.email}</p>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-gray-600 font-medium">{user.role}</span>
-                              <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(user.status)}`}>
-                                {user.status}
-                              </span>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Store Users ({selectedStore.users.length})</h3>
+                  <div className="space-y-2">
+                    {selectedStore.users.map((user, index) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Users className="w-4 h-4 text-purple-600" />
+                            <div>
+                              <span className="text-sm font-medium text-gray-900">{user.full_name || user.email}</span>
+                              {user.full_name && (
+                                <p className="text-xs text-gray-500">{user.email}</p>
+                              )}
                             </div>
                           </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-600 font-medium">{user.role}</span>
+                            <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(user.status)}`}>
+                              {user.status}
+                            </span>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 

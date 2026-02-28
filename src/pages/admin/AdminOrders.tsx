@@ -1,8 +1,9 @@
+import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { ShoppingBag, Search, Filter, DollarSign, User, Tag, Gift, Zap, Building2 } from 'lucide-react';
+import { ShoppingBag, Search, Filter, DollarSign, User, Tag, Gift, Zap, Building2 ,ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { adminMenuItems } from './adminMenuItems';
 
@@ -28,6 +29,7 @@ interface EnrichedOrder extends OrderData {
 }
 
 export function AdminOrders() {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<EnrichedOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');

@@ -1,5 +1,6 @@
+import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Play, Pause } from 'lucide-react';
+import { Plus, Edit, Trash2, Play, Pause ,ArrowLeft } from 'lucide-react';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -29,6 +30,7 @@ interface CampaignRule {
 }
 
 export function CampaignRules() {
+  const navigate = useNavigate();
   const [rules, setRules] = useState<CampaignRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -213,6 +215,9 @@ export function CampaignRules() {
   return (
     <DashboardLayout menuItems={adminMenuItems} title="Campaign Rules">
       <div className="space-y-6">
+        <button onClick={() => navigate('/admin')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
+          <ArrowLeft className="w-4 h-4" /> Back to Admin
+        </button>
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Campaign Rules</h1>

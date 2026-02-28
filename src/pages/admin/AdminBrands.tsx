@@ -1,6 +1,7 @@
+import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Building2, ExternalLink, Users, Calendar, MapPin, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Plus, Search, Building2, ExternalLink, Users, Calendar, MapPin, CheckCircle, XCircle, Clock ,ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -22,6 +23,7 @@ interface Brand {
 }
 
 export function AdminBrands() {
+  const navigate = useNavigate();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -88,6 +90,9 @@ export function AdminBrands() {
 
   return (
     <div className="space-y-6">
+      <button onClick={() => navigate('/admin')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
+        <ArrowLeft className="w-4 h-4" /> Back to Admin
+      </button>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Brands Management</h1>

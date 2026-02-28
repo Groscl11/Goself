@@ -1,6 +1,7 @@
+import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Users as UsersIcon, Mail, Shield, Building2, Award } from 'lucide-react';
+import { Plus, Search, Users as UsersIcon, Mail, Shield, Building2, Award ,ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -27,6 +28,7 @@ interface Brand {
 }
 
 export function AdminUsers() {
+  const navigate = useNavigate();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -111,6 +113,9 @@ export function AdminUsers() {
 
   return (
     <div className="space-y-6">
+      <button onClick={() => navigate('/admin')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
+        <ArrowLeft className="w-4 h-4" /> Back to Admin
+      </button>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Users Management</h1>

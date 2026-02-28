@@ -1,5 +1,6 @@
+import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Download, Filter, Calendar, TrendingUp } from 'lucide-react';
+import { Download, Filter, Calendar, TrendingUp ,ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -157,6 +158,9 @@ export default function Transactions() {
 
   return (
     <div className="space-y-6">
+      <button onClick={() => navigate('/admin')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
+        <ArrowLeft className="w-4 h-4" /> Back to Admin
+      </button>
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Transaction Analytics</h1>

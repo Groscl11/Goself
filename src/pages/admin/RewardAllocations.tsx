@@ -1,6 +1,7 @@
+import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Gift, Users, Building2, Award, Calendar } from 'lucide-react';
+import { Search, Gift, Users, Building2, Award, Calendar ,ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
 
@@ -34,6 +35,7 @@ interface RewardAllocation {
 }
 
 export function RewardAllocations() {
+  const navigate = useNavigate();
   const [allocations, setAllocations] = useState<RewardAllocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,6 +103,9 @@ export function RewardAllocations() {
 
   return (
     <div className="space-y-6">
+      <button onClick={() => navigate('/admin')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
+        <ArrowLeft className="w-4 h-4" /> Back to Admin
+      </button>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Reward Allocations</h1>

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Search, Plus, Edit, Eye, Filter, Trash2, X, Copy, Tag, FileSpreadsheet } from 'lucide-react';
+import { Search, Plus, Edit, Eye, Filter, Trash2, X, Copy, Tag, FileSpreadsheet, ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { adminMenuItems } from './adminMenuItems';
 import { RewardForm } from '../../components/RewardForm';
@@ -45,6 +46,7 @@ interface RewardFormData {
 }
 
 export function AdminRewards() {
+  const navigate = useNavigate();
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
@@ -297,6 +299,9 @@ export function AdminRewards() {
   return (
     <DashboardLayout menuItems={adminMenuItems} title="Rewards Management">
       <div className="max-w-7xl mx-auto">
+        <button onClick={() => navigate('/admin')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 mb-4">
+          <ArrowLeft className="w-4 h-4" /> Back to Admin
+        </button>
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Rewards Management</h1>

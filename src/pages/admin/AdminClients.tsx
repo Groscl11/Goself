@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Building2, Mail, Phone, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Search, Building2, Mail, Phone, CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -18,6 +19,7 @@ interface Client {
 }
 
 export function AdminClients() {
+  const navigate = useNavigate();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
