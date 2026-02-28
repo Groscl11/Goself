@@ -817,123 +817,160 @@
   }
 
   // Load rewards
+  // ─── Rewards catalog: load from get-rewards-catalog ───────────────────────
   async function loadRewards() {
     const container = document.getElementById('rewardhub-rewards');
+    if (!container) return;
+    container.innerHTML = '<p style="text-align:center;color:#9ca3af;padding:20px">Loading rewards...</p>';
 
     try {
       const shopDomain = '{{ shop.domain }}';
-      const response = await fetch(`${API_URL}/get-customer-rewards`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer_email: customerEmail,
-          shop_domain: shopDomain
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to load rewards');
-
-      const data = await response.json();
+      const memberId = customerData?.member_user_id || '';
+      const res = await fetch(
+        `${API_URL}/get-rewards-catalog?shop=${encodeURIComponent(shopDomain)}&member_user_id=${encodeURIComponent(memberId)}`
+      );
+      const data = await res.json();
       const rewards = data.rewards || [];
-      const customerPoints = customerData.points_balance || 0;
+      const existingCodes = data.existing_codes || {};
+      const customerPoints = customerData?.points_balance || 0;
 
       if (rewards.length === 0) {
-        // Show sample rewards if none available
-        container.innerHTML = `
-          <div class="reward-item">
-            <div class="reward-header">
-              <div class="reward-info">
-                <h5>$5 Off Coupon</h5>
-                <p>Save $5 on your next purchase</p>
-              </div>
-              <div class="reward-cost">500 pts</div>
-            </div>
-            <button class="reward-btn" ${customerPoints < 500 ? 'disabled' : ''}>
-              ${customerPoints >= 500 ? 'Redeem Now' : 'Not Enough Points'}
-            </button>
-          </div>
-          <div class="reward-item">
-            <div class="reward-header">
-              <div class="reward-info">
-                <h5>$10 Off Coupon</h5>
-                <p>Save $10 on orders over $50</p>
-              </div>
-              <div class="reward-cost">1000 pts</div>
-            </div>
-            <button class="reward-btn" ${customerPoints < 1000 ? 'disabled' : ''}>
-              ${customerPoints >= 1000 ? 'Redeem Now' : 'Not Enough Points'}
-            </button>
-          </div>
-          <div class="reward-item">
-            <div class="reward-header">
-              <div class="reward-info">
-                <h5>Free Shipping</h5>
-                <p>Get free shipping on your next order</p>
-              </div>
-              <div class="reward-cost">750 pts</div>
-            </div>
-            <button class="reward-btn" ${customerPoints < 750 ? 'disabled' : ''}>
-              ${customerPoints >= 750 ? 'Redeem Now' : 'Not Enough Points'}
-            </button>
-          </div>
-        `;
+        container.innerHTML = '<p class="empty-state">No rewards available yet. Keep earning points!</p>';
         return;
       }
 
       container.innerHTML = rewards.map(reward => {
-        const pointsCost = reward.value_amount || 500;
+        const pointsCost = reward.points_cost || 500;
         const canRedeem = customerPoints >= pointsCost;
+        const existing = existingCodes[reward.id];
+        const discountLabel = reward.reward_type === 'percentage_discount'
+          ? `${reward.discount_value}% off`
+          : `₹${reward.discount_value} off`;
+        const minNote = reward.min_purchase_amount > 0
+          ? `Min. order ₹${reward.min_purchase_amount}` : 'No minimum required';
+
+        if (existing) {
+          // Already have an unused code — show it
+          return `
+            <div class="reward-item" id="reward-${reward.id}">
+              <div class="reward-header">
+                <div class="reward-info">
+                  <h5>${reward.title}</h5>
+                  <p>${reward.description || minNote}</p>
+                </div>
+                <div class="reward-cost" style="background:#dcfce7;color:#166534">${discountLabel}</div>
+              </div>
+              <div style="margin-top:10px">
+                <div style="display:flex;gap:8px;align-items:center">
+                  <div style="flex:1;background:#f9fafb;border:2px dashed #d1d5db;border-radius:8px;padding:10px;text-align:center;font-family:monospace;font-size:16px;font-weight:700;color:#111;letter-spacing:2px">${existing.code}</div>
+                  <button onclick="copyCode('${existing.code}', this)" style="background:#111;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Copy</button>
+                </div>
+                <p style="font-size:11px;color:#9ca3af;margin-top:6px;text-align:center">
+                  ✓ Use at checkout · ${existing.expires_at ? 'Expires ' + new Date(existing.expires_at).toLocaleDateString('en-IN') : 'No expiry'}
+                </p>
+              </div>
+            </div>`;
+        }
+
         return `
-          <div class="reward-item">
+          <div class="reward-item" id="reward-${reward.id}">
             <div class="reward-header">
               <div class="reward-info">
-                <h5>${reward.name}</h5>
-                <p>${reward.description || ''}</p>
+                <h5>${reward.title}</h5>
+                <p>${reward.description || minNote}</p>
               </div>
               <div class="reward-cost">${pointsCost} pts</div>
             </div>
-            <button class="reward-btn" ${!canRedeem ? 'disabled' : ''} onclick="redeemReward('${reward.id}', ${pointsCost})">
+            <button class="reward-btn" id="btn-${reward.id}" ${!canRedeem ? 'disabled' : ''}
+              onclick="redeemReward('${reward.id}', ${pointsCost}, '${reward.title}')">
               ${canRedeem ? 'Redeem Now' : 'Not Enough Points'}
             </button>
-          </div>
-        `;
+          </div>`;
       }).join('');
     } catch (error) {
       console.error('Error loading rewards:', error);
-      container.innerHTML = '<p class="empty-state" style="color: #EF4444;">Failed to load rewards</p>';
+      container.innerHTML = '<p class="empty-state" style="color:#ef4444">Failed to load rewards. Please try again.</p>';
     }
   }
 
-  // Redeem reward
-  window.redeemReward = async function(rewardId, pointsCost) {
-    if (!confirm(`Redeem this reward for ${pointsCost} points?`)) return;
+  // ─── Copy coupon code ──────────────────────────────────────────────────────
+  window.copyCode = function(code, btn) {
+    navigator.clipboard.writeText(code).then(() => {
+      btn.textContent = 'Copied!';
+      btn.style.background = '#16a34a';
+      setTimeout(() => { btn.textContent = 'Copy'; btn.style.background = '#111'; }, 2000);
+    });
+  };
+
+  // ─── Redeem reward → get real Shopify discount code ───────────────────────
+  window.redeemReward = async function(rewardId, pointsCost, rewardTitle) {
+    const btn = document.getElementById('btn-' + rewardId);
+    if (!btn || btn.disabled) return;
+
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Generating code...';
 
     try {
       const shopDomain = '{{ shop.domain }}';
-      const response = await fetch(`${API_URL}/redeem-loyalty-points`, {
+      const res = await fetch(`${API_URL}/redeem-loyalty-points`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: customerEmail,
-          shop: shopDomain,
+          member_user_id: customerData.member_user_id,
           reward_id: rewardId,
-          points: pointsCost
+          shop_domain: shopDomain,
+          customer_email: customerEmail,
         })
       });
 
-      if (!response.ok) throw new Error('Redemption failed');
+      const result = await res.json();
 
-      const result = await response.json();
+      if (!result.success) {
+        btn.disabled = false;
+        btn.textContent = originalText;
+        alert(result.error || 'Redemption failed. Please try again.');
+        return;
+      }
 
-      alert('Reward redeemed successfully! ' + (result.discount_code ? `Use code: ${result.discount_code}` : ''));
-      loadCustomerData(); // Refresh data
+      // Update points balance in UI
+      customerData.points_balance = result.new_points_balance;
+      const balanceEl = document.getElementById('rewardhub-points-value');
+      if (balanceEl) balanceEl.textContent = result.new_points_balance.toLocaleString();
+
+      // Replace button with coupon code display
+      const rewardEl = document.getElementById('reward-' + rewardId);
+      if (rewardEl) {
+        const discLabel = result.discount_type === 'percentage_discount'
+          ? `${result.discount_value}% off` : `₹${result.discount_value} off`;
+        const expDate = result.expires_at ? new Date(result.expires_at).toLocaleDateString('en-IN') : '';
+
+        rewardEl.innerHTML = `
+          <div class="reward-header">
+            <div class="reward-info">
+              <h5>${rewardTitle}</h5>
+              <p style="color:#16a34a;font-weight:600">✓ ${pointsCost} points redeemed!</p>
+            </div>
+            <div class="reward-cost" style="background:#dcfce7;color:#166534">${discLabel}</div>
+          </div>
+          <div style="margin-top:10px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <div style="flex:1;background:#f9fafb;border:2px dashed #d1d5db;border-radius:8px;padding:10px;text-align:center;font-family:monospace;font-size:16px;font-weight:700;color:#111;letter-spacing:2px">${result.discount_code}</div>
+              <button onclick="copyCode('${result.discount_code}', this)" style="background:#111;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Copy</button>
+            </div>
+            <p style="font-size:11px;color:#9ca3af;margin-top:6px;text-align:center">
+              Apply at checkout · ${expDate ? 'Expires ' + expDate : 'No expiry'}
+            </p>
+          </div>`;
+      }
     } catch (error) {
-      console.error('Error redeeming reward:', error);
-      alert('Failed to redeem reward. Please try again.');
+      console.error('Redeem error:', error);
+      btn.disabled = false;
+      btn.textContent = originalText;
+      alert('Connection error. Please try again.');
     }
   };
 
-  // Auto-load if customer is logged in
   {% if customer %}
     // Widget is ready
   {% endif %}

@@ -6,9 +6,6 @@ import { PublicRoute } from './components/PublicRoute';
 import { Login } from './pages/Login';
 import ShopifyCallback from './pages/auth/ShopifyCallback';
 import ShopifyLanding from './pages/auth/ShopifyLanding';
-import PrivacyPolicy from './pages/public/PrivacyPolicy';
-import TermsOfService from './pages/public/TermsOfService';
-import GdprRequest from './pages/public/GdprRequest';
 import { Signup } from './pages/Signup';
 import { ClientRegistration } from './pages/public/ClientRegistration';
 import { ProgramDiscovery } from './pages/public/ProgramDiscovery';
@@ -78,6 +75,7 @@ import { LoyaltyMembers } from './pages/client/LoyaltyMembers';
 import { LoyaltyTransactions } from './pages/client/LoyaltyTransactions';
 import { ReferralTracking } from './pages/client/ReferralTracking';
 import { LoyaltyConfiguration } from './pages/client/LoyaltyConfiguration';
+import RewardsCatalog from './pages/client/RewardsCatalog';
 import { ReferFriend } from './pages/member/ReferFriend';
 import { StoreInstallations } from './pages/admin/StoreInstallations';
 
@@ -118,7 +116,6 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Public routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/auth/shopify-callback" element={<ShopifyCallback />} />
@@ -128,13 +125,8 @@ function App() {
           <Route path="/redeem/:token" element={<RedeemRewards />} />
           <Route path="/claim/:token" element={<ClaimReward />} />
           <Route path="/claim-rewards" element={<SelectRewards />} />
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/terms" element={<TermsOfService />} />
-          <Route path="/gdpr" element={<GdprRequest />} />
-          <Route path="/data-request" element={<GdprRequest />} />
           <Route path="/redemption-success" element={<RedemptionSuccess />} />
 
-          {/* Admin routes */}
           <Route path="/admin" element={<RoleBasedRoute allowedRoles={['admin']}><AdminDashboard /></RoleBasedRoute>} />
           <Route path="/admin/store-installations" element={<RoleBasedRoute allowedRoles={['admin']}><StoreInstallations /></RoleBasedRoute>} />
           <Route path="/admin/rewards" element={<RoleBasedRoute allowedRoles={['admin']}><AdminRewards /></RoleBasedRoute>} />
@@ -157,8 +149,6 @@ function App() {
           <Route path="/admin/users/:id" element={<RoleBasedRoute allowedRoles={['admin']}><UserDetail /></RoleBasedRoute>} />
           <Route path="/admin/users/:id/edit" element={<RoleBasedRoute allowedRoles={['admin']}><UserForm /></RoleBasedRoute>} />
           <Route path="/admin/settings" element={<RoleBasedRoute allowedRoles={['admin']}><AdminSettings /></RoleBasedRoute>} />
-
-          {/* Client routes */}
           <Route path="/client" element={<RoleBasedRoute allowedRoles={['client']}><ClientDashboard /></RoleBasedRoute>} />
           <Route path="/client/programs" element={<RoleBasedRoute allowedRoles={['client']}><MembershipManagement /></RoleBasedRoute>} />
           <Route path="/client/programs/new" element={<RoleBasedRoute allowedRoles={['client']}><CreateMembershipProgram /></RoleBasedRoute>} />
@@ -171,6 +161,7 @@ function App() {
           <Route path="/client/loyalty-points" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyProgram /></RoleBasedRoute>} />
           <Route path="/client/loyalty-members" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyMembers /></RoleBasedRoute>} />
           <Route path="/client/loyalty-transactions" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyTransactions /></RoleBasedRoute>} />
+          <Route path="/client/rewards-catalog" element={<RoleBasedRoute allowedRoles={['client']}><RewardsCatalog /></RoleBasedRoute>} />
           <Route path="/client/referral-tracking" element={<RoleBasedRoute allowedRoles={['client']}><ReferralTracking /></RoleBasedRoute>} />
           <Route path="/client/loyalty-config" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyConfiguration /></RoleBasedRoute>} />
           <Route path="/client/my-rewards" element={<RoleBasedRoute allowedRoles={['client']}><ClientRewards /></RoleBasedRoute>} />
@@ -189,8 +180,6 @@ function App() {
           <Route path="/client/tokenized-links" element={<RoleBasedRoute allowedRoles={['client']}><TokenizedLinks /></RoleBasedRoute>} />
           <Route path="/client/reports" element={<RoleBasedRoute allowedRoles={['client']}><Reports /></RoleBasedRoute>} />
           <Route path="/client/settings" element={<RoleBasedRoute allowedRoles={['client']}><ClientSettings /></RoleBasedRoute>} />
-
-          {/* Brand routes */}
           <Route path="/brand" element={<RoleBasedRoute allowedRoles={['brand']}><BrandDashboard /></RoleBasedRoute>} />
           <Route path="/brand/rewards" element={<RoleBasedRoute allowedRoles={['brand']}><BrandRewards /></RoleBasedRoute>} />
           <Route path="/brand/rewards/new" element={<RoleBasedRoute allowedRoles={['brand']}><BrandRewardForm /></RoleBasedRoute>} />
@@ -200,8 +189,6 @@ function App() {
           <Route path="/brand/collaborations" element={<RoleBasedRoute allowedRoles={['brand']}><BrandCollaborations /></RoleBasedRoute>} />
           <Route path="/brand/analytics" element={<RoleBasedRoute allowedRoles={['brand']}><BrandAnalytics /></RoleBasedRoute>} />
           <Route path="/brand/settings" element={<RoleBasedRoute allowedRoles={['brand']}><BrandSettings /></RoleBasedRoute>} />
-
-          {/* Member routes */}
           <Route path="/member" element={<RoleBasedRoute allowedRoles={['member']}><MemberPortal /></RoleBasedRoute>} />
           <Route path="/member/memberships" element={<RoleBasedRoute allowedRoles={['member']}><MemberMemberships /></RoleBasedRoute>} />
           <Route path="/member/rewards" element={<RoleBasedRoute allowedRoles={['member']}><MemberRewards /></RoleBasedRoute>} />
@@ -210,7 +197,6 @@ function App() {
           <Route path="/member/vouchers" element={<RoleBasedRoute allowedRoles={['member']}><MemberVouchers /></RoleBasedRoute>} />
           <Route path="/member/settings" element={<RoleBasedRoute allowedRoles={['member']}><MemberSettings /></RoleBasedRoute>} />
 
-          {/* Root — ShopifyLanding handles ?shop= params, DashboardRouter handles logged-in users */}
           <Route path="/dashboard" element={<DashboardRouter />} />
           <Route path="/" element={<ShopifyLanding />} />
 
@@ -219,7 +205,9 @@ function App() {
               <div className="text-center">
                 <h1 className="text-3xl font-bold text-gray-900 mb-4">Unauthorized</h1>
                 <p className="text-gray-600 mb-6">You don't have permission to access this page.</p>
-                <a href="/dashboard" className="text-blue-600 hover:text-blue-700 font-medium">Go to Dashboard</a>
+                <a href="/dashboard" className="text-blue-600 hover:text-blue-700 font-medium">
+                  Go to Dashboard
+                </a>
               </div>
             </div>
           } />
@@ -229,7 +217,9 @@ function App() {
               <div className="text-center">
                 <h1 className="text-3xl font-bold text-gray-900 mb-4">404 - Not Found</h1>
                 <p className="text-gray-600 mb-6">The page you're looking for doesn't exist.</p>
-                <a href="/dashboard" className="text-blue-600 hover:text-blue-700 font-medium">Go to Dashboard</a>
+                <a href="/dashboard" className="text-blue-600 hover:text-blue-700 font-medium">
+                  Go to Dashboard
+                </a>
               </div>
             </div>
           } />
