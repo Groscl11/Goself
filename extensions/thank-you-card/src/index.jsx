@@ -9,28 +9,24 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  render,
+  reactExtension,
   Banner,
   Button,
-  Heading,
   Text,
   BlockStack,
   InlineStack,
-  Image,
-  useExtensionApi,
-  useSettings,
-  useTranslate
-} from '@shopify/checkout-ui-extensions-react';
+  useApi,
+  useSettings
+} from '@shopify/ui-extensions-react/checkout';
 
-render('purchase.thank-you.block.render', () => <ThankYouCard />);
+export default reactExtension('purchase.thank-you.block.render', () => <ThankYouCard />);
 
 const SUPABASE_URL = 'https://lizgppzyyljqbmzdytia.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0';
 
 function ThankYouCard() {
-  const { query, extensionPoint } = useExtensionApi();
+  const { query } = useApi();
   const settings = useSettings();
-  const translate = useTranslate();
   const [rewardData, setRewardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

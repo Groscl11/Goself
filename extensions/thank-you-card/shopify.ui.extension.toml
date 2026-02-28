@@ -2,17 +2,19 @@
 # Appears on Order Status (Thank You) page
 # Shopify 2024-2025 Compliant - NO script injection
 
+api_version = "2026-01"
+
+[[extensions]]
 name = "Rewards Thank You Card"
-type = "checkout_ui_extension"
+handle = "thank-you-card"
 
-[[extensions.targets]]
+uid = "b2a1f989-618d-7fb9-5c97-3bb751f86eebb05780a9"
+
+type = "ui_extension"
+
+[[extensions.targeting]]
+module = "./src/index.jsx"
 target = "purchase.thank-you.block.render"
-
-[extensions.metafields]
-# Widget configuration stored in metafields
-[[extensions.metafields.access]]
-namespace = "rewards"
-key = "widget_config"
 
 [extensions.capabilities]
 api_access = true

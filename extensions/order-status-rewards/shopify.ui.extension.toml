@@ -1,12 +1,16 @@
-api_version = "2024-10"
+api_version = "2026-01"
 
 [[extensions]]
-type = "checkout.order-status.block.render"
+
+uid = "47580161-e94e-1fee-f14d-2111f5807d13755901e4"
+
+type = "ui_extension"
 name = "Order Status Rewards"
 handle = "order-status-rewards"
 
 [[extensions.targeting]]
-target = "purchase.order-status.block.render"
+module = "./src/index.jsx"
+target = "customer-account.order-status.block.render"
 
 [extensions.capabilities]
 network_access = true

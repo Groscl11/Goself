@@ -3,20 +3,23 @@
 
 api_version = "2024-01"
 name = "loyalty-widget"
+
+uid = "63dc22e1-27da-358d-1f2a-1e6d9b60e4b66a03a917"
+
 type = "theme"
 
-[[extensions.blocks]]
+[[blocks]]
 type = "app"
 name = "Loyalty Rewards Widget"
 
-[extensions.blocks.settings]
-[[extensions.blocks.settings.fields]]
+[blocks.settings]
+[[blocks.settings.fields]]
 type = "checkbox"
 id = "show_floating_button"
 label = "Show Floating Widget Button"
 default = true
 
-[[extensions.blocks.settings.fields]]
+[[blocks.settings.fields]]
 type = "select"
 id = "button_position"
 label = "Button Position"
@@ -28,25 +31,25 @@ options = [
   { label = "Top Left", value = "top-left" }
 ]
 
-[[extensions.blocks.settings.fields]]
+[[blocks.settings.fields]]
 type = "color"
 id = "primary_color"
 label = "Primary Color"
 default = "#3B82F6"
 
-[[extensions.blocks.settings.fields]]
+[[blocks.settings.fields]]
 type = "color"
 id = "accent_color"
 label = "Accent Color"
 default = "#10B981"
 
-[[extensions.blocks.settings.fields]]
+[[blocks.settings.fields]]
 type = "text"
 id = "points_name"
 label = "Points Name"
 default = "Rewards Points"
 
-[[extensions.blocks.settings.fields]]
+[[blocks.settings.fields]]
 type = "checkbox"
 id = "auto_redeem"
 label = "Enable Auto-Redeem"

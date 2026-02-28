@@ -23,31 +23,8 @@ redirect_urls = [
 [webhooks]
 api_version = "2024-01"
 
-# App Embed - Appears in "App embeds" section of Theme Customizer
-[[extensions]]
-type = "theme"
-name = "Loyalty Bolt Widget"
-handle = "loyalty-app-embed"
-directory = "extensions/loyalty-app-embed"
-
-# Theme App Extensions - Appear in Theme Customizer
-[[extensions]]
-type = "theme"
-name = "Rewards Announcement Bar"
-handle = "rewards-announcement-bar"
-directory = "extensions/announcement-bar"
-
-[[extensions]]
-type = "theme"
-name = "Rewards Floating Widget"
-handle = "rewards-floating-widget"
-directory = "extensions/floating-widget"
-
-[[extensions]]
-type = "theme"
-name = "Rewards Product Banner"
-handle = "rewards-product-banner"
-directory = "extensions/product-banner"
+# Theme App Extension - Appears in Theme Customizer
+# loyalty-widget self-registers via extensions/loyalty-widget/shopify.extension.toml
 
 # Checkout UI Extensions - Appear in Checkout Customizer
 [[extensions]]

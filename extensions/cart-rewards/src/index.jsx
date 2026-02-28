@@ -9,25 +9,25 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  render,
+  reactExtension,
   Banner,
   Button,
   Text,
   BlockStack,
   InlineStack,
   Icon,
-  useExtensionApi,
+  useApi,
   useSettings,
   useCartLines
-} from '@shopify/checkout-ui-extensions-react';
+} from '@shopify/ui-extensions-react/checkout';
 
-render('purchase.cart.block.render', () => <CartRewards />);
+export default reactExtension('purchase.checkout.block.render', () => <CartRewards />);
 
 const SUPABASE_URL = 'https://lizgppzyyljqbmzdytia.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0';
 
 function CartRewards() {
-  const { query } = useExtensionApi();
+  const { query } = useApi();
   const settings = useSettings();
   const cartLines = useCartLines();
   const [rewardInfo, setRewardInfo] = useState(null);

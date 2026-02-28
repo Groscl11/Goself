@@ -2,11 +2,19 @@
 # Displays rewards messaging in cart drawer/page
 # Shopify 2024-2025 Compliant
 
-name = "Rewards Cart Widget"
-type = "cart_ui_extension"
+api_version = "2026-01"
 
-[[extensions.targets]]
-target = "purchase.cart.block.render"
+[[extensions]]
+name = "Rewards Cart Widget"
+handle = "cart-rewards"
+
+uid = "f0d2c27b-bbed-3b68-76cf-98d6b0eab84da3d86f6d"
+
+type = "ui_extension"
+
+[[extensions.targeting]]
+module = "./src/index.jsx"
+target = "purchase.checkout.block.render"
 
 [extensions.capabilities]
 network_access = true
