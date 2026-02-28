@@ -49,6 +49,7 @@ Deno.serve(async (req: Request) => {
     let resolvedClientId = clientId;
 
     // If shop_domain is provided, find the client_id
+    // Try integration_configs first, then fall back to store_installations
     if (shopDomain && !resolvedClientId) {
       const { data: integration } = await supabase
         .from('integration_configs')
@@ -58,21 +59,55 @@ Deno.serve(async (req: Request) => {
 
       if (integration) {
         resolvedClientId = integration.client_id;
+      } else {
+        // Fallback: check store_installations (created during Shopify OAuth)
+        const { data: storeInstall } = await supabase
+          .from('store_installations')
+          .select('client_id')
+          .eq('shop_domain', shopDomain)
+          .maybeSingle();
+
+        if (storeInstall) {
+          resolvedClientId = storeInstall.client_id;
+        }
       }
     }
 
     // If we have email but not member_user_id, look up the member
+    let memberReferralCode: string | null = null;
     if (!memberUserIdToUse && email) {
       let query = supabase
         .from('member_users')
-        .select('id')
+        .select('*')
         .eq('email', email);
 
       if (resolvedClientId) {
         query = query.eq('client_id', resolvedClientId);
       }
 
-      const { data: memberData } = await query.maybeSingle();
+      let { data: memberData } = await query.maybeSingle();
+
+      // If not found with client filter (or no client resolved), try email-only fallback
+      if (!memberData) {
+        const { data: fallbackMembers } = await supabase
+          .from('member_users')
+          .select('*')
+          .eq('email', email)
+          .limit(10);
+        if (fallbackMembers && fallbackMembers.length === 1) {
+          memberData = fallbackMembers[0];
+        } else if (fallbackMembers && fallbackMembers.length > 1) {
+          // Multiple members with same email across clients — pick the one with an active loyalty status
+          for (const candidate of fallbackMembers) {
+            const { data: hasStatus } = await supabase
+              .from('member_loyalty_status')
+              .select('id')
+              .eq('member_user_id', candidate.id)
+              .maybeSingle();
+            if (hasStatus) { memberData = candidate; break; }
+          }
+        }
+      }
 
       if (!memberData) {
         return new Response(
@@ -85,6 +120,7 @@ Deno.serve(async (req: Request) => {
       }
 
       memberUserIdToUse = memberData.id;
+      memberReferralCode = memberData.referral_code || null;
     }
 
     const { data: statusData, error: statusError } = await supabase
@@ -117,6 +153,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         member_user_id: memberUserIdToUse,
+        referral_code: memberReferralCode,
         points_balance: status.points_balance,
         lifetime_points_earned: status.lifetime_points_earned,
         lifetime_points_redeemed: status.lifetime_points_redeemed,
