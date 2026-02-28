@@ -52,6 +52,7 @@ export function RewardsMarketplace() {
         `)
         .eq('is_marketplace', true)
         .eq('status', 'active')
+        .gt('voucher_count', 0)
         .order('created_at', { ascending: false });
 
       if (error) throw error;

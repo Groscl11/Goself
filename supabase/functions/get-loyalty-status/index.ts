@@ -120,8 +120,7 @@ Deno.serve(async (req: Request) => {
       }
 
       memberUserIdToUse = memberData.id;
-      // referral_code column may not exist — derive a code from the member UUID as fallback
-      memberReferralCode = memberData.referral_code || memberData.id.replace(/-/g, '').slice(0, 10).toUpperCase();
+      // Don't set referral_code here — member_loyalty_status.referral_code is the source of truth
     }
 
     const { data: statusData, error: statusError } = await supabase
@@ -140,10 +139,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Ensure referral_code is always set (derive from UUID if column doesn't exist)
-    if (!memberReferralCode && memberUserIdToUse) {
-      memberReferralCode = memberUserIdToUse.replace(/-/g, '').slice(0, 10).toUpperCase();
-    }
+    // Use member_loyalty_status.referral_code as source of truth; fall back to UUID-derived code
+    memberReferralCode = statusData.referral_code || (memberUserIdToUse ? memberUserIdToUse.replace(/-/g, '').slice(0, 8).toUpperCase() : null);
 
     const status = statusData;
     const program = status.loyalty_program;

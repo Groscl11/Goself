@@ -251,10 +251,11 @@ export function ClientRewards() {
   };
 
   const filteredRewards = rewards.filter((reward) => {
+    const brandName = reward.brands?.name ?? '';
     const matchesSearch =
       reward.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      reward.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      reward.brands.name.toLowerCase().includes(searchQuery.toLowerCase());
+      (reward.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      brandName.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesFilter = filterStatus === 'all' || reward.status === filterStatus;
 
@@ -388,7 +389,7 @@ export function ClientRewards() {
                           </div>
                         </td>
                         <td className="py-4 px-4">
-                          <p className="text-sm text-gray-900">{reward.brands.name}</p>
+                          <p className="text-sm text-gray-900">{reward.brands?.name || '—'}</p>
                         </td>
                         <td className="py-4 px-4">
                           <div className="space-y-1">

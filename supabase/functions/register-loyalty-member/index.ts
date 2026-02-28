@@ -259,7 +259,7 @@ Deno.serve(async (req: Request) => {
         // 1. Find who referred this new member
         const { data: referrerStatus } = await supabase
           .from('member_loyalty_status')
-          .select('id, member_user_id, points_balance, lifetime_points_earned')
+          .select('id, member_user_id, points_balance, lifetime_points_earned, referral_points_earned')
           .eq('referral_code', referral_code.toUpperCase())
           .maybeSingle();
 
@@ -297,13 +297,15 @@ Deno.serve(async (req: Request) => {
             if (canAward) {
               const newBalance = (referrerStatus.points_balance ?? 0) + referralPoints;
               const newLifetime = (referrerStatus.lifetime_points_earned ?? 0) + referralPoints;
+              const newReferralPoints = (referrerStatus.referral_points_earned ?? 0) + referralPoints;
 
-              // 4. Update referrer balance
+              // 4. Update referrer balance + referral_points_earned
               await supabase
                 .from('member_loyalty_status')
                 .update({
                   points_balance: newBalance,
                   lifetime_points_earned: newLifetime,
+                  referral_points_earned: newReferralPoints,
                   updated_at: new Date().toISOString(),
                 })
                 .eq('id', referrerStatus.id);
@@ -320,6 +322,21 @@ Deno.serve(async (req: Request) => {
                   description: 'Referral bonus',
                   reference_id: newMember.id,
                 });
+
+              // 6. Record in member_referrals table
+              await supabase
+                .from('member_referrals')
+                .upsert({
+                  loyalty_program_id: loyaltyProgram.id,
+                  referrer_member_id: referrerStatus.member_user_id,
+                  referred_member_id: newMember.id,
+                  referral_code: referral_code.toUpperCase(),
+                  referred_email: email || null,
+                  referred_phone: phone || null,
+                  status: 'completed',
+                  points_awarded: referralPoints,
+                  completed_at: new Date().toISOString(),
+                }, { onConflict: 'loyalty_program_id,referred_member_id', ignoreDuplicates: true });
 
               referralPointsAwarded = referralPoints;
             }
