@@ -23,21 +23,5 @@ redirect_urls = [
 [webhooks]
 api_version = "2024-01"
 
-# Theme App Extension - Appears in Theme Customizer
-# loyalty-widget self-registers via extensions/loyalty-widget/shopify.extension.toml
-
-# Checkout UI Extensions - Appear in Checkout Customizer
-[[extensions]]
-type = "checkout_ui_extension"
-name = "Rewards Cart Widget"
-handle = "rewards-cart-widget"
-directory = "extensions/cart-rewards"
-
-[[extensions]]
-type = "checkout_ui_extension"
-name = "Rewards Thank You Card"
-handle = "rewards-thank-you-card"
-directory = "extensions/thank-you-card"
-
 [pos]
 embedded = false

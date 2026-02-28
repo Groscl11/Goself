@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { ArrowLeft, Plus, Edit2, Trash2, Tag, ToggleLeft, ToggleRight, Copy, CheckCircle } from 'lucide-react';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { clientMenuItems } from './clientMenuItems';
+import { Plus, Edit2, Trash2, Tag, ToggleLeft, ToggleRight, Copy, CheckCircle, RefreshCw, AlertCircle } from 'lucide-react';
 
 interface Reward {
   id: string;
@@ -29,6 +30,8 @@ interface DiscountCode {
   used_at: string | null;
   expires_at: string | null;
   created_at: string;
+  shopify_synced: boolean;
+  shop_domain: string | null;
   reward: { title: string } | null;
 }
 
@@ -44,7 +47,6 @@ const EMPTY_FORM = {
 };
 
 export default function RewardsCatalog() {
-  const navigate = useNavigate();
   const [clientId, setClientId] = useState<string>('');
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [codes, setCodes] = useState<DiscountCode[]>([]);
@@ -55,6 +57,7 @@ export default function RewardsCatalog() {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'rewards' | 'codes'>('rewards');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [syncingCode, setSyncingCode] = useState<string | null>(null);
 
   useEffect(() => {
     loadProfile();
@@ -165,15 +168,30 @@ export default function RewardsCatalog() {
     setTimeout(() => setCopiedCode(null), 2000);
   }
 
+  async function syncToShopify(codeId: string) {
+    setSyncingCode(codeId);
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-discount-to-shopify', {
+        body: { discount_code_id: codeId },
+      });
+      if (error || !data?.success) {
+        alert('Sync failed: ' + (data?.error || error?.message || 'Unknown error'));
+      } else {
+        loadCodes();
+      }
+    } catch (e: any) {
+      alert('Sync error: ' + e.message);
+    }
+    setSyncingCode(null);
+  }
+
   const currencySymbol = (c: string) => c === 'INR' ? '₹' : c === 'GBP' ? '£' : c === 'EUR' ? '€' : '$';
 
   return (
-    <div className="max-w-5xl mx-auto p-6">
+    <DashboardLayout menuItems={clientMenuItems} title="Rewards Catalog">
+    <div className="max-w-5xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <button onClick={() => navigate('/client')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 mb-4">
-          <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </button>
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Rewards Catalog</h1>
@@ -379,6 +397,7 @@ export default function RewardsCatalog() {
                     <th className="px-4 py-3 text-left">Value</th>
                     <th className="px-4 py-3 text-left">Points</th>
                     <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-left">Shopify</th>
                     <th className="px-4 py-3 text-left">Created</th>
                   </tr>
                 </thead>
@@ -407,6 +426,27 @@ export default function RewardsCatalog() {
                           {code.is_used ? 'Used' : 'Active'}
                         </span>
                       </td>
+                      <td className="px-4 py-3">
+                        {code.shopify_synced ? (
+                          <span className="text-xs px-2 py-1 rounded-full font-medium bg-blue-100 text-blue-700 inline-flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Synced
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => syncToShopify(code.id)}
+                            disabled={syncingCode === code.id}
+                            className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 inline-flex items-center gap-1 disabled:opacity-50"
+                            title="Create this code in Shopify so it works at checkout"
+                          >
+                            {syncingCode === code.id ? (
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <AlertCircle className="w-3 h-3" />
+                            )}
+                            {syncingCode === code.id ? 'Syncing...' : 'Not in Shopify'}
+                          </button>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-gray-400 text-xs">
                         {new Date(code.created_at).toLocaleDateString('en-IN')}
                       </td>
@@ -419,5 +459,6 @@ export default function RewardsCatalog() {
         </div>
       )}
     </div>
+    </DashboardLayout>
   );
 }
