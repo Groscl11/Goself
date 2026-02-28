@@ -8,7 +8,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
 const SUPABASE_URL = 'https://lizgppzyyljqbmzdytia.supabase.co';
-const SHOPIFY_API_KEY = import.meta.env.VITE_SHOPIFY_API_KEY || 'b67eb82e24174ca46842cfe13df81a5d';
+const SHOPIFY_API_KEY = import.meta.env.VITE_SHOPIFY_API_KEY || '3290e6e4e5cb6711e4a7876ef40f87e8';
 
 export default function ShopifyLanding() {
   const [searchParams] = useSearchParams();
