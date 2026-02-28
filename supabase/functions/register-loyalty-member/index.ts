@@ -20,7 +20,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { shop_domain, email, phone, first_name, last_name, full_name } = await req.json();
+    const { shop_domain, email, phone, first_name, last_name, full_name, referral_code } = await req.json();
 
     if (!shop_domain || (!email && !phone)) {
       return new Response(
@@ -131,7 +131,7 @@ Deno.serve(async (req: Request) => {
               .insert({
                 member_loyalty_status_id: newStatus.id,
                 member_user_id: existingMember.id,
-                transaction_type: 'earn',
+                transaction_type: 'bonus',
                 points_amount: welcomePoints,
                 balance_after: welcomePoints,
                 description: 'Welcome bonus',
@@ -245,11 +245,90 @@ Deno.serve(async (req: Request) => {
         .insert({
           member_loyalty_status_id: loyaltyStatus.id,
           member_user_id: newMember.id,
-          transaction_type: 'earn',
+          transaction_type: 'bonus',
           points_amount: welcomePoints,
           balance_after: welcomePoints,
           description: 'Welcome bonus',
         });
+    }
+
+    // ── Award referral points to the referrer ──────────────────────────────
+    let referralPointsAwarded = 0;
+    if (referral_code && loyaltyStatus) {
+      try {
+        // 1. Find who referred this new member
+        const { data: referrerStatus } = await supabase
+          .from('member_loyalty_status')
+          .select('id, member_user_id, points_balance, lifetime_points_earned')
+          .eq('referral_code', referral_code.toUpperCase())
+          .maybeSingle();
+
+        if (referrerStatus) {
+          // 2. Find the active referral earning rule for this client
+          const { data: referralRule } = await supabase
+            .from('loyalty_earning_rules')
+            .select('id, points_reward, max_referrals_per_day, cooldown_days')
+            .eq('client_id', clientId)
+            .eq('rule_type', 'referral')
+            .eq('is_active', true)
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          const referralPoints = referralRule?.points_reward ?? 0;
+
+          if (referralPoints > 0) {
+            // 3. Check max_referrals_per_day limit
+            let canAward = true;
+            if (referralRule?.max_referrals_per_day) {
+              const todayStart = new Date();
+              todayStart.setHours(0, 0, 0, 0);
+              const { count } = await supabase
+                .from('loyalty_points_transactions')
+                .select('id', { count: 'exact', head: true })
+                .eq('member_user_id', referrerStatus.member_user_id)
+                .eq('description', 'Referral bonus')
+                .gte('created_at', todayStart.toISOString());
+              if ((count ?? 0) >= referralRule.max_referrals_per_day) {
+                canAward = false;
+              }
+            }
+
+            if (canAward) {
+              const newBalance = (referrerStatus.points_balance ?? 0) + referralPoints;
+              const newLifetime = (referrerStatus.lifetime_points_earned ?? 0) + referralPoints;
+
+              // 4. Update referrer balance
+              await supabase
+                .from('member_loyalty_status')
+                .update({
+                  points_balance: newBalance,
+                  lifetime_points_earned: newLifetime,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', referrerStatus.id);
+
+              // 5. Log transaction for referrer
+              await supabase
+                .from('loyalty_points_transactions')
+                .insert({
+                  member_loyalty_status_id: referrerStatus.id,
+                  member_user_id: referrerStatus.member_user_id,
+                  transaction_type: 'earned',
+                  points_amount: referralPoints,
+                  balance_after: newBalance,
+                  description: 'Referral bonus',
+                  reference_id: newMember.id,
+                });
+
+              referralPointsAwarded = referralPoints;
+            }
+          }
+        }
+      } catch (refErr) {
+        console.error('Referral points award error:', refErr);
+        // Non-fatal: member registration still succeeds
+      }
     }
 
     return new Response(
@@ -259,6 +338,7 @@ Deno.serve(async (req: Request) => {
         member: newMember,
         loyalty_status: loyaltyStatus,
         welcome_bonus: welcomePoints,
+        referral_points_awarded: referralPointsAwarded,
       }),
       {
         status: 201,
