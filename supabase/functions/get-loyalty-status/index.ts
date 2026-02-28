@@ -120,7 +120,8 @@ Deno.serve(async (req: Request) => {
       }
 
       memberUserIdToUse = memberData.id;
-      memberReferralCode = memberData.referral_code || null;
+      // referral_code column may not exist — derive a code from the member UUID as fallback
+      memberReferralCode = memberData.referral_code || memberData.id.replace(/-/g, '').slice(0, 10).toUpperCase();
     }
 
     const { data: statusData, error: statusError } = await supabase
@@ -137,6 +138,11 @@ Deno.serve(async (req: Request) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
+    }
+
+    // Ensure referral_code is always set (derive from UUID if column doesn't exist)
+    if (!memberReferralCode && memberUserIdToUse) {
+      memberReferralCode = memberUserIdToUse.replace(/-/g, '').slice(0, 10).toUpperCase();
     }
 
     const status = statusData;

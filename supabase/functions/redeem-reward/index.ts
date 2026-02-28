@@ -225,7 +225,6 @@ Deno.serve(async (req: Request) => {
       .from("store_installations")
       .select("access_token")
       .eq("shop_domain", shop_domain)
-      .eq("installation_status", "active")
       .maybeSingle();
 
     shopifyAccessToken = installation?.access_token ?? null;

@@ -45,7 +45,6 @@ Deno.serve(async (req: Request) => {
       .from("store_installations")
       .select("client_id")
       .eq("shop_domain", shopDomain)
-      .eq("installation_status", "active")
       .maybeSingle();
 
     if (installation?.client_id) {
@@ -54,9 +53,7 @@ Deno.serve(async (req: Request) => {
       const { data: integration } = await supabase
         .from("integration_configs")
         .select("client_id")
-        .eq("platform", "shopify")
         .eq("shop_domain", shopDomain)
-        .eq("is_active", true)
         .maybeSingle();
       clientId = integration?.client_id ?? null;
     }
