@@ -99,29 +99,33 @@ export default function RewardsCatalog() {
   }
 
   async function saveReward() {
-    if (!form.title || !form.discount_value || !form.points_cost) {
+    const pointsCost = Number(form.points_cost);
+    const discountValue = Number(form.discount_value);
+    if (!form.title || !discountValue || !pointsCost || pointsCost < 1) {
       alert('Please fill in all required fields');
       return;
     }
+    const payload = { ...form, points_cost: pointsCost, discount_value: discountValue };
     setSaving(true);
     try {
       if (editingId) {
-        await supabase.from('rewards').update({
-          ...form,
+        const { error } = await supabase.from('rewards').update({
+          ...payload,
           status: 'active',
           is_active: true,
           updated_at: new Date().toISOString(),
         }).eq('id', editingId);
+        if (error) throw error;
       } else {
-        // Get a brand_id (system default)
-        await supabase.from('rewards').insert({
-          ...form,
+        const { error } = await supabase.from('rewards').insert({
+          ...payload,
           client_id: clientId,
           status: 'active',
           is_active: true,
           coupon_type: 'unique',
           category: 'loyalty',
         });
+        if (error) throw error;
       }
       setShowForm(false);
       setEditingId(null);
@@ -277,7 +281,7 @@ export default function RewardsCatalog() {
               <input
                 type="number"
                 value={form.points_cost}
-                onChange={e => setForm({ ...form, points_cost: parseInt(e.target.value) })}
+                onChange={e => setForm({ ...form, points_cost: parseInt(e.target.value) || 0 })}
                 min="1"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
               />
