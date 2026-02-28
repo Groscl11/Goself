@@ -111,7 +111,11 @@ export default function PrivacyPolicy() {
         {/* Footer */}
         <div style={{ borderTop: '1px solid #1e1e1e', paddingTop: 40, marginTop: 40, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
           <p style={{ color: '#555', fontSize: 14, margin: 0 }}>© 2026 Goself. All rights reserved.</p>
-          <a href="mailto:privacy@goself.in" style={{ color: '#7c3aed', fontSize: 14, textDecoration: 'none' }}>privacy@goself.in</a>
+          <div style={{ display: 'flex', gap: 24 }}>
+            <a href="/terms" style={{ color: '#7c3aed', fontSize: 14, textDecoration: 'none' }}>Terms of Service</a>
+            <a href="/gdpr" style={{ color: '#7c3aed', fontSize: 14, textDecoration: 'none' }}>Data Request</a>
+            <a href="mailto:privacy@goself.in" style={{ color: '#7c3aed', fontSize: 14, textDecoration: 'none' }}>privacy@goself.in</a>
+          </div>
         </div>
       </div>
     </div>

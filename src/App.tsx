@@ -7,6 +7,8 @@ import { Login } from './pages/Login';
 import ShopifyCallback from './pages/auth/ShopifyCallback';
 import ShopifyLanding from './pages/auth/ShopifyLanding';
 import PrivacyPolicy from './pages/public/PrivacyPolicy';
+import TermsOfService from './pages/public/TermsOfService';
+import GdprRequest from './pages/public/GdprRequest';
 import { Signup } from './pages/Signup';
 import { ClientRegistration } from './pages/public/ClientRegistration';
 import { ProgramDiscovery } from './pages/public/ProgramDiscovery';
@@ -127,6 +129,9 @@ function App() {
           <Route path="/claim/:token" element={<ClaimReward />} />
           <Route path="/claim-rewards" element={<SelectRewards />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
+          <Route path="/gdpr" element={<GdprRequest />} />
+          <Route path="/data-request" element={<GdprRequest />} />
           <Route path="/redemption-success" element={<RedemptionSuccess />} />
 
           {/* Admin routes */}

@@ -33,10 +33,22 @@ Deno.serve(async (req: Request) => {
     }
 
     const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/shopify-webhook`;
+    const gdprUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/shopify-gdpr`;
+
+    // Operational webhooks → shopify-webhook handler
     const webhookTopics = [
       'orders/create',
       'orders/paid',
-      'customers/create'
+      'customers/create',
+      'customers/update',
+      'app/uninstalled',
+    ];
+
+    // GDPR mandatory compliance webhooks → shopify-gdpr handler
+    const gdprTopics = [
+      'customers/data_request',
+      'customers/redact',
+      'shop/redact',
     ];
 
     console.log(`Starting webhook registration for ${shop}`, { webhookUrl });
@@ -100,13 +112,63 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    console.log(`Webhook registration complete. Registered ${webhookIds.length} of ${webhookTopics.length} webhooks`);
+    // Register the three mandatory GDPR webhooks with the dedicated GDPR handler
+    for (const topic of gdprTopics) {
+      try {
+        console.log(`Registering GDPR webhook: ${topic}`);
+        const response = await fetch(`https://${shop}/admin/api/2024-10/webhooks.json`, {
+          method: 'POST',
+          headers: {
+            'X-Shopify-Access-Token': access_token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            webhook: {
+              topic,
+              address: gdprUrl,
+              format: 'json'
+            }
+          })
+        });
+
+        const responseData = await response.json();
+
+        if (response.ok) {
+          console.log(`GDPR webhook registered: ${topic}`, responseData.webhook?.id);
+          results.push({
+            topic,
+            success: true,
+            id: responseData.webhook.id,
+            address: gdprUrl
+          });
+          webhookIds.push({
+            topic,
+            id: responseData.webhook.id,
+            address: gdprUrl
+          });
+        } else {
+          console.error(`Failed to register GDPR webhook ${topic}:`, responseData);
+          results.push({
+            topic,
+            success: false,
+            status: response.status,
+            error: responseData
+          });
+        }
+      } catch (error) {
+        console.error(`Exception registering GDPR webhook ${topic}:`, error);
+        results.push({ topic, success: false, error: error.message });
+      }
+    }
+
+    const allTopics = [...webhookTopics, ...gdprTopics];
+    console.log(`Webhook registration complete. Registered ${webhookIds.length} of ${allTopics.length} webhooks`);
 
     return new Response(
       JSON.stringify({
         success: webhookIds.length > 0,
         registered: webhookIds.length,
-        total: webhookTopics.length,
+        total: allTopics.length,
         webhooks: webhookIds,
         details: results
       }),
