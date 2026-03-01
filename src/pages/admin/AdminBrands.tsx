@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Building2, ExternalLink, Users, Calendar, MapPin, CheckCircle, XCircle, Clock ,ArrowLeft } from 'lucide-react';
+import { Plus, Search, Building2, ExternalLink, Users, Calendar, MapPin, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { adminMenuItems } from './adminMenuItems';
 
 interface Brand {
   id: string;
@@ -80,19 +82,14 @@ export function AdminBrands() {
     return matchesSearch && matchesStatus;
   });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="text-gray-500">Loading brands...</div>
-      </div>
-    );
-  }
-
   return (
+    <DashboardLayout menuItems={adminMenuItems} title="Brands Management">
     <div className="space-y-6">
-      <button onClick={() => navigate('/admin')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
-        <ArrowLeft className="w-4 h-4" /> Back to Admin
-      </button>
+      {loading ? (
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-gray-500">Loading brands...</div>
+        </div>
+      ) : (<>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Brands Management</h1>
@@ -233,6 +230,8 @@ export function AdminBrands() {
           )}
         </div>
       </Card>
+    </>)}
     </div>
+    </DashboardLayout>
   );
 }

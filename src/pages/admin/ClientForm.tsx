@@ -4,6 +4,8 @@ import { ArrowLeft, Save, Building2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { adminMenuItems } from './adminMenuItems';
 
 interface ClientFormData {
   name: string;
@@ -103,6 +105,7 @@ export function ClientForm() {
   };
 
   return (
+    <DashboardLayout menuItems={adminMenuItems} title={isEdit ? 'Edit Client' : 'Add Client'}>
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
         <button
@@ -254,5 +257,6 @@ export function ClientForm() {
         </div>
       </form>
     </div>
+    </DashboardLayout>
   );
 }

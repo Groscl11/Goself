@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Building2, Mail, Phone, CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
+import { Plus, Search, Building2, Mail, Phone, CheckCircle, XCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { adminMenuItems } from './adminMenuItems';
 
 interface Client {
   id: string;
@@ -56,16 +58,14 @@ export function AdminClients() {
     return matchesSearch && matchesStatus;
   });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="text-gray-500">Loading clients...</div>
-      </div>
-    );
-  }
-
   return (
+    <DashboardLayout menuItems={adminMenuItems} title="Clients Management">
     <div className="space-y-6">
+      {loading ? (
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-gray-500">Loading clients...</div>
+        </div>
+      ) : (<>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Clients Management</h1>
@@ -187,6 +187,8 @@ export function AdminClients() {
           )}
         </div>
       </Card>
+    </>)}
     </div>
+    </DashboardLayout>
   );
 }

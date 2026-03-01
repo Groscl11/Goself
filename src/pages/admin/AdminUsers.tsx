@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Users as UsersIcon, Mail, Shield, Building2, Award ,ArrowLeft } from 'lucide-react';
+import { Plus, Search, Users as UsersIcon, Mail, Shield, Building2, Award } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { adminMenuItems } from './adminMenuItems';
 
 interface Profile {
   id: string;
@@ -103,19 +105,14 @@ export function AdminUsers() {
     return matchesSearch && matchesRole;
   });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="text-gray-500">Loading users...</div>
-      </div>
-    );
-  }
-
   return (
+    <DashboardLayout menuItems={adminMenuItems} title="Users Management">
     <div className="space-y-6">
-      <button onClick={() => navigate('/admin')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
-        <ArrowLeft className="w-4 h-4" /> Back to Admin
-      </button>
+      {loading ? (
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-gray-500">Loading users...</div>
+        </div>
+      ) : (<>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Users Management</h1>
@@ -242,6 +239,8 @@ export function AdminUsers() {
           )}
         </div>
       </Card>
+    </>)}
     </div>
+    </DashboardLayout>
   );
 }

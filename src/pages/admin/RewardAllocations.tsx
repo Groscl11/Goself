@@ -1,9 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Gift, Users, Building2, Award, Calendar ,ArrowLeft } from 'lucide-react';
+import { Search, Gift, Users, Building2, Award, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { adminMenuItems } from './adminMenuItems';
 
 interface RewardAllocation {
   id: string;
@@ -93,19 +95,14 @@ export function RewardAllocations() {
     return matchesSearch && matchesFilter;
   });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="text-gray-500">Loading allocations...</div>
-      </div>
-    );
-  }
-
   return (
+    <DashboardLayout menuItems={adminMenuItems} title="Reward Allocations">
     <div className="space-y-6">
-      <button onClick={() => navigate('/admin')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
-        <ArrowLeft className="w-4 h-4" /> Back to Admin
-      </button>
+      {loading ? (
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-gray-500">Loading allocations...</div>
+        </div>
+      ) : (<>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Reward Allocations</h1>
@@ -259,6 +256,8 @@ export function RewardAllocations() {
           )}
         </div>
       </Card>
+    </>)}
     </div>
+    </DashboardLayout>
   );
 }

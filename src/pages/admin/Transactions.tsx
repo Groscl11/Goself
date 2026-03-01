@@ -1,9 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Download, Filter, Calendar, TrendingUp ,ArrowLeft } from 'lucide-react';
+import { Download, Filter, Calendar, TrendingUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { adminMenuItems } from './adminMenuItems';
 
 interface Transaction {
   transaction_id: string;
@@ -146,21 +148,16 @@ export default function Transactions() {
     a.click();
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading transactions...</div>
-      </div>
-    );
-  }
-
   const uniqueClients = Array.from(new Set(transactions.map(t => ({ id: t.client_id, name: t.client_name }))));
 
   return (
+    <DashboardLayout menuItems={adminMenuItems} title="Transactions">
     <div className="space-y-6">
-      <button onClick={() => navigate('/admin')} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
-        <ArrowLeft className="w-4 h-4" /> Back to Admin
-      </button>
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="text-gray-500">Loading transactions...</div>
+        </div>
+      ) : (<>
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Transaction Analytics</h1>
@@ -364,6 +361,8 @@ export default function Transactions() {
           )}
         </div>
       </Card>
+    </>)}
     </div>
+    </DashboardLayout>
   );
 }

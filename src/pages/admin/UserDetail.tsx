@@ -16,6 +16,8 @@ import {
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { adminMenuItems } from './adminMenuItems';
 
 interface Profile {
   id: string;
@@ -205,20 +207,22 @@ export function UserDetail() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="text-gray-500">Loading user details...</div>
-      </div>
+      <DashboardLayout menuItems={adminMenuItems} title="User Detail">
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-gray-500">Loading user details...</div>
+        </div>
+      </DashboardLayout>
     );
   }
 
   if (!profile) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">User not found</p>
-        <Button onClick={() => navigate('/admin/users')} className="mt-4">
-          Back to Users
-        </Button>
-      </div>
+      <DashboardLayout menuItems={adminMenuItems} title="User Detail">
+        <div className="text-center py-12">
+          <p className="text-gray-500">User not found</p>
+          <Button onClick={() => navigate('/admin/users')} className="mt-4">Back to Users</Button>
+        </div>
+      </DashboardLayout>
     );
   }
 
@@ -226,6 +230,7 @@ export function UserDetail() {
   const totalRedeemed = allocations.reduce((sum, a) => sum + a.quantity_redeemed, 0);
 
   return (
+    <DashboardLayout menuItems={adminMenuItems} title="User Detail">
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <button
@@ -666,5 +671,6 @@ export function UserDetail() {
         </div>
       )}
     </div>
+    </DashboardLayout>
   );
 }

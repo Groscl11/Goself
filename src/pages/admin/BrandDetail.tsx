@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { adminMenuItems } from './adminMenuItems';
 import { Card } from '../../components/ui/Card';
 
 interface Brand {
@@ -143,24 +145,27 @@ export function BrandDetail() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="text-gray-500">Loading brand details...</div>
-      </div>
+      <DashboardLayout menuItems={adminMenuItems} title="Brand Detail">
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-gray-500">Loading brand details...</div>
+        </div>
+      </DashboardLayout>
     );
   }
 
   if (!brand) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">Brand not found</p>
-        <Button onClick={() => navigate('/admin/brands')} className="mt-4">
-          Back to Brands
-        </Button>
-      </div>
+      <DashboardLayout menuItems={adminMenuItems} title="Brand Detail">
+        <div className="text-center py-12">
+          <p className="text-gray-500">Brand not found</p>
+          <Button onClick={() => navigate('/admin/brands')} className="mt-4">Back to Brands</Button>
+        </div>
+      </DashboardLayout>
     );
   }
 
   return (
+    <DashboardLayout menuItems={adminMenuItems} title="Brand Detail">
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <button
@@ -633,5 +638,6 @@ export function BrandDetail() {
         </div>
       )}
     </div>
+    </DashboardLayout>
   );
 }

@@ -4,6 +4,8 @@ import { ArrowLeft, Save, Building2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { adminMenuItems } from './adminMenuItems';
 
 interface BrandFormData {
   name: string;
@@ -146,6 +148,7 @@ export function BrandForm() {
   };
 
   return (
+    <DashboardLayout menuItems={adminMenuItems} title={isEdit ? 'Edit Brand' : 'Add Brand'}>
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
         <button
@@ -532,5 +535,6 @@ export function BrandForm() {
         </div>
       </form>
     </div>
+    </DashboardLayout>
   );
 }

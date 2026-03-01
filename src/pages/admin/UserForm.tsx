@@ -4,6 +4,8 @@ import { ArrowLeft, Save, Users, Copy, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { adminMenuItems } from './adminMenuItems';
 
 interface UserFormData {
   full_name: string;
@@ -187,6 +189,7 @@ export function UserForm() {
   };
 
   return (
+    <DashboardLayout menuItems={adminMenuItems} title={isEdit ? 'Edit User' : 'Add User'}>
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
         <button
@@ -425,5 +428,6 @@ export function UserForm() {
       </form>
       )}
     </div>
+    </DashboardLayout>
   );
 }

@@ -15,6 +15,8 @@ import {
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { adminMenuItems } from './adminMenuItems';
 
 interface Client {
   id: string;
@@ -107,24 +109,27 @@ export function ClientDetail() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="text-gray-500">Loading client details...</div>
-      </div>
+      <DashboardLayout menuItems={adminMenuItems} title="Client Detail">
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-gray-500">Loading client details...</div>
+        </div>
+      </DashboardLayout>
     );
   }
 
   if (!client) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">Client not found</p>
-        <Button onClick={() => navigate('/admin/clients')} className="mt-4">
-          Back to Clients
-        </Button>
-      </div>
+      <DashboardLayout menuItems={adminMenuItems} title="Client Detail">
+        <div className="text-center py-12">
+          <p className="text-gray-500">Client not found</p>
+          <Button onClick={() => navigate('/admin/clients')} className="mt-4">Back to Clients</Button>
+        </div>
+      </DashboardLayout>
     );
   }
 
   return (
+    <DashboardLayout menuItems={adminMenuItems} title="Client Detail">
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <button
@@ -406,5 +411,6 @@ export function ClientDetail() {
         </div>
       )}
     </div>
+    </DashboardLayout>
   );
 }
