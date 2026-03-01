@@ -117,7 +117,7 @@ export function StoreInstallations() {
         .from('store_installations')
         .select(`
           *,
-          clients!inner(name, contact_email),
+          clients(name, contact_email),
           store_plugins(id),
           store_users(id),
           store_webhooks(id)
@@ -128,6 +128,7 @@ export function StoreInstallations() {
 
       const formattedStores: StoreInstallation[] = (data || []).map((store: any) => ({
         ...store,
+        clients: store.clients || { name: store.shop_name || store.shop_domain, contact_email: store.shop_email || '' },
         plugins_count: store.store_plugins?.length || 0,
         users_count: store.store_users?.length || 0,
         webhooks_count: store.store_webhooks?.length || 0,
@@ -182,9 +183,20 @@ export function StoreInstallations() {
         .eq('store_installation_id', storeId)
         .order('role');
 
-      // Use client_id passed from the stores list (verified by clients!inner join)
-      // Fallback to store.client_id from fresh fetch if not provided
-      const clientId = knownClientId || store.client_id;
+      // Resolve the correct client_id for member lookups.
+      // Edge functions always prefer integration_configs.client_id (the merchant's real profile client)
+      // over store_installations.client_id (which may be an OAuth auto-created client).
+      let clientId = knownClientId || store.client_id;
+
+      const { data: integrationConfig } = await supabase
+        .from('integration_configs')
+        .select('client_id')
+        .eq('shop_domain', store.shop_domain)
+        .maybeSingle();
+
+      if (integrationConfig?.client_id) {
+        clientId = integrationConfig.client_id;
+      }
 
       let members: StoreDetails['members'] = [];
       let orders: StoreDetails['orders'] = [];
