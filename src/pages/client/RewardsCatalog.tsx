@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { clientMenuItems } from './clientMenuItems';
-import { Plus, Edit2, Trash2, Tag, ToggleLeft, ToggleRight, Copy, CheckCircle, RefreshCw, AlertCircle, Building2, Wrench } from 'lucide-react';
+import { Plus, Edit2, Trash2, Tag, ToggleLeft, ToggleRight, Copy, CheckCircle, RefreshCw, AlertCircle, Building2, Wrench, Search, Filter, Clock } from 'lucide-react';
 
 interface Reward {
   id: string;
+  reward_id: string;
   title: string;
   description: string;
   reward_type: 'flat_discount' | 'percentage_discount';
@@ -16,6 +17,7 @@ interface Reward {
   is_active: boolean;
   status: string;
   terms_conditions: string;
+  expiry_date: string | null;
   created_at: string;
 }
 
@@ -63,6 +65,7 @@ interface ManualReward {
   terms_conditions: string;
   is_active: boolean;
   status: string;
+  expiry_date: string | null;
   created_at: string;
 }
 
@@ -96,6 +99,14 @@ export default function RewardsCatalog() {
   const [activeTab, setActiveTab] = useState<'rewards' | 'codes' | 'brand_config'>('rewards');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [syncingCode, setSyncingCode] = useState<string | null>(null);
+
+  // Filters
+  const [rewardSearch, setRewardSearch] = useState('');
+  const [rewardTypeFilter, setRewardTypeFilter] = useState('all');
+  const [rewardStatusFilter, setRewardStatusFilter] = useState('all');
+  const [brandSearch, setBrandSearch] = useState('');
+  const [brandCategoryFilter, setBrandCategoryFilter] = useState('all');
+  const [manualSearch, setManualSearch] = useState('');
 
   // Brand & Manual rewards state
   const [marketplaceRewards, setMarketplaceRewards] = useState<MarketplaceReward[]>([]);
@@ -135,8 +146,9 @@ export default function RewardsCatalog() {
     setLoading(true);
     const { data } = await supabase
       .from('rewards')
-      .select('*')
+      .select('id, reward_id, title, description, reward_type, discount_value, points_cost, min_purchase_amount, currency, is_active, status, terms_conditions, expiry_date, created_at')
       .eq('client_id', clientId)
+      .not('reward_type', 'in', '(manual)')
       .order('points_cost', { ascending: true });
     setRewards(data || []);
     setLoading(false);
@@ -250,11 +262,10 @@ export default function RewardsCatalog() {
         .from('rewards')
         .select('id, title, description, value_description, voucher_count, category, expiry_date, brands(id, name, logo_url)')
         .eq('is_marketplace', true)
-        .eq('status', 'active')
-        .gt('voucher_count', 0),
+        .eq('status', 'active'),   // removed voucher_count > 0 so RWD-352F67D4 shows
       supabase
         .from('client_brand_reward_configs')
-        .select('id, reward_id, points_cost, is_active, note, reward:rewards(title, value_description, brands(name))')
+        .select('id, reward_id, points_cost, is_active, note, reward:rewards(id, title, value_description, voucher_count, category, expiry_date, brands(name))')
         .eq('client_id', clientId),
     ]);
     setMarketplaceRewards((mktData as any) || []);
@@ -265,9 +276,9 @@ export default function RewardsCatalog() {
   async function loadManualRewards() {
     const { data } = await supabase
       .from('rewards')
-      .select('id, title, description, points_cost, terms_conditions, is_active, status, created_at')
+      .select('id, title, description, points_cost, terms_conditions, is_active, status, expiry_date, created_at')
       .eq('client_id', clientId)
-      .eq('reward_type', 'manual')
+      .eq('category', 'manual')
       .order('created_at', { ascending: false });
     setManualRewards(data || []);
   }
@@ -364,6 +375,48 @@ export default function RewardsCatalog() {
 
   const currencySymbol = (c: string) => c === 'INR' ? '₹' : c === 'GBP' ? '£' : c === 'EUR' ? '€' : '$';
 
+  // Filtered lists
+  const filteredRewards = useMemo(() => rewards.filter(r => {
+    const matchSearch = !rewardSearch || r.title.toLowerCase().includes(rewardSearch.toLowerCase()) || r.reward_id?.toLowerCase().includes(rewardSearch.toLowerCase());
+    const matchType = rewardTypeFilter === 'all' || r.reward_type === rewardTypeFilter;
+    const matchStatus = rewardStatusFilter === 'all' || (rewardStatusFilter === 'active' ? r.is_active : !r.is_active);
+    return matchSearch && matchType && matchStatus;
+  }), [rewards, rewardSearch, rewardTypeFilter, rewardStatusFilter]);
+
+  const filteredMarketplace = useMemo(() => marketplaceRewards.filter(r => {
+    const matchSearch = !brandSearch || r.title.toLowerCase().includes(brandSearch.toLowerCase()) || r.brands?.name?.toLowerCase().includes(brandSearch.toLowerCase());
+    const matchCat = brandCategoryFilter === 'all' || r.category === brandCategoryFilter;
+    return matchSearch && matchCat;
+  }), [marketplaceRewards, brandSearch, brandCategoryFilter]);
+
+  const filteredManual = useMemo(() => manualRewards.filter(r => {
+    return !manualSearch || r.title.toLowerCase().includes(manualSearch.toLowerCase());
+  }), [manualRewards, manualSearch]);
+
+  const marketplaceCategories = useMemo(() =>
+    [...new Set(marketplaceRewards.map(r => r.category).filter(Boolean))],
+    [marketplaceRewards]);
+
+  // Summary stats
+  const summaryStats = useMemo(() => ({
+    totalRewards: rewards.length,
+    activeRewards: rewards.filter(r => r.is_active).length,
+    totalCodes: codes.length,
+    usedCodes: codes.filter(c => c.is_used).length,
+    brandRewards: brandConfigs.filter(c => c.is_active).length,
+    manualRewards: manualRewards.filter(r => r.is_active).length,
+  }), [rewards, codes, brandConfigs, manualRewards]);
+
+  const isExpiringSoon = (date: string | null) => {
+    if (!date) return false;
+    const days = (new Date(date).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    return days >= 0 && days <= 30;
+  };
+  const isExpired = (date: string | null) => {
+    if (!date) return false;
+    return new Date(date).getTime() < Date.now();
+  };
+
   return (
     <DashboardLayout menuItems={clientMenuItems} title="Rewards Catalog">
     <div className="max-w-5xl mx-auto">
@@ -383,6 +436,24 @@ export default function RewardsCatalog() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+        {[
+          { label: 'Discount Rewards', value: summaryStats.totalRewards, sub: `${summaryStats.activeRewards} active`, color: 'blue' },
+          { label: 'Codes Generated', value: summaryStats.totalCodes, sub: `${summaryStats.usedCodes} used`, color: 'purple' },
+          { label: 'Brand Rewards', value: summaryStats.brandRewards, sub: 'active configs', color: 'indigo' },
+          { label: 'Manual Rewards', value: summaryStats.manualRewards, sub: 'active', color: 'orange' },
+          { label: 'Marketplace', value: marketplaceRewards.length, sub: 'available', color: 'green' },
+          { label: 'Configured', value: brandConfigs.length, sub: 'brand setups', color: 'teal' },
+        ].map(s => (
+          <div key={s.label} className="bg-white border border-gray-200 rounded-xl p-4 text-center">
+            <p className={`text-2xl font-bold text-${s.color}-600`}>{s.value}</p>
+            <p className="text-xs font-medium text-gray-700 mt-0.5">{s.label}</p>
+            <p className="text-xs text-gray-400">{s.sub}</p>
+          </div>
+        ))}
       </div>
 
       {/* Tabs */}
@@ -514,30 +585,65 @@ export default function RewardsCatalog() {
       {/* Rewards Tab */}
       {activeTab === 'rewards' && (
         <div>
+          {/* Filter bar */}
+          <div className="flex flex-wrap gap-3 mb-5">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={rewardSearch}
+                onChange={e => setRewardSearch(e.target.value)}
+                placeholder="Search by title or RWD-..."
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <select
+              value={rewardTypeFilter}
+              onChange={e => setRewardTypeFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Types</option>
+              <option value="flat_discount">Fixed Amount</option>
+              <option value="percentage_discount">Percentage</option>
+            </select>
+            <select
+              value={rewardStatusFilter}
+              onChange={e => setRewardStatusFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+
           {loading ? (
             <div className="text-center py-12 text-gray-400">Loading rewards...</div>
-          ) : rewards.length === 0 ? (
+          ) : filteredRewards.length === 0 ? (
             <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-300">
               <Tag className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 font-medium">No rewards yet</p>
+              <p className="text-gray-500 font-medium">{rewards.length === 0 ? 'No rewards yet' : 'No rewards match your filters'}</p>
               <p className="text-gray-400 text-sm mt-1">Create your first reward so customers can redeem their points</p>
             </div>
           ) : (
             <div className="grid gap-4">
-              {rewards.map(reward => (
-                <div key={reward.id} className={`bg-white border rounded-xl p-5 flex items-center gap-4 ${!reward.is_active ? 'opacity-60' : ''}`}>
+              {filteredRewards.map(reward => (
+                <div key={reward.id} className={`bg-white border rounded-xl p-5 flex items-center gap-4 ${!reward.is_active ? 'opacity-60' : ''} ${isExpired(reward.expiry_date) ? 'border-red-200' : ''}`}>
                   <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
                     {reward.reward_type === 'percentage_discount' ? '%' : '₹'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold text-gray-900">{reward.title}</h3>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${reward.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                         {reward.is_active ? 'Active' : 'Inactive'}
                       </span>
+                      {reward.reward_id && (
+                        <span className="text-xs font-mono text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{reward.reward_id}</span>
+                      )}
                     </div>
                     <p className="text-sm text-gray-500 mt-0.5 truncate">{reward.description}</p>
-                    <div className="flex gap-3 mt-2 text-xs text-gray-400">
+                    <div className="flex gap-3 mt-2 text-xs text-gray-400 flex-wrap">
                       <span>
                         <strong className="text-gray-700">
                           {reward.reward_type === 'percentage_discount' ? `${reward.discount_value}% off` : `₹${reward.discount_value} off`}
@@ -546,6 +652,15 @@ export default function RewardsCatalog() {
                       <span>·</span>
                       <span><strong className="text-blue-600">{reward.points_cost} points</strong></span>
                       {reward.min_purchase_amount > 0 && <><span>·</span><span>Min. ₹{reward.min_purchase_amount}</span></>}
+                      {reward.expiry_date && (
+                        <>
+                          <span>·</span>
+                          <span className={`inline-flex items-center gap-1 ${isExpired(reward.expiry_date) ? 'text-red-500 font-medium' : isExpiringSoon(reward.expiry_date) ? 'text-orange-500 font-medium' : 'text-gray-400'}`}>
+                            <Clock className="w-3 h-3" />
+                            {isExpired(reward.expiry_date) ? 'Expired' : `Expires ${new Date(reward.expiry_date).toLocaleDateString('en-IN')}`}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -667,12 +782,27 @@ export default function RewardsCatalog() {
               <div className="mb-6">
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Currently Configured</h3>
                 <div className="grid gap-3">
-                  {brandConfigs.map(cfg => (
+                  {brandConfigs.map(cfg => {
+                    const cfgReward = cfg.reward as any;
+                    return (
                     <div key={cfg.id} className={`bg-white border rounded-xl p-4 flex items-center gap-4 ${!cfg.is_active ? 'opacity-60' : ''}`}>
                       <div className="flex-1">
-                        <p className="font-medium text-gray-900">{cfg.reward?.title || '—'}</p>
-                        <p className="text-sm text-gray-500">{cfg.reward?.value_description || ''}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">Brand: {(cfg.reward as any)?.brands?.name || '—'}</p>
+                        <p className="font-medium text-gray-900">{cfgReward?.title || '—'}</p>
+                        <p className="text-sm text-gray-500">{cfgReward?.value_description || ''}</p>
+                        <div className="flex gap-3 mt-1 text-xs text-gray-400 flex-wrap">
+                          <span>Brand: {cfgReward?.brands?.name || '—'}</span>
+                          {cfgReward?.voucher_count != null && (
+                            <span className={cfgReward.voucher_count === 0 ? 'text-red-500 font-medium' : 'text-green-600'}>
+                              {cfgReward.voucher_count === 0 ? '⚠ No vouchers left' : `${cfgReward.voucher_count} vouchers`}
+                            </span>
+                          )}
+                          {cfgReward?.expiry_date && (
+                            <span className={`inline-flex items-center gap-1 ${isExpired(cfgReward.expiry_date) ? 'text-red-500 font-medium' : isExpiringSoon(cfgReward.expiry_date) ? 'text-orange-500 font-medium' : ''}`}>
+                              <Clock className="w-3 h-3" />
+                              {isExpired(cfgReward.expiry_date) ? 'Expired' : `Expires ${new Date(cfgReward.expiry_date).toLocaleDateString('en-IN')}`}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="text-right">
                         <p className="text-blue-600 font-semibold">{cfg.points_cost} pts</p>
@@ -688,12 +818,20 @@ export default function RewardsCatalog() {
                         </button>
                         <button
                           onClick={() => {
-                            const mr = marketplaceRewards.find(m => m.id === cfg.reward_id);
-                            if (mr) {
-                              setShowBrandConfig(mr);
-                              setBrandConfigPoints(cfg.points_cost);
-                              setBrandConfigNote(cfg.note || '');
-                            }
+                            // Find in marketplace list or build fallback from config join data
+                            const mr = marketplaceRewards.find(m => m.id === cfg.reward_id) || {
+                              id: cfg.reward_id,
+                              title: cfgReward?.title || '—',
+                              description: cfgReward?.value_description || '',
+                              value_description: cfgReward?.value_description || '',
+                              voucher_count: cfgReward?.voucher_count ?? 0,
+                              category: cfgReward?.category || '',
+                              expiry_date: cfgReward?.expiry_date || null,
+                              brands: cfgReward?.brands || { id: '', name: '—', logo_url: null },
+                            } as MarketplaceReward;
+                            setShowBrandConfig(mr);
+                            setBrandConfigPoints(cfg.points_cost);
+                            setBrandConfigNote(cfg.note || '');
                           }}
                           className="text-gray-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50"
                           title="Edit"
@@ -709,7 +847,8 @@ export default function RewardsCatalog() {
                         </button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -719,17 +858,43 @@ export default function RewardsCatalog() {
               <div className="text-center py-8 text-gray-400">Loading marketplace rewards...</div>
             ) : (
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Available from Marketplace</h3>
-                {marketplaceRewards.length === 0 ? (
+                <div className="flex flex-wrap gap-3 mb-4">
+                  <div className="relative flex-1 min-w-[180px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={brandSearch}
+                      onChange={e => setBrandSearch(e.target.value)}
+                      placeholder="Search rewards or brand..."
+                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  {marketplaceCategories.length > 0 && (
+                    <select
+                      value={brandCategoryFilter}
+                      onChange={e => setBrandCategoryFilter(e.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="all">All Categories</option>
+                      {marketplaceCategories.map(c => (
+                        <option key={c} value={c} className="capitalize">{c}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">
+                  Available from Marketplace ({filteredMarketplace.length})
+                </h3>
+                {filteredMarketplace.length === 0 ? (
                   <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                    <p className="text-gray-500 text-sm">No active marketplace rewards with available vouchers.</p>
+                    <p className="text-gray-500 text-sm">No marketplace rewards match your search.</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {marketplaceRewards.map(reward => {
+                    {filteredMarketplace.map(reward => {
                       const alreadyConfigured = brandConfigs.some(c => c.reward_id === reward.id);
                       return (
-                        <div key={reward.id} className="bg-white border rounded-xl p-4 flex items-start gap-3">
+                        <div key={reward.id} className={`bg-white border rounded-xl p-4 flex items-start gap-3 ${reward.voucher_count === 0 ? 'border-orange-200 bg-orange-50/30' : ''}`}>
                           <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center flex-shrink-0">
                             <Building2 className="w-5 h-5 text-indigo-500" />
                           </div>
@@ -737,9 +902,17 @@ export default function RewardsCatalog() {
                             <p className="font-medium text-gray-900 truncate">{reward.title}</p>
                             <p className="text-xs text-gray-500 mb-1">{reward.brands?.name}</p>
                             <p className="text-xs text-gray-400 truncate">{reward.description}</p>
-                            <div className="flex gap-2 mt-1.5 text-xs">
+                            <div className="flex gap-2 mt-1.5 flex-wrap text-xs">
                               <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full capitalize">{reward.category}</span>
-                              <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{reward.voucher_count} available</span>
+                              <span className={`px-2 py-0.5 rounded-full ${reward.voucher_count === 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
+                                {reward.voucher_count === 0 ? '⚠ Out of stock' : `${reward.voucher_count} available`}
+                              </span>
+                              {reward.expiry_date && (
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full ${isExpired(reward.expiry_date) ? 'bg-red-100 text-red-600' : isExpiringSoon(reward.expiry_date) ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
+                                  <Clock className="w-3 h-3" />
+                                  {isExpired(reward.expiry_date) ? 'Expired' : new Date(reward.expiry_date).toLocaleDateString('en-IN')}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <button
@@ -903,47 +1076,68 @@ export default function RewardsCatalog() {
                 <p className="text-gray-400 text-xs mt-1">Add your first manual reward above</p>
               </div>
             ) : (
-              <div className="grid gap-3">
-                {manualRewards.map(reward => (
-                  <div key={reward.id} className={`bg-white border rounded-xl p-4 flex items-center gap-4 ${!reward.is_active ? 'opacity-60' : ''}`}>
-                    <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Wrench className="w-5 h-5 text-orange-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-gray-900">{reward.title}</h3>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${reward.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                          {reward.is_active ? 'Active' : 'Inactive'}
-                        </span>
+              <div>
+                {/* Filter */}
+                <div className="relative mb-4">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={manualSearch}
+                    onChange={e => setManualSearch(e.target.value)}
+                    placeholder="Search manual rewards..."
+                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-400"
+                  />
+                </div>
+                <div className="grid gap-3">
+                  {filteredManual.map(reward => (
+                    <div key={reward.id} className={`bg-white border rounded-xl p-4 flex items-center gap-4 ${!reward.is_active ? 'opacity-60' : ''} ${isExpired(reward.expiry_date) ? 'border-red-200' : ''}`}>
+                      <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Wrench className="w-5 h-5 text-orange-400" />
                       </div>
-                      <p className="text-sm text-gray-500 truncate">{reward.description}</p>
-                      <p className="text-xs text-blue-600 font-medium mt-0.5">{reward.points_cost} points</p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-gray-900">{reward.title}</h3>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${reward.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {reward.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-500 truncate">{reward.description}</p>
+                        <div className="flex gap-3 mt-1 text-xs text-gray-400 flex-wrap">
+                          <span className="text-blue-600 font-medium">{reward.points_cost} points</span>
+                          {reward.expiry_date && (
+                            <span className={`inline-flex items-center gap-1 ${isExpired(reward.expiry_date) ? 'text-red-500 font-medium' : isExpiringSoon(reward.expiry_date) ? 'text-orange-500 font-medium' : ''}`}>
+                              <Clock className="w-3 h-3" />
+                              {isExpired(reward.expiry_date) ? 'Expired' : `Expires ${new Date(reward.expiry_date).toLocaleDateString('en-IN')}`}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button onClick={() => toggleManualReward(reward)} className="text-gray-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50">
+                          {reward.is_active ? <ToggleRight className="w-5 h-5 text-green-500" /> : <ToggleLeft className="w-5 h-5" />}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setManualForm({
+                              title: reward.title,
+                              description: reward.description || '',
+                              points_cost: reward.points_cost,
+                              terms_conditions: reward.terms_conditions || '',
+                            });
+                            setEditingManualId(reward.id);
+                            setShowManualForm(true);
+                          }}
+                          className="text-gray-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => deleteManualReward(reward.id)} className="text-gray-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button onClick={() => toggleManualReward(reward)} className="text-gray-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50">
-                        {reward.is_active ? <ToggleRight className="w-5 h-5 text-green-500" /> : <ToggleLeft className="w-5 h-5" />}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setManualForm({
-                            title: reward.title,
-                            description: reward.description || '',
-                            points_cost: reward.points_cost,
-                            terms_conditions: reward.terms_conditions || '',
-                          });
-                          setEditingManualId(reward.id);
-                          setShowManualForm(true);
-                        }}
-                        className="text-gray-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => deleteManualReward(reward.id)} className="text-gray-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </section>
