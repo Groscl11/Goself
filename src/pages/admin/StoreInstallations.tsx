@@ -75,7 +75,6 @@ interface StoreDetails extends StoreInstallation {
     id: string;
     email: string;
     full_name: string;
-    referral_code: string;
     created_at: string;
     points_balance: number;
   }>;
@@ -176,27 +175,23 @@ export function StoreInstallations() {
 
       // Get client_id for this store to load loyalty members
       const clientId = store.client_id;
-      const { data: memberData } = await supabase
+      const { data: memberData, error: memberError } = await supabase
         .from('member_users')
-        .select(`
-          id,
-          email,
-          full_name,
-          referral_code,
-          created_at,
-          member_loyalty_status(points_balance)
-        `)
+        .select('id, email, full_name, created_at, member_loyalty_status(points_balance)')
         .eq('client_id', clientId)
         .order('created_at', { ascending: false })
         .limit(50);
+
+      if (memberError) console.error('Error loading loyalty members:', memberError);
 
       const members = (memberData || []).map((m: any) => ({
         id: m.id,
         email: m.email,
         full_name: m.full_name,
-        referral_code: m.referral_code,
         created_at: m.created_at,
-        points_balance: m.member_loyalty_status?.[0]?.points_balance ?? m.member_loyalty_status?.points_balance ?? 0,
+        points_balance: Array.isArray(m.member_loyalty_status)
+          ? (m.member_loyalty_status[0]?.points_balance ?? 0)
+          : (m.member_loyalty_status?.points_balance ?? 0),
       }));
 
       const storeWithDetails: StoreDetails = {
@@ -610,7 +605,6 @@ export function StoreInstallations() {
                           <tr>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Points</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Referral Code</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Joined</th>
                           </tr>
                         </thead>
@@ -627,9 +621,6 @@ export function StoreInstallations() {
                               </td>
                               <td className="px-4 py-2">
                                 <span className="font-semibold text-blue-700">{member.points_balance.toLocaleString()}</span>
-                              </td>
-                              <td className="px-4 py-2 text-gray-600 font-mono text-xs">
-                                {member.referral_code || '—'}
                               </td>
                               <td className="px-4 py-2 text-gray-500">
                                 {new Date(member.created_at).toLocaleDateString()}
