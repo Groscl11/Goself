@@ -42,7 +42,8 @@ interface MarketplaceReward {
   title: string;
   description: string;
   value_description: string;
-  voucher_count: number;
+  voucher_count: number;      // stored field (may be stale)
+  actualVoucherCount: number; // computed from real vouchers rows
   category: string;
   expiry_date: string | null;
   coupon_type: string | null;
@@ -262,15 +263,20 @@ export default function RewardsCatalog() {
     const [{ data: mktData }, { data: cfgData }] = await Promise.all([
       supabase
         .from('rewards')
-        .select('id, title, description, value_description, voucher_count, category, expiry_date, coupon_type, generic_coupon_code, brands(id, name, logo_url)')
+        .select('id, title, description, value_description, voucher_count, category, expiry_date, coupon_type, generic_coupon_code, brands(id, name, logo_url), vouchers(id, status)')
         .eq('is_marketplace', true)
-        .eq('status', 'active'),   // removed voucher_count > 0 so RWD-352F67D4 shows
+        .eq('status', 'active'),
       supabase
         .from('client_brand_reward_configs')
         .select('id, reward_id, points_cost, is_active, note, reward:rewards(id, title, value_description, voucher_count, category, expiry_date, brands(name))')
         .eq('client_id', clientId),
     ]);
-    setMarketplaceRewards((mktData as any) || []);
+    // Compute actualVoucherCount from real vouchers rows (voucher_count column can be stale)
+    const processed = (mktData || []).map((r: any) => ({
+      ...r,
+      actualVoucherCount: (r.vouchers ?? []).filter((v: any) => v.status === 'available').length,
+    }));
+    setMarketplaceRewards(processed as any);
     setBrandConfigs((cfgData as any) || []);
     setMarketplaceLoading(false);
   }
@@ -399,10 +405,10 @@ export default function RewardsCatalog() {
     const matchSearch = !brandSearch || r.title.toLowerCase().includes(brandSearch.toLowerCase()) || r.brands?.name?.toLowerCase().includes(brandSearch.toLowerCase());
     const matchCat = brandCategoryFilter === 'all' || r.category === brandCategoryFilter;
 
-    // Stock check: unique codes need voucher_count > 0; generic codes need a code set
+    // Stock check: unique codes use actual voucher count (not stale voucher_count column); generic codes need a code set
     const isOutOfStock = r.coupon_type === 'generic'
       ? !r.generic_coupon_code
-      : r.voucher_count === 0;
+      : r.actualVoucherCount === 0;
 
     // Hide expired and out-of-stock
     const expired = isExpired(r.expiry_date);
@@ -922,7 +928,7 @@ export default function RewardsCatalog() {
                               }`}>
                                 {reward.coupon_type === 'generic'
                                   ? 'Generic Code'
-                                  : `${reward.voucher_count} vouchers left`}
+                                  : `${reward.actualVoucherCount} vouchers left`}
                               </span>
                               {reward.expiry_date && (
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full ${isExpired(reward.expiry_date) ? 'bg-red-100 text-red-600' : isExpiringSoon(reward.expiry_date) ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
