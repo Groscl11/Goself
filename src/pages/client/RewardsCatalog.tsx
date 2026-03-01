@@ -45,6 +45,8 @@ interface MarketplaceReward {
   voucher_count: number;
   category: string;
   expiry_date: string | null;
+  coupon_type: string | null;
+  generic_coupon_code: string | null;
   brands: { id: string; name: string; logo_url: string | null };
 }
 
@@ -260,7 +262,7 @@ export default function RewardsCatalog() {
     const [{ data: mktData }, { data: cfgData }] = await Promise.all([
       supabase
         .from('rewards')
-        .select('id, title, description, value_description, voucher_count, category, expiry_date, brands(id, name, logo_url)')
+        .select('id, title, description, value_description, voucher_count, category, expiry_date, coupon_type, generic_coupon_code, brands(id, name, logo_url)')
         .eq('is_marketplace', true)
         .eq('status', 'active'),   // removed voucher_count > 0 so RWD-352F67D4 shows
       supabase
@@ -386,7 +388,16 @@ export default function RewardsCatalog() {
   const filteredMarketplace = useMemo(() => marketplaceRewards.filter(r => {
     const matchSearch = !brandSearch || r.title.toLowerCase().includes(brandSearch.toLowerCase()) || r.brands?.name?.toLowerCase().includes(brandSearch.toLowerCase());
     const matchCat = brandCategoryFilter === 'all' || r.category === brandCategoryFilter;
-    return matchSearch && matchCat;
+
+    // Stock check: unique codes need voucher_count > 0; generic codes need a code set
+    const isOutOfStock = r.coupon_type === 'generic'
+      ? !r.generic_coupon_code
+      : r.voucher_count === 0;
+
+    // Hide expired and out-of-stock
+    const expired = isExpired(r.expiry_date);
+
+    return matchSearch && matchCat && !isOutOfStock && !expired;
   }), [marketplaceRewards, brandSearch, brandCategoryFilter]);
 
   const filteredManual = useMemo(() => manualRewards.filter(r => {
@@ -894,7 +905,7 @@ export default function RewardsCatalog() {
                     {filteredMarketplace.map(reward => {
                       const alreadyConfigured = brandConfigs.some(c => c.reward_id === reward.id);
                       return (
-                        <div key={reward.id} className={`bg-white border rounded-xl p-4 flex items-start gap-3 ${reward.voucher_count === 0 ? 'border-orange-200 bg-orange-50/30' : ''}`}>
+                        <div key={reward.id} className="bg-white border rounded-xl p-4 flex items-start gap-3">
                           <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center flex-shrink-0">
                             <Building2 className="w-5 h-5 text-indigo-500" />
                           </div>
@@ -904,8 +915,14 @@ export default function RewardsCatalog() {
                             <p className="text-xs text-gray-400 truncate">{reward.description}</p>
                             <div className="flex gap-2 mt-1.5 flex-wrap text-xs">
                               <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full capitalize">{reward.category}</span>
-                              <span className={`px-2 py-0.5 rounded-full ${reward.voucher_count === 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
-                                {reward.voucher_count === 0 ? '⚠ Out of stock' : `${reward.voucher_count} available`}
+                              <span className={`px-2 py-0.5 rounded-full ${
+                                reward.coupon_type === 'generic'
+                                  ? 'bg-blue-50 text-blue-600'
+                                  : 'bg-green-100 text-green-700'
+                              }`}>
+                                {reward.coupon_type === 'generic'
+                                  ? 'Generic Code'
+                                  : `${reward.voucher_count} vouchers left`}
                               </span>
                               {reward.expiry_date && (
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full ${isExpired(reward.expiry_date) ? 'bg-red-100 text-red-600' : isExpiringSoon(reward.expiry_date) ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
