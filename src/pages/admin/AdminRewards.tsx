@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Search, Plus, Edit, Eye, Filter, Trash2, X, Copy, Tag, FileSpreadsheet, ArrowLeft, Calendar, AlertCircle } from 'lucide-react';
+import { Search, Plus, Edit, Eye, EyeOff, Filter, Trash2, X, Copy, Tag, FileSpreadsheet, ArrowLeft, Calendar, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { adminMenuItems } from './adminMenuItems';
 import { RewardForm } from '../../components/RewardForm';
@@ -31,6 +31,9 @@ interface Reward {
   voucher_count: number;
   expiry_date: string | null;
   brands: Brand;
+  // raw db fields (cast via `as any` in query)
+  coupon_type?: string;
+  generic_coupon_code?: string | null;
   // computed
   isExpired: boolean;
   isExpiringSoon: boolean;
@@ -62,6 +65,14 @@ export function AdminRewards() {
   const [activeTab, setActiveTab] = useState<TabType>('available');
   const [extendingReward, setExtendingReward] = useState<string | null>(null);
   const [newExpiryDate, setNewExpiryDate] = useState('');
+  const [revealedCodes, setRevealedCodes] = useState<Set<string>>(new Set());
+
+  const toggleReveal = (id: string) =>
+    setRevealedCodes(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   const [showForm, setShowForm] = useState(false);
   const [showExcelUpload, setShowExcelUpload] = useState(false);
   const [editingReward, setEditingReward] = useState<Reward | null>(null);
@@ -488,6 +499,9 @@ export function AdminRewards() {
                         Type
                       </th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        Coupon Code
+                      </th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
                         Expiry
                       </th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">
@@ -543,6 +557,43 @@ export function AdminRewards() {
                             </div>
                           </div>
                         </td>
+
+                        {/* Coupon Code cell */}
+                        <td className="py-4 px-4 whitespace-nowrap text-sm">
+                          {(reward as any).coupon_type === 'generic' ? (
+                            (reward as any).generic_coupon_code ? (
+                              <div className="flex items-center gap-2">
+                                <span className={`font-mono ${
+                                  revealedCodes.has(reward.id) ? 'text-gray-900' : 'text-gray-400 tracking-widest'
+                                }`}>
+                                  {revealedCodes.has(reward.id)
+                                    ? (reward as any).generic_coupon_code
+                                    : '••••••••'}
+                                </span>
+                                <button
+                                  onClick={() => toggleReveal(reward.id)}
+                                  className="text-gray-400 hover:text-gray-700"
+                                  title={revealedCodes.has(reward.id) ? 'Hide code' : 'Show code'}
+                                >
+                                  {revealedCodes.has(reward.id)
+                                    ? <EyeOff className="w-4 h-4" />
+                                    : <Eye className="w-4 h-4" />}
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 italic">No code set</span>
+                            )
+                          ) : (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              reward.unredeemedVouchers > 0
+                                ? 'bg-green-50 text-green-700'
+                                : 'bg-red-50 text-red-600'
+                            }`}>
+                              {reward.unredeemedVouchers} available
+                            </span>
+                          )}
+                        </td>
+
                         {/* Expiry cell */}
                         <td className="py-4 px-4 whitespace-nowrap text-sm">
                           {reward.expiry_date ? (
