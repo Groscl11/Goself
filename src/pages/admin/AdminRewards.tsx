@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Search, Plus, Edit, Eye, Filter, Trash2, X, Copy, Tag, FileSpreadsheet, ArrowLeft } from 'lucide-react';
+import { Search, Plus, Edit, Eye, Filter, Trash2, X, Copy, Tag, FileSpreadsheet, ArrowLeft, Calendar, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { adminMenuItems } from './adminMenuItems';
 import { RewardForm } from '../../components/RewardForm';
@@ -14,6 +14,8 @@ interface Brand {
   name: string;
   logo_url: string | null;
 }
+
+type TabType = 'available' | 'expired' | 'inactive';
 
 interface Reward {
   id: string;
@@ -29,6 +31,12 @@ interface Reward {
   voucher_count: number;
   expiry_date: string | null;
   brands: Brand;
+  // computed
+  isExpired: boolean;
+  isExpiringSoon: boolean;
+  daysUntilExpiry: number | null;
+  isAvailable: boolean;
+  unredeemedVouchers: number;
 }
 
 interface RewardFormData {
@@ -51,7 +59,9 @@ export function AdminRewards() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<TabType>('available');
+  const [extendingReward, setExtendingReward] = useState<string | null>(null);
+  const [newExpiryDate, setNewExpiryDate] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [showExcelUpload, setShowExcelUpload] = useState(false);
   const [editingReward, setEditingReward] = useState<Reward | null>(null);
@@ -85,12 +95,32 @@ export function AdminRewards() {
             id,
             name,
             logo_url
-          )
+          ),
+          vouchers (id, status)
         `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setRewards(data || []);
+
+      const now = new Date();
+      const processed = (data || []).map((reward: any) => {
+        const expiresAt = reward.expiry_date ? new Date(reward.expiry_date) : null;
+        const isExpired = !!(expiresAt && expiresAt < now);
+        const daysUntilExpiry = expiresAt
+          ? Math.floor((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+          : null;
+        const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry > 0 && daysUntilExpiry <= 7;
+        return {
+          ...reward,
+          isExpired,
+          isExpiringSoon,
+          daysUntilExpiry,
+          isAvailable: reward.status === 'active' && !isExpired,
+          unredeemedVouchers: (reward.vouchers ?? []).filter((v: any) => v.status === 'available').length,
+        };
+      });
+
+      setRewards(processed);
     } catch (error) {
       console.error('Error loading rewards:', error);
     } finally {
@@ -211,6 +241,23 @@ export function AdminRewards() {
     }
   };
 
+  const handleExtendExpiry = async (rewardId: string) => {
+    if (!newExpiryDate) return;
+    try {
+      const { error } = await supabase
+        .from('rewards')
+        .update({ expiry_date: newExpiryDate })
+        .eq('id', rewardId);
+      if (error) throw error;
+      setExtendingReward(null);
+      setNewExpiryDate('');
+      loadRewards();
+    } catch (error) {
+      console.error('Error extending expiry:', error);
+      alert('Failed to extend expiry date');
+    }
+  };
+
   const handleExcelUpload = async (data: any[]) => {
     try {
       for (const row of data) {
@@ -273,17 +320,29 @@ export function AdminRewards() {
     });
   };
 
-  const filteredRewards = rewards.filter((reward) => {
-    const brandName = reward.brands?.name ?? '';
-    const matchesSearch =
-      reward.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (reward.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      brandName.toLowerCase().includes(searchQuery.toLowerCase());
+  const counts = useMemo(() => ({
+    available: rewards.filter(r => r.isAvailable).length,
+    expired: rewards.filter(r => r.status === 'active' && r.isExpired).length,
+    inactive: rewards.filter(r => r.status !== 'active').length,
+    expiringSoon: rewards.filter(r => r.isExpiringSoon).length,
+  }), [rewards]);
 
-    const matchesFilter = filterStatus === 'all' || reward.status === filterStatus;
+  const filteredRewards = useMemo(() => {
+    return rewards.filter((reward) => {
+      const brandName = reward.brands?.name ?? '';
+      const matchesSearch =
+        reward.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (reward.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        brandName.toLowerCase().includes(searchQuery.toLowerCase());
 
-    return matchesSearch && matchesFilter;
-  });
+      let matchesTab: boolean;
+      if (activeTab === 'available') matchesTab = reward.isAvailable;
+      else if (activeTab === 'expired') matchesTab = reward.status === 'active' && reward.isExpired;
+      else matchesTab = reward.status !== 'active';
+
+      return matchesSearch && matchesTab;
+    });
+  }, [rewards, searchQuery, activeTab]);
 
   const categories = [
     'general',
@@ -335,22 +394,63 @@ export function AdminRewards() {
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="all">All Status</option>
-                  {statuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
-                    </option>
-                  ))}
-                </select>
+
               </div>
             </div>
           </CardHeader>
           <CardContent>
+            {/* Warning banner */}
+            {counts.expiringSoon > 0 && (
+              <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-yellow-900">
+                    Warning: {counts.expiringSoon} reward{counts.expiringSoon > 1 ? 's' : ''} expiring in the next 7 days
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('available')}
+                    className="mt-1 text-sm text-yellow-700 hover:text-yellow-800 underline"
+                  >
+                    View expiring rewards
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tab navigation */}
+            <div className="flex gap-4 border-b border-gray-200 mb-6">
+              <button
+                onClick={() => setActiveTab('available')}
+                className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+                  activeTab === 'available'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Available ({counts.available})
+              </button>
+              <button
+                onClick={() => setActiveTab('expired')}
+                className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+                  activeTab === 'expired'
+                    ? 'border-red-600 text-red-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Expired ({counts.expired})
+              </button>
+              <button
+                onClick={() => setActiveTab('inactive')}
+                className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+                  activeTab === 'inactive'
+                    ? 'border-gray-600 text-gray-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Inactive ({counts.inactive})
+              </button>
+            </div>
+
             {loading ? (
               <div className="space-y-4">
                 {[1, 2, 3].map((i) => (
@@ -388,8 +488,17 @@ export function AdminRewards() {
                         Type
                       </th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        Expiry
+                      </th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
                         Status
                       </th>
+                      {activeTab === 'expired' && (
+                        <>
+                          <th className="text-left py-3 px-4 font-semibold text-gray-700">Unredeemed Vouchers</th>
+                          <th className="text-left py-3 px-4 font-semibold text-gray-700">In Campaigns</th>
+                        </>
+                      )}
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">
                         Actions
                       </th>
@@ -434,23 +543,80 @@ export function AdminRewards() {
                             </div>
                           </div>
                         </td>
-                        <td className="py-4 px-4">
-                          <span
-                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium capitalize ${
-                              reward.status === 'active'
-                                ? 'bg-green-50 text-green-700'
-                                : reward.status === 'draft'
-                                ? 'bg-gray-100 text-gray-700'
-                                : reward.status === 'pending'
-                                ? 'bg-yellow-50 text-yellow-700'
-                                : 'bg-red-50 text-red-700'
-                            }`}
-                          >
-                            {reward.status}
-                          </span>
+                        {/* Expiry cell */}
+                        <td className="py-4 px-4 whitespace-nowrap text-sm">
+                          {reward.expiry_date ? (
+                            reward.isExpired ? (
+                              <span className="text-red-600 font-medium">
+                                ⏰ Expired {Math.abs(reward.daysUntilExpiry!)} days ago
+                              </span>
+                            ) : reward.isExpiringSoon ? (
+                              <span className="text-orange-600 font-medium">
+                                ⚠️ Expires in {reward.daysUntilExpiry} days
+                              </span>
+                            ) : (
+                              <span className="text-gray-700">
+                                {new Date(reward.expiry_date).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-gray-400 italic">Never expires</span>
+                          )}
                         </td>
+
+                        {/* Status badge */}
+                        <td className="py-4 px-4">
+                          {reward.isExpired ? (
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                              ❌ Expired
+                            </span>
+                          ) : reward.isExpiringSoon ? (
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">
+                              ⏰ Expiring Soon
+                            </span>
+                          ) : reward.status === 'active' ? (
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                              ✅ Active
+                            </span>
+                          ) : (
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800 capitalize">
+                              🚫 {reward.status}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Expired tab extra columns */}
+                        {activeTab === 'expired' && (
+                          <>
+                            <td className="py-4 px-4 whitespace-nowrap text-sm text-gray-700">
+                              {reward.unredeemedVouchers > 0 ? (
+                                <span className="text-orange-600 font-medium">
+                                  ⚠️ {reward.unredeemedVouchers} unredeemed
+                                </span>
+                              ) : (
+                                <span className="text-gray-500">None</span>
+                              )}
+                            </td>
+                            <td className="py-4 px-4 whitespace-nowrap text-sm text-gray-500">—</td>
+                          </>
+                        )}
+
                         <td className="py-4 px-4">
                           <div className="flex items-center gap-2">
+                            {reward.isExpired && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setExtendingReward(reward.id)}
+                                title="Extend Expiry"
+                              >
+                                <Calendar className="w-4 h-4 text-blue-600" />
+                              </Button>
+                            )}
                             <Button
                               size="sm"
                               variant="ghost"
@@ -476,6 +642,36 @@ export function AdminRewards() {
           </CardContent>
         </Card>
       </div>
+
+      {extendingReward && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Extend Expiry Date</h3>
+            <input
+              type="date"
+              value={newExpiryDate}
+              onChange={(e) => setNewExpiryDate(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleExtendExpiry(extendingReward)}
+                disabled={!newExpiryDate}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Extend
+              </button>
+              <button
+                onClick={() => { setExtendingReward(null); setNewExpiryDate(''); }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <RewardForm
