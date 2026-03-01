@@ -71,6 +71,14 @@ interface StoreDetails extends StoreInstallation {
     role: string;
     status: string;
   }>;
+  members: Array<{
+    id: string;
+    email: string;
+    full_name: string;
+    referral_code: string;
+    created_at: string;
+    points_balance: number;
+  }>;
 }
 
 export function StoreInstallations() {
@@ -166,11 +174,37 @@ export function StoreInstallations() {
         .eq('store_installation_id', storeId)
         .order('role');
 
+      // Get client_id for this store to load loyalty members
+      const clientId = store.client_id;
+      const { data: memberData } = await supabase
+        .from('member_users')
+        .select(`
+          id,
+          email,
+          full_name,
+          referral_code,
+          created_at,
+          member_loyalty_status(points_balance)
+        `)
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      const members = (memberData || []).map((m: any) => ({
+        id: m.id,
+        email: m.email,
+        full_name: m.full_name,
+        referral_code: m.referral_code,
+        created_at: m.created_at,
+        points_balance: m.member_loyalty_status?.[0]?.points_balance ?? m.member_loyalty_status?.points_balance ?? 0,
+      }));
+
       const storeWithDetails: StoreDetails = {
         ...store,
         plugins: plugins || [],
         webhooks: webhooks || [],
         users: users || [],
+        members,
         plugins_count: plugins?.length || 0,
         users_count: users?.length || 0,
         webhooks_count: webhooks?.length || 0,
@@ -557,6 +591,55 @@ export function StoreInstallations() {
                       </div>
                     ))}
                   </div>
+                </div>
+
+                {/* Loyalty Members */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    Loyalty Members ({selectedStore.members.length})
+                  </h3>
+                  {selectedStore.members.length === 0 ? (
+                    <div className="text-center py-6 border border-dashed border-gray-300 rounded-lg">
+                      <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500">No loyalty members yet</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Points</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Referral Code</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Joined</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-100">
+                          {selectedStore.members.map((member) => (
+                            <tr key={member.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-2">
+                                <div>
+                                  <span className="font-medium text-gray-900">{member.full_name || member.email}</span>
+                                  {member.full_name && (
+                                    <p className="text-xs text-gray-500">{member.email}</p>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-2">
+                                <span className="font-semibold text-blue-700">{member.points_balance.toLocaleString()}</span>
+                              </td>
+                              <td className="px-4 py-2 text-gray-600 font-mono text-xs">
+                                {member.referral_code || '—'}
+                              </td>
+                              <td className="px-4 py-2 text-gray-500">
+                                {new Date(member.created_at).toLocaleDateString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </div>
 
