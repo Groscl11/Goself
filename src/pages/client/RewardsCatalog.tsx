@@ -377,6 +377,16 @@ export default function RewardsCatalog() {
 
   const currencySymbol = (c: string) => c === 'INR' ? '₹' : c === 'GBP' ? '£' : c === 'EUR' ? '€' : '$';
 
+  const isExpiringSoon = (date: string | null) => {
+    if (!date) return false;
+    const days = (new Date(date).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    return days >= 0 && days <= 30;
+  };
+  const isExpired = (date: string | null) => {
+    if (!date) return false;
+    return new Date(date).getTime() < Date.now();
+  };
+
   // Filtered lists
   const filteredRewards = useMemo(() => rewards.filter(r => {
     const matchSearch = !rewardSearch || r.title.toLowerCase().includes(rewardSearch.toLowerCase()) || r.reward_id?.toLowerCase().includes(rewardSearch.toLowerCase());
@@ -417,16 +427,6 @@ export default function RewardsCatalog() {
     brandRewards: brandConfigs.filter(c => c.is_active).length,
     manualRewards: manualRewards.filter(r => r.is_active).length,
   }), [rewards, codes, brandConfigs, manualRewards]);
-
-  const isExpiringSoon = (date: string | null) => {
-    if (!date) return false;
-    const days = (new Date(date).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
-    return days >= 0 && days <= 30;
-  };
-  const isExpired = (date: string | null) => {
-    if (!date) return false;
-    return new Date(date).getTime() < Date.now();
-  };
 
   return (
     <DashboardLayout menuItems={clientMenuItems} title="Rewards Catalog">
