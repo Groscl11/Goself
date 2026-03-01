@@ -23,7 +23,11 @@ export function Login() {
     const { error } = await signIn(email, password);
 
     if (error) {
-      setError(error.message);
+      if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+        setError('Unable to connect to the server. Please check your internet connection or try again in a moment.');
+      } else {
+        setError(error.message);
+      }
       setLoading(false);
     } else {
       navigate('/dashboard');
