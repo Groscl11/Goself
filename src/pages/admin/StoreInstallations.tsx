@@ -78,6 +78,15 @@ interface StoreDetails extends StoreInstallation {
     created_at: string;
     points_balance: number;
   }>;
+  orders: Array<{
+    id: string;
+    order_number: string;
+    customer_email: string;
+    total_price: number;
+    currency: string;
+    processed_at: string;
+    created_at: string;
+  }>;
 }
 
 export function StoreInstallations() {
@@ -145,7 +154,7 @@ export function StoreInstallations() {
     }
   };
 
-  const loadStoreDetails = async (storeId: string) => {
+  const loadStoreDetails = async (storeId: string, knownClientId?: string) => {
     try {
       const { data: store, error: storeError } = await supabase
         .from('store_installations')
@@ -173,26 +182,43 @@ export function StoreInstallations() {
         .eq('store_installation_id', storeId)
         .order('role');
 
-      // Get client_id for this store to load loyalty members
-      const clientId = store.client_id;
-      const { data: memberData, error: memberError } = await supabase
-        .from('member_users')
-        .select('id, email, full_name, created_at, member_loyalty_status(points_balance)')
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false })
-        .limit(50);
+      // Use client_id passed from the stores list (verified by clients!inner join)
+      // Fallback to store.client_id from fresh fetch if not provided
+      const clientId = knownClientId || store.client_id;
 
-      if (memberError) console.error('Error loading loyalty members:', memberError);
+      let members: StoreDetails['members'] = [];
+      let orders: StoreDetails['orders'] = [];
 
-      const members = (memberData || []).map((m: any) => ({
-        id: m.id,
-        email: m.email,
-        full_name: m.full_name,
-        created_at: m.created_at,
-        points_balance: Array.isArray(m.member_loyalty_status)
-          ? (m.member_loyalty_status[0]?.points_balance ?? 0)
-          : (m.member_loyalty_status?.points_balance ?? 0),
-      }));
+      if (clientId) {
+        const { data: memberData, error: memberError } = await supabase
+          .from('member_users')
+          .select('id, email, full_name, created_at, member_loyalty_status(points_balance)')
+          .eq('client_id', clientId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (memberError) console.error('Error loading loyalty members:', memberError);
+
+        members = (memberData || []).map((m: any) => ({
+          id: m.id,
+          email: m.email,
+          full_name: m.full_name,
+          created_at: m.created_at,
+          points_balance: Array.isArray(m.member_loyalty_status)
+            ? (m.member_loyalty_status[0]?.points_balance ?? 0)
+            : (m.member_loyalty_status?.points_balance ?? 0),
+        }));
+
+        const { data: orderData, error: orderError } = await supabase
+          .from('shopify_orders')
+          .select('id, order_number, customer_email, total_price, currency, processed_at, created_at')
+          .eq('client_id', clientId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (orderError) console.error('Error loading orders:', orderError);
+        orders = orderData || [];
+      }
 
       const storeWithDetails: StoreDetails = {
         ...store,
@@ -200,6 +226,7 @@ export function StoreInstallations() {
         webhooks: webhooks || [],
         users: users || [],
         members,
+        orders,
         plugins_count: plugins?.length || 0,
         users_count: users?.length || 0,
         webhooks_count: webhooks?.length || 0,
@@ -450,7 +477,7 @@ export function StoreInstallations() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <Button
-                            onClick={() => loadStoreDetails(store.id)}
+                            onClick={() => loadStoreDetails(store.id, store.client_id)}
                             className="text-blue-600 hover:text-blue-900"
                           >
                             <Eye className="w-4 h-4" />
@@ -624,6 +651,51 @@ export function StoreInstallations() {
                               </td>
                               <td className="px-4 py-2 text-gray-500">
                                 {new Date(member.created_at).toLocaleDateString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Orders */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    Recent Orders ({selectedStore.orders.length})
+                  </h3>
+                  {selectedStore.orders.length === 0 ? (
+                    <div className="text-center py-6 border border-dashed border-gray-300 rounded-lg">
+                      <p className="text-sm text-gray-500">No orders yet</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Order #</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-100">
+                          {selectedStore.orders.map((order) => (
+                            <tr key={order.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-2 font-mono text-xs text-gray-700">
+                                #{order.order_number || order.id.slice(0, 8)}
+                              </td>
+                              <td className="px-4 py-2 text-gray-700">
+                                {order.customer_email || '—'}
+                              </td>
+                              <td className="px-4 py-2 font-semibold text-gray-900">
+                                {order.total_price != null
+                                  ? `${order.currency} ${Number(order.total_price).toFixed(2)}`
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-2 text-gray-500">
+                                {new Date(order.processed_at || order.created_at).toLocaleDateString()}
                               </td>
                             </tr>
                           ))}
