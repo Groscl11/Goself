@@ -122,14 +122,26 @@ Deno.serve(async (req: Request) => {
     let pointsBalance = 0;
 
     if (memberUserId) {
-      const { data: status } = await supabase
+      // Try with clientId first, fallback to any loyalty status for this member
+      const { data: s1 } = await supabase
         .from("member_loyalty_status")
         .select("points_balance")
         .eq("member_user_id", memberUserId)
         .eq("client_id", clientId)
         .maybeSingle();
 
-      pointsBalance = status?.points_balance ?? 0;
+      if (s1) {
+        pointsBalance = s1.points_balance ?? 0;
+      } else {
+        const { data: s2 } = await supabase
+          .from("member_loyalty_status")
+          .select("points_balance")
+          .eq("member_user_id", memberUserId)
+          .order("points_balance", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        pointsBalance = s2?.points_balance ?? 0;
+      }
     }
 
     // ── 4. Fetch discount rewards (Shopify-backed) ────────────────────────────
@@ -141,11 +153,11 @@ Deno.serve(async (req: Request) => {
       )
       .eq("client_id", clientId)
       .eq("is_active", true)
-      .eq("is_marketplace", false)
-      .not("reward_type", "eq", "manual")
       .order("points_cost", { ascending: true });
 
-    const discountRewards = (rawDiscount ?? []).map((r: any) => ({
+    const discountRewards = (rawDiscount ?? [])
+      .filter((r: any) => r.reward_type !== "manual" && r.reward_type !== "brand_voucher")
+      .map((r: any) => ({
       ...r,
       category: "discount",
       can_redeem: pointsBalance >= r.points_cost,
@@ -159,14 +171,33 @@ Deno.serve(async (req: Request) => {
         "reward:rewards!reward_id(" +
           "id, title, description, value_description, voucher_count, " +
           "category, expiry_date, image_url, terms_conditions, " +
-          "brands!brand_id(id, name, logo_url)" +
+          "brands!brand_id(id, name, logo_url, website_url)" +
         ")"
       )
       .eq("client_id", clientId)
       .eq("is_active", true);
 
+    // Count live available (unassigned) vouchers per reward
+    const brandRewardIds = (rawBrand ?? [])
+      .map((cfg: any) => cfg.reward?.id)
+      .filter(Boolean);
+
+    let availableVoucherCounts: Record<string, number> = {};
+    if (brandRewardIds.length > 0) {
+      const { data: vRows } = await supabase
+        .from("vouchers")
+        .select("reward_id")
+        .in("reward_id", brandRewardIds)
+        .is("member_id", null)
+        .eq("status", "available");
+
+      for (const v of (vRows ?? [])) {
+        availableVoucherCounts[v.reward_id] = (availableVoucherCounts[v.reward_id] ?? 0) + 1;
+      }
+    }
+
     const brandRewards = (rawBrand ?? [])
-      .filter((cfg: any) => cfg.reward?.voucher_count > 0)
+      .filter((cfg: any) => cfg.reward && (availableVoucherCounts[cfg.reward.id] ?? 0) > 0)
       .map((cfg: any) => ({
         config_id: cfg.id,
         reward_id: cfg.reward.id,
@@ -179,6 +210,7 @@ Deno.serve(async (req: Request) => {
         voucher_count: cfg.reward.voucher_count,
         brand_name: cfg.reward.brands?.name ?? null,
         brand_logo: cfg.reward.brands?.logo_url ?? null,
+        brand_website_url: cfg.reward.brands?.website_url ?? null,
         category: cfg.reward.category ?? "brand",
         points_cost: cfg.points_cost,
         note: cfg.note ?? null,
@@ -203,6 +235,27 @@ Deno.serve(async (req: Request) => {
       reward_type: "manual",
       can_redeem: pointsBalance >= r.points_cost,
     }));
+
+    // ── 7a. Existing issued brand vouchers for this member ────────────────────
+    const existingBrandCodes: Record<string, { code: string; expires_at: string | null }> = {};
+
+    if (memberUserId && brandRewards.length > 0) {
+      const brandRewardIds = brandRewards.map((r: any) => r.reward_id);
+      const { data: bVouchers } = await supabase
+        .from("vouchers")
+        .select("reward_id, code, expires_at")
+        .eq("member_id", memberUserId)
+        .eq("status", "available")
+        .in("reward_id", brandRewardIds);
+
+      if (bVouchers) {
+        for (const v of bVouchers) {
+          if (v.reward_id && !existingBrandCodes[v.reward_id]) {
+            existingBrandCodes[v.reward_id] = { code: v.code, expires_at: v.expires_at };
+          }
+        }
+      }
+    }
 
     // ── 7. Existing unused discount codes for this member ─────────────────────
     const existingCodes: Record<string, { code: string; expires_at: string | null }> = {};
@@ -233,6 +286,7 @@ Deno.serve(async (req: Request) => {
       brand_rewards: brandRewards,
       manual_rewards: manualRewards,
       existing_codes: existingCodes,
+      existing_brand_codes: existingBrandCodes,
     });
   } catch (err: any) {
     console.error("get-member-rewards error:", err);
