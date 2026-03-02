@@ -1,4 +1,4 @@
-import { LayoutDashboard, Building2, Award, Gift, Users, Settings, BarChart3, Ticket, Zap, ShoppingCart, Store, Layers } from 'lucide-react';
+import { LayoutDashboard, Building2, Award, Gift, Users, Settings, BarChart3, Ticket, Zap, ShoppingCart, Store, Layers, RefreshCw } from 'lucide-react';
 
 export const adminMenuItems = [
   {
@@ -30,6 +30,11 @@ export const adminMenuItems = [
     label: 'Reward Allocations',
     path: '/admin/rewards/allocations',
     icon: <Layers className="w-5 h-5" />,
+  },
+  {
+    label: 'Brand Redemptions',
+    path: '/admin/brand-redemptions',
+    icon: <RefreshCw className="w-5 h-5" />,
   },
   {
     label: 'Membership Programs',

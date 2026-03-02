@@ -76,8 +76,10 @@ import { LoyaltyTransactions } from './pages/client/LoyaltyTransactions';
 import { ReferralTracking } from './pages/client/ReferralTracking';
 import { LoyaltyConfiguration } from './pages/client/LoyaltyConfiguration';
 import RewardsCatalog from './pages/client/RewardsCatalog';
+import { BrandRedemptions } from './pages/client/BrandRedemptions';
 import { ReferFriend } from './pages/member/ReferFriend';
 import { StoreInstallations } from './pages/admin/StoreInstallations';
+import { AdminBrandRedemptions } from './pages/admin/AdminBrandRedemptions';
 
 function DashboardRouter() {
   const { profile, loading } = useAuth();
@@ -131,6 +133,7 @@ function App() {
           <Route path="/admin/store-installations" element={<RoleBasedRoute allowedRoles={['admin']}><StoreInstallations /></RoleBasedRoute>} />
           <Route path="/admin/rewards" element={<RoleBasedRoute allowedRoles={['admin']}><AdminRewards /></RoleBasedRoute>} />
           <Route path="/admin/rewards/allocations" element={<RoleBasedRoute allowedRoles={['admin']}><RewardAllocations /></RoleBasedRoute>} />
+          <Route path="/admin/brand-redemptions" element={<RoleBasedRoute allowedRoles={['admin']}><AdminBrandRedemptions /></RoleBasedRoute>} />
           <Route path="/admin/transactions" element={<RoleBasedRoute allowedRoles={['admin']}><Transactions /></RoleBasedRoute>} />
           <Route path="/admin/membership-programs" element={<RoleBasedRoute allowedRoles={['admin']}><MembershipPrograms /></RoleBasedRoute>} />
           <Route path="/admin/membership-programs/:id" element={<RoleBasedRoute allowedRoles={['admin']}><MembershipProgramForm /></RoleBasedRoute>} />
@@ -162,6 +165,7 @@ function App() {
           <Route path="/client/loyalty-members" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyMembers /></RoleBasedRoute>} />
           <Route path="/client/loyalty-transactions" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyTransactions /></RoleBasedRoute>} />
           <Route path="/client/rewards-catalog" element={<RoleBasedRoute allowedRoles={['client']}><RewardsCatalog /></RoleBasedRoute>} />
+          <Route path="/client/brand-redemptions" element={<RoleBasedRoute allowedRoles={['client']}><BrandRedemptions /></RoleBasedRoute>} />
           <Route path="/client/referral-tracking" element={<RoleBasedRoute allowedRoles={['client']}><ReferralTracking /></RoleBasedRoute>} />
           <Route path="/client/loyalty-config" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyConfiguration /></RoleBasedRoute>} />
           <Route path="/client/my-rewards" element={<RoleBasedRoute allowedRoles={['client']}><ClientRewards /></RoleBasedRoute>} />
