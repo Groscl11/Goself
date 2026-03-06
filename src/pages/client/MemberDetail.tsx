@@ -193,11 +193,18 @@ export function MemberDetail() {
     if (!id) return;
     setLoading(true);
     try {
+      // Phase 1: get member first so we have the email for orders query
+      const memberRes = await supabase.from('member_users').select('*').eq('id', id).maybeSingle();
+      if (memberRes.error || !memberRes.data) { navigate('/client/members'); return; }
+      const memberData = memberRes.data;
+      const memberEmail = memberData.email;
+      setMember(memberData);
+
+      // Phase 2: all other data in parallel
       const [
-        memberRes, membershipRes, allocRes, voucherRes,
+        membershipRes, allocRes, voucherRes,
         redemptionRes, txnRes, sourceRes, lsRes, pointsRes, ordersRes,
       ] = await Promise.all([
-        supabase.from('member_users').select('*').eq('id', id).maybeSingle(),
         supabase.from('member_memberships').select('*, program:membership_programs(name)').eq('member_id', id).order('created_at', { ascending: false }),
         supabase.from('member_rewards_allocation').select('*, reward:rewards(title)').eq('member_id', id).order('allocated_at', { ascending: false }),
         supabase.from('vouchers').select('*, reward:rewards(title)').eq('member_id', id).order('created_at', { ascending: false }),
@@ -206,24 +213,46 @@ export function MemberDetail() {
         supabase.from('member_sources').select('*').eq('member_id', id).order('created_at', { ascending: true }).limit(1).maybeSingle(),
         supabase.from('member_loyalty_status').select('*, program:loyalty_programs(name)').eq('member_user_id', id).order('created_at', { ascending: false }),
         supabase.from('loyalty_points_transactions').select('*').eq('member_user_id', id).order('created_at', { ascending: false }).limit(200),
-        supabase.from('shopify_orders').select('id, order_id, order_number, total_price, currency, order_status, processed_at, created_at').eq('member_id', id).order('created_at', { ascending: false }),
+        // Match orders by member_id OR customer_email (older orders may only have email)
+        supabase.from('shopify_orders')
+          .select('id, order_id, order_number, total_price, currency, order_status, processed_at, created_at, customer_email')
+          .or(`member_id.eq.${id},customer_email.eq.${memberEmail}`)
+          .order('created_at', { ascending: false }),
       ]);
 
-      if (memberRes.error || !memberRes.data) { navigate('/client/members'); return; }
-
-      setMember(memberRes.data);
       setMemberships(membershipRes.data ?? []);
       setAllocations(allocRes.data ?? []);
       setVouchers(voucherRes.data ?? []);
       setRedemptions(redemptionRes.data ?? []);
       setTransactions(txnRes.data ?? []);
       setMemberSource(sourceRes.data ?? null);
-      setLoyaltyStatuses((lsRes.data ?? []) as LoyaltyStatus[]);
-      setPointsTxns((pointsRes.data ?? []) as PointsTxn[]);
+
+      const lsData = (lsRes.data ?? []) as LoyaltyStatus[];
+      setLoyaltyStatuses(lsData);
+
+      const ptData = (pointsRes.data ?? []) as PointsTxn[];
+      setPointsTxns(ptData);
+
       setOrders((ordersRes.data ?? []) as Order[]);
 
-      const ls = lsRes.data;
-      if (ls && ls.length > 0) setAdjustStatusId(ls[0].id);
+      // Set adjustStatusId: prefer from loyaltyStatuses, fallback to status ID inside transactions
+      if (lsData.length > 0) {
+        setAdjustStatusId(lsData[0].id);
+      } else if (ptData.length > 0) {
+        const fallbackStatusId = (ptData[0] as any).member_loyalty_status_id;
+        if (fallbackStatusId) {
+          setAdjustStatusId(fallbackStatusId);
+          // Also try to fetch the actual status record so we have program name
+          const statusFetch = await supabase
+            .from('member_loyalty_status')
+            .select('*, program:loyalty_programs(name)')
+            .eq('id', fallbackStatusId)
+            .maybeSingle();
+          if (statusFetch.data) {
+            setLoyaltyStatuses([statusFetch.data as LoyaltyStatus]);
+          }
+        }
+      }
     } catch (err) {
       console.error('Error loading member:', err);
     } finally {
@@ -232,22 +261,31 @@ export function MemberDetail() {
   };
 
   // ─── Derived stats ─────────────────────────────────────────────────────────
-  const totalPointsBalance = loyaltyStatuses.reduce((s, ls) => s + (ls.points_balance ?? 0), 0);
-  const totalLifetimePts = loyaltyStatuses.reduce((s, ls) => s + (ls.lifetime_points_earned ?? 0), 0);
+  // Compute balance from transactions (most recent balance_after) as primary source;
+  // fall back to loyaltyStatuses if no transactions exist
+  const totalPointsBalance = pointsTxns.length > 0
+    ? pointsTxns[0].balance_after
+    : loyaltyStatuses.reduce((s, ls) => s + (ls.points_balance ?? 0), 0);
+  const totalLifetimePts = pointsTxns.length > 0
+    ? pointsTxns.filter((t) => t.points_amount > 0).reduce((s, t) => s + t.points_amount, 0)
+    : loyaltyStatuses.reduce((s, ls) => s + (ls.lifetime_points_earned ?? 0), 0);
   const availableVouchers = vouchers.filter((v) => v.status === 'available').length;
 
   // ─── Edit Profile ───────────────────────────────────────────────────────────
+  // Helper: read profile field from metadata (fallback for columns not yet in DB)
+  const metaField = (key: string) => member?.metadata?.[key] ?? member?.[key as keyof MemberData] ?? '';
+
   const openEdit = () => {
     if (!member) return;
     setEditForm({
       full_name: member.full_name,
       email: member.email,
       phone: member.phone ?? '',
-      gender: member.gender ?? '',
-      date_of_birth: member.date_of_birth ?? '',
-      anniversary_date: member.anniversary_date ?? '',
-      occupation: member.occupation ?? '',
-      corporate_email: member.corporate_email ?? '',
+      gender: String(metaField('gender')),
+      date_of_birth: String(metaField('date_of_birth')),
+      anniversary_date: String(metaField('anniversary_date')),
+      occupation: String(metaField('occupation')),
+      corporate_email: String(metaField('corporate_email')),
     });
     setEditOpen(true);
   };
@@ -255,17 +293,25 @@ export function MemberDetail() {
   const saveProfile = async () => {
     if (!member || !id) return;
     setEditSaving(true);
-    const { error } = await supabase.from('member_users').update({
-      full_name: editForm.full_name,
-      phone: editForm.phone || null,
+    // Build extra fields — stored in metadata for compatibility with existing DB schema
+    const extraMeta = {
+      ...(member.metadata ?? {}),
       gender: editForm.gender || null,
       date_of_birth: editForm.date_of_birth || null,
       anniversary_date: editForm.anniversary_date || null,
       occupation: editForm.occupation || null,
       corporate_email: editForm.corporate_email || null,
+    };
+    const { error } = await supabase.from('member_users').update({
+      full_name: editForm.full_name,
+      phone: editForm.phone || null,
+      metadata: extraMeta,
     }).eq('id', id);
     setEditSaving(false);
-    if (!error) { setMember({ ...member, ...editForm } as MemberData); setEditOpen(false); }
+    if (!error) {
+      setMember({ ...member, full_name: editForm.full_name!, phone: editForm.phone!, metadata: extraMeta });
+      setEditOpen(false);
+    }
   };
 
   // ─── Adjust Points ──────────────────────────────────────────────────────────
@@ -277,11 +323,12 @@ export function MemberDetail() {
     if (!adjustStatusId) { setAdjustError('No loyalty program found for this member.'); return; }
 
     setAdjustSaving(true);
-    const statusRecord = loyaltyStatuses.find((ls) => ls.id === adjustStatusId);
-    if (!statusRecord) { setAdjustError('Loyalty status record not found.'); setAdjustSaving(false); return; }
+    // Current balance: prefer loyaltyStatus record, otherwise use latest transaction balance_after
+    const currentBalance = loyaltyStatuses.find((ls) => ls.id === adjustStatusId)?.points_balance
+      ?? (pointsTxns.length > 0 ? pointsTxns[0].balance_after : 0);
 
     const pointsDelta = adjustType === 'credit' ? amt : -amt;
-    const newBalance = (statusRecord.points_balance ?? 0) + pointsDelta;
+    const newBalance = currentBalance + pointsDelta;
 
     const [txnRes, updateRes] = await Promise.all([
       supabase.from('loyalty_points_transactions').insert({
@@ -384,11 +431,11 @@ export function MemberDetail() {
                   {[
                     { icon: <Mail className="w-4 h-4 text-gray-400" />, label: 'Email', value: member.email },
                     { icon: <Phone className="w-4 h-4 text-gray-400" />, label: 'Phone', value: member.phone || '—' },
-                    { icon: <User className="w-4 h-4 text-gray-400" />, label: 'Gender', value: member.gender || '—' },
-                    { icon: <Calendar className="w-4 h-4 text-gray-400" />, label: 'Date of Birth', value: fmt(member.date_of_birth) },
-                    { icon: <HeartHandshake className="w-4 h-4 text-gray-400" />, label: 'Anniversary', value: fmt(member.anniversary_date) },
-                    { icon: <Briefcase className="w-4 h-4 text-gray-400" />, label: 'Occupation', value: member.occupation || '—' },
-                    { icon: <Mail className="w-4 h-4 text-gray-400" />, label: 'Corporate Email', value: member.corporate_email || '—' },
+                    { icon: <User className="w-4 h-4 text-gray-400" />, label: 'Gender', value: String(metaField('gender')) || '—' },
+                    { icon: <Calendar className="w-4 h-4 text-gray-400" />, label: 'Date of Birth', value: fmt(String(metaField('date_of_birth')) || null) },
+                    { icon: <HeartHandshake className="w-4 h-4 text-gray-400" />, label: 'Anniversary', value: fmt(String(metaField('anniversary_date')) || null) },
+                    { icon: <Briefcase className="w-4 h-4 text-gray-400" />, label: 'Occupation', value: String(metaField('occupation')) || '—' },
+                    { icon: <Mail className="w-4 h-4 text-gray-400" />, label: 'Corporate Email', value: String(metaField('corporate_email')) || '—' },
                     { icon: <Calendar className="w-4 h-4 text-gray-400" />, label: 'Joined', value: fmt(member.created_at) },
                   ].map((item) => (
                     <div key={item.label} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
@@ -716,10 +763,10 @@ export function MemberDetail() {
       {/* ── Adjust Points Modal ── */}
       {adjustOpen && (
         <Modal title="Adjust Loyalty Points" onClose={() => setAdjustOpen(false)}>
-          {loyaltyStatuses.length === 0 ? (
+          {!adjustStatusId ? (
             <div className="flex items-center gap-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700">
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              <p className="text-sm">This member has no active loyalty program. Points cannot be adjusted.</p>
+              <p className="text-sm">This member has no loyalty transactions yet. Points cannot be adjusted.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -739,15 +786,10 @@ export function MemberDetail() {
                   </select>
                 </div>
               )}
-              {adjustStatusId && (() => {
-                const ls = loyaltyStatuses.find((l) => l.id === adjustStatusId);
-                return ls ? (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                    <Coins className="w-4 h-4 text-amber-600" />
-                    <span className="text-sm text-amber-700">Current balance: <strong>{ls.points_balance.toLocaleString()} pts</strong></span>
-                  </div>
-                ) : null;
-              })()}
+              <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                <Coins className="w-4 h-4 text-amber-600" />
+                <span className="text-sm text-amber-700">Current balance: <strong>{totalPointsBalance.toLocaleString()} pts</strong></span>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Adjustment Type</label>
                 <div className="flex gap-3">
@@ -796,7 +838,7 @@ export function MemberDetail() {
           )}
           <div className="flex justify-end gap-3 mt-6">
             <Button variant="outline" onClick={() => setAdjustOpen(false)}>Cancel</Button>
-            {loyaltyStatuses.length > 0 && (
+            {adjustStatusId && (
               <Button onClick={submitAdjustment} disabled={adjustSaving} className={adjustType === 'debit' ? 'bg-red-600 hover:bg-red-700' : ''}>
                 {adjustSaving ? 'Saving…' : adjustType === 'credit' ? 'Add Points' : 'Debit Points'}
               </Button>
