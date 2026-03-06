@@ -101,6 +101,31 @@ interface Order {
 
 type TabKey = 'memberships' | 'rewards' | 'vouchers' | 'points' | 'orders' | 'transactions' | 'history';
 
+// ─── Constants ──────────────────────────────────────────────────────────────
+
+const COUNTRY_CODES = [
+  { code: '+60', label: 'Malaysia (+60)' },
+  { code: '+1', label: 'US/CA (+1)' },
+  { code: '+44', label: 'UK (+44)' },
+  { code: '+91', label: 'India (+91)' },
+  { code: '+65', label: 'Singapore (+65)' },
+  { code: '+61', label: 'Australia (+61)' },
+  { code: '+971', label: 'UAE (+971)' },
+  { code: '+852', label: 'Hong Kong (+852)' },
+  { code: '+66', label: 'Thailand (+66)' },
+  { code: '+63', label: 'Philippines (+63)' },
+  { code: '+62', label: 'Indonesia (+62)' },
+  { code: '+86', label: 'China (+86)' },
+  { code: '+81', label: 'Japan (+81)' },
+  { code: '+82', label: 'South Korea (+82)' },
+  { code: '+49', label: 'Germany (+49)' },
+  { code: '+33', label: 'France (+33)' },
+];
+
+const OCCUPATION_OPTIONS = [
+  '', 'Student', 'Employed', 'Own Business', 'Not Working', 'Housewife', 'Retired', 'Freelancer', 'Other',
+];
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const statusColors: Record<string, string> = {
@@ -175,6 +200,8 @@ export function MemberDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState<Partial<MemberData>>({});
   const [editSaving, setEditSaving] = useState(false);
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const [phoneCountryCode, setPhoneCountryCode] = useState('+60');
 
   // Adjust points modal
   const [adjustOpen, setAdjustOpen] = useState(false);
@@ -277,10 +304,14 @@ export function MemberDetail() {
 
   const openEdit = () => {
     if (!member) return;
+    const existingPhone = member.phone ?? '';
+    const matchCC = existingPhone.match(/^(\+\d{1,4})\s+(.*)$/);
+    setPhoneCountryCode(matchCC ? matchCC[1] : '+60');
+    setEditErrors({});
     setEditForm({
       full_name: member.full_name,
       email: member.email,
-      phone: member.phone ?? '',
+      phone: matchCC ? matchCC[2] : existingPhone,
       gender: String(metaField('gender')),
       date_of_birth: String(metaField('date_of_birth')),
       anniversary_date: String(metaField('anniversary_date')),
@@ -292,7 +323,25 @@ export function MemberDetail() {
 
   const saveProfile = async () => {
     if (!member || !id) return;
+    // ── Validation ──
+    const errors: Record<string, string> = {};
+    const rawPhone = (editForm.phone ?? '').trim();
+    const phoneDigits = rawPhone.replace(/\D/g, '');
+    if (rawPhone && (phoneDigits.length < 7 || phoneDigits.length > 15)) {
+      errors.phone = 'Phone number must be 7–15 digits.';
+    }
+    const corpEmail = (editForm.corporate_email ?? '').trim();
+    if (corpEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(corpEmail)) {
+      errors.corporate_email = 'Enter a valid email address.';
+    }
+    if (Object.keys(errors).length > 0) {
+      setEditErrors(errors);
+      return;
+    }
+    setEditErrors({});
     setEditSaving(true);
+    // Combine country code + digits into phone field
+    const combinedPhone = rawPhone ? `${phoneCountryCode} ${phoneDigits}` : null;
     // Build extra fields — stored in metadata for compatibility with existing DB schema
     const extraMeta = {
       ...(member.metadata ?? {}),
@@ -300,16 +349,16 @@ export function MemberDetail() {
       date_of_birth: editForm.date_of_birth || null,
       anniversary_date: editForm.anniversary_date || null,
       occupation: editForm.occupation || null,
-      corporate_email: editForm.corporate_email || null,
+      corporate_email: corpEmail || null,
     };
     const { error } = await supabase.from('member_users').update({
       full_name: editForm.full_name,
-      phone: editForm.phone || null,
+      phone: combinedPhone,
       metadata: extraMeta,
     }).eq('id', id);
     setEditSaving(false);
     if (!error) {
-      setMember({ ...member, full_name: editForm.full_name!, phone: editForm.phone!, metadata: extraMeta });
+      setMember({ ...member, full_name: editForm.full_name!, phone: combinedPhone, metadata: extraMeta });
       setEditOpen(false);
     }
   };
@@ -718,32 +767,113 @@ export function MemberDetail() {
 
       {/* ── Edit Profile Modal ── */}
       {editOpen && (
-        <Modal title="Edit Member Profile" onClose={() => setEditOpen(false)}>
+        <Modal title="Edit Member Profile" onClose={() => { setEditOpen(false); setEditErrors({}); }}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[
-              { key: 'full_name', label: 'Full Name', type: 'text' },
-              { key: 'phone', label: 'Phone', type: 'tel' },
-              { key: 'date_of_birth', label: 'Date of Birth', type: 'date' },
-              { key: 'anniversary_date', label: 'Anniversary Date', type: 'date' },
-              { key: 'occupation', label: 'Occupation', type: 'text' },
-              { key: 'corporate_email', label: 'Corporate Email', type: 'email' },
-            ].map((f) => (
-              <div key={f.key}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{f.label}</label>
+
+            {/* Full Name */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+              <input
+                type="text"
+                value={editForm.full_name ?? ''}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, full_name: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Phone with country code */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+              <div className="flex gap-2">
+                <select
+                  value={phoneCountryCode}
+                  onChange={(e) => setPhoneCountryCode(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  {COUNTRY_CODES.map((cc) => (
+                    <option key={cc.code} value={cc.code}>{cc.label}</option>
+                  ))}
+                </select>
                 <input
-                  type={f.type}
-                  value={String((editForm as any)[f.key] ?? '')}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="e.g. 123456789"
+                  value={editForm.phone ?? ''}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/[^0-9]/g, '');
+                    setEditForm((prev) => ({ ...prev, phone: digits }));
+                    if (editErrors.phone) setEditErrors((prev) => ({ ...prev, phone: '' }));
+                  }}
+                  className={`flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    editErrors.phone ? 'border-red-400 focus:ring-red-400' : 'border-gray-300'
+                  }`}
                 />
               </div>
-            ))}
+              {editErrors.phone && <p className="mt-1 text-xs text-red-600">{editErrors.phone}</p>}
+            </div>
+
+            {/* Date of Birth */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+              <input
+                type="date"
+                value={editForm.date_of_birth ?? ''}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, date_of_birth: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Anniversary Date */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Anniversary Date</label>
+              <input
+                type="date"
+                value={editForm.anniversary_date ?? ''}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, anniversary_date: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Occupation dropdown */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Occupation</label>
+              <select
+                value={editForm.occupation ?? ''}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, occupation: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                {OCCUPATION_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>{opt === '' ? 'Not specified' : opt}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Corporate Email with validation */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Corporate Email</label>
+              <input
+                type="email"
+                placeholder="e.g. name@company.com"
+                value={editForm.corporate_email ?? ''}
+                onChange={(e) => {
+                  setEditForm((prev) => ({ ...prev, corporate_email: e.target.value }));
+                  if (editErrors.corporate_email) setEditErrors((prev) => ({ ...prev, corporate_email: '' }));
+                }}
+                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  editErrors.corporate_email ? 'border-red-400 focus:ring-red-400' : 'border-gray-300'
+                }`}
+              />
+              {editErrors.corporate_email && <p className="mt-1 text-xs text-red-600">{editErrors.corporate_email}</p>}
+            </div>
+
+            {/* Gender */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
               <select
                 value={editForm.gender ?? ''}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, gender: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="">Not specified</option>
                 <option value="Male">Male</option>
@@ -752,9 +882,10 @@ export function MemberDetail() {
                 <option value="Prefer not to say">Prefer not to say</option>
               </select>
             </div>
+
           </div>
           <div className="flex justify-end gap-3 mt-6">
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setEditOpen(false); setEditErrors({}); }}>Cancel</Button>
             <Button onClick={saveProfile} disabled={editSaving}>{editSaving ? 'Saving…' : 'Save Changes'}</Button>
           </div>
         </Modal>
