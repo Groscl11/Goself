@@ -610,10 +610,7 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
               });
             }
           } else {
-            await supabase
-              .from("campaign_rules")
-              .update({ current_enrollments: (rule.current_enrollments || 0) + 1 })
-              .eq("id", rule.id);
+            await supabase.rpc("increment_campaign_enrollments", { campaign_id: rule.id });
 
             await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "success", "Member successfully enrolled via advanced rule", memberId, newMembership.id, {
               campaign_name: rule.name,
@@ -914,18 +911,12 @@ async function checkAndExecuteCampaignRules(supabase: any, clientId: string, ord
         } else {
           console.log(`Successfully auto-enrolled member ${memberId} in program ${rule.program_id} via campaign \"${rule.name}\"`);
 
-          await supabase
-            .from("campaign_rules")
-            .update({ current_enrollments: (rule.current_enrollments || 0) + 1 })
-            .eq("id", rule.id);
-
-          console.log(`Updated campaign \"${rule.name}\" enrollment count to ${(rule.current_enrollments || 0) + 1}`);
+          await supabase.rpc("increment_campaign_enrollments", { campaign_id: rule.id });
 
           await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "success", `Member successfully enrolled in program`, memberId, newMembership.id, {
             campaign_name: rule.name,
             program_id: rule.program_id,
             min_order_value: minOrderValue,
-            new_enrollment_count: (rule.current_enrollments || 0) + 1,
           });
 
           break;

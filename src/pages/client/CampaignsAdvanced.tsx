@@ -35,6 +35,17 @@ interface CampaignRule {
   };
 }
 
+// Ensure conditions from DB are always an array with valid id fields
+function normalizeConditions(raw: any): any[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((c: any, i: number) => ({
+    id: c.id || `cond_${Date.now()}_${i}`,
+    type: c.type || '',
+    operator: c.operator || '',
+    value: c.value ?? '',
+  }));
+}
+
 export function CampaignsAdvanced() {
   const navigate = useNavigate();
   const [rules, setRules] = useState<CampaignRule[]>([]);
@@ -592,10 +603,10 @@ export function CampaignsAdvanced() {
                             name: rule.name,
                             description: rule.description || '',
                             rule_version: rule.rule_version,
-                            trigger_conditions: rule.trigger_conditions || [],
-                            eligibility_conditions: rule.eligibility_conditions || [],
-                            location_conditions: rule.location_conditions || [],
-                            attribution_conditions: rule.attribution_conditions || [],
+                            trigger_conditions: normalizeConditions(rule.trigger_conditions),
+                            eligibility_conditions: normalizeConditions(rule.eligibility_conditions),
+                            location_conditions: normalizeConditions(rule.location_conditions),
+                            attribution_conditions: normalizeConditions(rule.attribution_conditions),
                             exclusion_rules: rule.exclusion_rules || {
                               exclude_refunded: true,
                               exclude_cancelled: true,
