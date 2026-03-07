@@ -120,14 +120,21 @@ Deno.serve(async (req: Request) => {
       }
 
       memberUserIdToUse = memberData.id;
+      // Resolve client_id from member record if not already resolved via shop_domain
+      if (!resolvedClientId && memberData.client_id) {
+        resolvedClientId = memberData.client_id;
+      }
       // Don't set referral_code here — member_loyalty_status.referral_code is the source of truth
     }
 
-    const { data: statusData, error: statusError } = await supabase
+    const { data: statusRows, error: statusError } = await supabase
       .from('member_loyalty_status')
       .select('*, current_tier:loyalty_tiers(*), loyalty_program:loyalty_programs(*)')
       .eq('member_user_id', memberUserIdToUse)
-      .maybeSingle();
+      .order('points_balance', { ascending: false })
+      .limit(1);
+
+    const statusData = statusRows?.[0] || null;
 
     if (statusError || !statusData) {
       return new Response(
@@ -156,6 +163,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         member_user_id: memberUserIdToUse,
+        client_id: resolvedClientId || null,
         referral_code: memberReferralCode,
         points_balance: status.points_balance,
         lifetime_points_earned: status.lifetime_points_earned,
