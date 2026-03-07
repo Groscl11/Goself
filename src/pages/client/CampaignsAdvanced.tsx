@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Plus, Edit, Trash2, Play, Pause, Zap, Users, MapPin, TrendingUp, Shield, Gift, ChevronDown, ChevronUp, Megaphone, Layers } from 'lucide-react';
+import { Plus, Edit, Trash2, Play, Pause, Zap, Users, MapPin, TrendingUp, Shield, Gift, ChevronDown, ChevronUp, Megaphone, Layers, Activity } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { clientMenuItems } from './clientMenuItems';
 import { RuleBuilder } from '../../components/RuleBuilder';
@@ -493,7 +493,7 @@ export function CampaignsAdvanced() {
   };
 
   return (
-    <DashboardLayout menuItems={clientMenuItems} title="Campaigns">
+    <DashboardLayout menuItems={clientMenuItems} title="Reward Campaigns">
       <div className="space-y-6">
         {/* Tab bar */}
         <div className="border-b border-gray-200">
@@ -511,6 +511,13 @@ export function CampaignsAdvanced() {
             >
               <Layers className="w-4 h-4" />
               Advanced Rules
+            </button>
+            <button
+              onClick={() => navigate('/client/campaign-logs')}
+              className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            >
+              <Activity className="w-4 h-4" />
+              Trigger Logs
             </button>
           </nav>
         </div>

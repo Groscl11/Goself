@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, Award, Settings, ShoppingBag, Zap, BarChart3, Package, FileText, Megaphone, ShoppingCart, Sparkles, Mail, Activity, Coins, UserPlus, Cog, Receipt, Tag, Building2 } from 'lucide-react';
+import { LayoutDashboard, Users, Award, Settings, ShoppingBag, Zap, BarChart3, Package, FileText, Megaphone, ShoppingCart, Sparkles, Mail, Coins, UserPlus, Cog, Receipt, Tag, Building2 } from 'lucide-react';
 
 export const clientMenuItems = [
   {
@@ -62,14 +62,9 @@ export const clientMenuItems = [
     icon: <ShoppingBag className="w-5 h-5" />,
   },
   {
-    label: 'Campaigns',
+    label: 'Reward Campaigns',
     path: '/client/campaigns',
     icon: <Megaphone className="w-5 h-5" />,
-  },
-  {
-    label: 'Campaign Trigger Logs',
-    path: '/client/campaign-logs',
-    icon: <Activity className="w-5 h-5" />,
   },
   {
     label: 'Message Templates',
