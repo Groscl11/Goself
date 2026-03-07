@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
@@ -90,6 +91,7 @@ const widgetTypes: WidgetType[] = [
 ];
 
 export default function WidgetManagement() {
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const [widgets, setWidgets] = useState<WidgetConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -671,9 +673,33 @@ export default function WidgetManagement() {
   return (
     <DashboardLayout menuItems={clientMenuItems}>
       <div className="space-y-6">
+        {/* Tab bar */}
+        <div className="border-b border-gray-200">
+          <nav className="flex gap-1">
+            <button
+              onClick={() => navigate('/client/widgets')}
+              className="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            >
+              Shopify Widgets
+            </button>
+            <button
+              onClick={() => navigate('/client/widget-configs')}
+              className="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            >
+              Widget Configurations
+            </button>
+            <button
+              onClick={() => navigate('/client/extensions')}
+              className="px-4 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600"
+            >
+              App Extensions
+            </button>
+          </nav>
+        </div>
+
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Shopify Widgets</h1>
+          <h1 className="text-2xl font-bold text-gray-900">App Extensions</h1>
           <p className="text-gray-600 mt-1">
             Manage your Shopify app extensions and widgets
           </p>

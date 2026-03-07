@@ -20,7 +20,7 @@ interface ApiDocumentationProps {
 
 export function ApiDocumentation({ supabaseUrl, anonKey }: ApiDocumentationProps) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'referral' | 'campaigns' | 'loyalty' | 'widgets'>('referral');
+  const [activeTab, setActiveTab] = useState<'referral' | 'campaigns' | 'loyalty' | 'widgets' | 'earn'>('referral');
 
   const handleCopy = async (code: string, id: string) => {
     try {
@@ -305,6 +305,62 @@ fetch('${supabaseUrl}/functions/v1/get-order-reward-link', {
   "rewards": [{ "id": "uuid", "title": "Free Shipping", "voucher_code": "SHIP-FREE123", "status": "active" }]
 }`,
     },
+    {
+      method: 'POST',
+      path: '/functions/v1/evaluate-campaign-rules',
+      description: 'Evaluate all active campaign rules for a given order/event and return matched rules. Used internally by the webhook but can also be called manually to preview what rules would fire.',
+      authentication: 'Bearer Token (Anon Key)',
+      requestBody: [
+        { field: 'shop_domain', type: 'string', required: true, description: 'Shopify shop domain' },
+        { field: 'customer_email', type: 'string', required: false, description: 'Customer email' },
+        { field: 'order_value', type: 'number', required: false, description: 'Order total for order_value triggers' },
+        { field: 'order_count', type: 'number', required: false, description: 'Total order count for order_count triggers' },
+        { field: 'trigger_type', type: 'string', required: false, description: 'Trigger type to evaluate (order_value, order_count, signup, birthday)' },
+      ],
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/evaluate-campaign-rules', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer ${anonKey}',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    shop_domain: 'mystore.myshopify.com',
+    customer_email: 'customer@example.com',
+    order_value: 150.00,
+    trigger_type: 'order_value'
+  })
+})`,
+      responseExample: `{
+  "success": true,
+  "matched_rules": [
+    { "campaign_id": "CAMP-0001", "name": "VIP Welcome", "rewards": [{ "id": "uuid", "title": "20% Off" }] }
+  ]
+}`,
+    },
+    {
+      method: 'POST',
+      path: '/functions/v1/send-campaign-communication',
+      description: 'Send an email or SMS communication to a member as part of a campaign enrollment. Uses the campaign\'s communication settings and the client\'s default template.',
+      authentication: 'Bearer Token (Anon Key)',
+      requestBody: [
+        { field: 'campaign_rule_id', type: 'string', required: true, description: 'UUID of the campaign rule' },
+        { field: 'member_user_id', type: 'string', required: true, description: 'UUID of the member to notify' },
+        { field: 'reward_allocation_id', type: 'string', required: false, description: 'UUID of the reward allocation issued (for deep link in message)' },
+      ],
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/send-campaign-communication', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer ${anonKey}',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    campaign_rule_id: 'campaign-uuid',
+    member_user_id: 'member-uuid',
+    reward_allocation_id: 'allocation-uuid'
+  })
+})`,
+      responseExample: `{ "success": true, "message_id": "uuid", "channel": "email" }`,
+    },
   ];
 
   // ─── LOYALTY APIs ──────────────────────────────────────────────────────────
@@ -462,6 +518,150 @@ fetch('${supabaseUrl}/functions/v1/get-order-reward-link', {
   "remaining_points": 400
 }`,
     },
+    {
+      method: 'GET',
+      path: '/functions/v1/get-member-rewards?shop=mystore.myshopify.com&member_user_id=uuid',
+      description: 'Returns all redeemable rewards for a loyalty member grouped into discount rewards, brand rewards, and manual rewards. Includes can_redeem flag based on current points balance.',
+      authentication: 'No Authentication Required (Public)',
+      requestBody: [
+        { field: 'shop', type: 'string (query param)', required: true, description: 'Shopify shop domain' },
+        { field: 'member_user_id', type: 'string (query param)', required: false, description: 'Member UUID (member_user_id or email required)' },
+        { field: 'email', type: 'string (query param)', required: false, description: 'Customer email (alternative to member_user_id)' },
+      ],
+      exampleRequest: `// GET request
+fetch('${supabaseUrl}/functions/v1/get-member-rewards?shop=mystore.myshopify.com&member_user_id=uuid')`,
+      responseExample: `{
+  "points_balance": 450,
+  "discount_rewards": [{ "id": "uuid", "title": "20% Off", "points_cost": 200, "can_redeem": true }],
+  "brand_rewards": [{ "id": "uuid", "title": "Coffee Voucher", "brand": "Brand Name", "can_redeem": false }],
+  "manual_rewards": [],
+  "existing_codes": { "reward-uuid": { "code": "DISC20-ABC", "expires_at": "2026-06-01" } }
+}`,
+    },
+    {
+      method: 'GET',
+      path: '/functions/v1/get-rewards-catalog?shop=mystore.myshopify.com',
+      description: 'Returns the full public rewards catalog for a store — all active rewards available to members regardless of points balance.',
+      authentication: 'No Authentication Required (Public)',
+      requestBody: [
+        { field: 'shop', type: 'string (query param)', required: true, description: 'Shopify shop domain' },
+      ],
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/get-rewards-catalog?shop=mystore.myshopify.com')`,
+      responseExample: `{
+  "rewards": [
+    { "id": "uuid", "title": "Free Shipping", "points_cost": 100, "reward_type": "discount", "is_active": true }
+  ]
+}`,
+    },
+    {
+      method: 'POST',
+      path: '/functions/v1/redeem-reward',
+      description: 'Redeem a specific reward for a member. Deducts points, creates a voucher/discount code, and returns the code for display.',
+      authentication: 'No Authentication Required (Public)',
+      requestBody: [
+        { field: 'shop_domain', type: 'string', required: true, description: 'Shopify shop domain' },
+        { field: 'reward_id', type: 'string', required: true, description: 'UUID of the reward to redeem' },
+        { field: 'member_user_id', type: 'string', required: false, description: 'Member UUID (member_user_id or email required)' },
+        { field: 'email', type: 'string', required: false, description: 'Customer email' },
+      ],
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/redeem-reward', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    shop_domain: 'mystore.myshopify.com',
+    reward_id: 'reward-uuid',
+    email: 'customer@example.com'
+  })
+})`,
+      responseExample: `{
+  "success": true,
+  "voucher_code": "REWARD-XYZ123",
+  "discount_value": 20,
+  "discount_type": "percentage",
+  "points_deducted": 200,
+  "remaining_points": 250
+}`,
+      errorCodes: [
+        { code: 'insufficient_points', description: 'Member does not have enough points' },
+        { code: 'reward_not_found', description: 'Reward not found or not active' },
+        { code: 'already_redeemed', description: 'Member already has an active code for this reward' },
+      ],
+    },
+    {
+      method: 'POST',
+      path: '/functions/v1/redeem-brand-reward',
+      description: 'Redeem a partner brand reward for a member. Deducts points and issues a brand voucher that can be used at the partner brand.',
+      authentication: 'No Authentication Required (Public)',
+      requestBody: [
+        { field: 'shop_domain', type: 'string', required: true, description: 'Shopify shop domain' },
+        { field: 'reward_id', type: 'string', required: true, description: 'UUID of the brand reward' },
+        { field: 'member_user_id', type: 'string', required: false, description: 'Member UUID' },
+        { field: 'email', type: 'string', required: false, description: 'Customer email' },
+      ],
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/redeem-brand-reward', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    shop_domain: 'mystore.myshopify.com',
+    reward_id: 'brand-reward-uuid',
+    email: 'customer@example.com'
+  })
+})`,
+      responseExample: `{
+  "success": true,
+  "voucher_code": "BRAND-ABC123",
+  "brand_name": "Coffee Chain",
+  "points_deducted": 500,
+  "remaining_points": 150,
+  "expires_at": "2026-12-31"
+}`,
+    },
+    {
+      method: 'POST',
+      path: '/functions/v1/process-reward-redemption',
+      description: 'Process a full reward redemption flow — validates eligibility, deducts points, creates discount code in Shopify, and logs the transaction.',
+      authentication: 'Bearer Token (Anon Key)',
+      requestBody: [
+        { field: 'shop_domain', type: 'string', required: true, description: 'Shopify shop domain' },
+        { field: 'reward_id', type: 'string', required: true, description: 'UUID of the reward' },
+        { field: 'member_user_id', type: 'string', required: true, description: 'Member UUID' },
+      ],
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/process-reward-redemption', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer ${anonKey}',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    shop_domain: 'mystore.myshopify.com',
+    reward_id: 'reward-uuid',
+    member_user_id: 'member-uuid'
+  })
+})`,
+      responseExample: `{ "success": true, "voucher_code": "REDEEMED-ABC", "shopify_discount_id": "gid://..." }`,
+    },
+    {
+      method: 'POST',
+      path: '/functions/v1/update-member-profile',
+      description: 'Update a loyalty member\'s profile fields — date of birth and anniversary date. Used by the widget to let members self-update for birthday/anniversary triggers.',
+      authentication: 'No Authentication Required (Public)',
+      requestBody: [
+        { field: 'member_user_id', type: 'string', required: true, description: 'UUID of the member' },
+        { field: 'client_id', type: 'string', required: true, description: 'UUID of the client' },
+        { field: 'date_of_birth', type: 'string (YYYY-MM-DD)', required: false, description: 'Member date of birth for birthday trigger' },
+        { field: 'anniversary_date', type: 'string (YYYY-MM-DD)', required: false, description: 'Member anniversary date for anniversary trigger' },
+      ],
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/update-member-profile', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    member_user_id: 'member-uuid',
+    client_id: 'client-uuid',
+    date_of_birth: '1990-05-15'
+  })
+})`,
+      responseExample: `{ "success": true, "updated": { "date_of_birth": "1990-05-15" } }`,
+    },
   ];
 
   // ─── WIDGET APIs ───────────────────────────────────────────────────────────
@@ -524,31 +724,18 @@ fetch('${supabaseUrl}/functions/v1/get-order-reward-link', {
   // ─── EXTRA FUNCTIONS (missing from docs) ──────────────────────────────────
   const extraEndpoints: ApiEndpoint[] = [
     {
-      method: 'POST',
-      path: '/functions/v1/process-multi-redemption',
-      description: 'Process multiple reward redemptions in a single call. Use when a customer redeems several campaign rewards at once from the rewards selection page.',
+      method: 'GET',
+      path: '/functions/v1/widget-render?shop=mystore.myshopify.com',
+      description: 'Returns the HTML/JS render of the loyalty widget for a specific store. Used by Shopify app extensions to embed the widget directly in the storefront.',
       authentication: 'No Authentication Required (Public)',
       requestBody: [
-        { field: 'token', type: 'string', required: true, description: 'Redemption token from get-order-reward-link' },
-        { field: 'selected_reward_ids', type: 'array', required: true, description: 'Array of reward allocation IDs the customer selected' },
-        { field: 'customer_email', type: 'string', required: true, description: 'Customer email for verification' },
+        { field: 'shop', type: 'string (query param)', required: true, description: 'Shopify shop domain' },
+        { field: 'customer_email', type: 'string (query param)', required: false, description: 'Customer email for personalised render' },
       ],
-      exampleRequest: `fetch('https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/process-multi-redemption', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    token: 'redemption_token_abc123',
-    selected_reward_ids: ['uuid1', 'uuid2'],
-    customer_email: 'customer@example.com'
-  })
-})`,
-      responseExample: `{
-  "success": true,
-  "redeemed": [
-    { "reward_id": "uuid1", "voucher_code": "SAVE20-ABC", "title": "20% Off" },
-    { "reward_id": "uuid2", "voucher_code": "SHIP-FREE", "title": "Free Shipping" }
-  ]
-}`,
+      exampleRequest: `// Embed in Shopify extension
+<script src="${supabaseUrl}/functions/v1/widget-render?shop=mystore.myshopify.com" defer></script>`,
+      responseExample: `// Returns widget HTML/JS for the given shop
+// Auto-initializes with store branding and customer data`,
     },
     {
       method: 'POST',
@@ -592,15 +779,15 @@ fetch('${supabaseUrl}/functions/v1/get-order-reward-link', {
     },
     {
       method: 'POST',
-      path: '/functions/v1/loyalty-widget-panel',
-      description: 'Returns data for the loyalty widget popup — points balance, referral code, tier status, and recent transactions. Called by the widget script to render the panel.',
+      path: '/functions/v1/widget-rewards-portal',
+      description: 'Returns data for the loyalty widget rewards portal — points balance, referral code, tier status, and recent transactions. Called by the widget script to render the rewards panel.',
       authentication: 'No Authentication Required (Public)',
       requestBody: [
         { field: 'shop_domain', type: 'string', required: true, description: 'Shopify shop domain' },
         { field: 'customer_email', type: 'string', required: false, description: 'Customer email (shows personalised data if provided)' },
         { field: 'customer_phone', type: 'string', required: false, description: 'Customer phone (alternative identifier)' },
       ],
-      exampleRequest: `fetch('${supabaseUrl}/functions/v1/loyalty-widget-panel', {
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/widget-rewards-portal', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -615,8 +802,127 @@ fetch('${supabaseUrl}/functions/v1/get-order-reward-link', {
     "referral_code": "JOHN2024",
     "tier": { "name": "Silver", "color": "#94a3b8" },
     "program": { "points_name": "Gems" }
-  }
+  },
+  "rewards": [{ "id": "uuid", "title": "20% Off", "points_cost": 200, "can_redeem": true }]
 }`,
+    },
+  ];
+
+  // ─── EARN POINTS APIs ─────────────────────────────────────────────────────
+  const earnEndpoints: ApiEndpoint[] = [
+    {
+      method: 'POST',
+      path: '/functions/v1/submit-earn-action',
+      description: 'Submit a "Ways to Earn" action for a member — e.g. completing a profile, writing a review, or celebrating a birthday. Checks cooldowns and max_times limits, then awards points.',
+      authentication: 'No Authentication Required (Public)',
+      badge: 'NEW',
+      requestBody: [
+        { field: 'member_user_id', type: 'string', required: true, description: 'UUID of the member performing the action' },
+        { field: 'client_id', type: 'string', required: true, description: 'UUID of the client (loyalty program owner)' },
+        { field: 'rule_id', type: 'string', required: true, description: 'UUID of the loyalty_earning_rules record' },
+        { field: 'rule_type', type: 'string', required: true, description: 'Rule type: custom_action, review, profile_completion, birthday, anniversary, social_share' },
+        { field: 'metadata', type: 'object', required: false, description: 'Extra data logged with the transaction (e.g. { review_id: "..." })' },
+      ],
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/submit-earn-action', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    member_user_id: 'member-uuid',
+    client_id: 'client-uuid',
+    rule_id: 'rule-uuid',
+    rule_type: 'review',
+    metadata: { review_id: 'shopify-review-123' }
+  })
+})`,
+      responseExample: `{
+  "success": true,
+  "points_awarded": 50,
+  "new_balance": 500,
+  "transaction_id": "uuid"
+}
+
+// If cooldown active:
+{ "success": false, "error": "cooldown_active", "next_eligible": "2026-03-14T00:00:00Z" }
+
+// If max_times reached:
+{ "success": false, "error": "max_times_reached" }`,
+      errorCodes: [
+        { code: 'cooldown_active', description: 'Member submitted this action too recently — includes next_eligible timestamp' },
+        { code: 'max_times_reached', description: 'Member has already completed this action the maximum allowed times' },
+        { code: 'rule_not_found', description: 'rule_id does not exist or does not belong to this client' },
+        { code: 'member_not_found', description: 'member_user_id not found or not in this client\'s program' },
+      ],
+    },
+    {
+      method: 'GET',
+      path: '/functions/v1/get-earning-rules?shop_domain=mystore.myshopify.com',
+      description: 'Returns all active Ways to Earn rules for a store — e.g. earn points for reviews, profile completion, birthday, etc. Optionally pass member_user_id to include per-rule eligibility status.',
+      authentication: 'No Authentication Required (Public)',
+      requestBody: [
+        { field: 'shop_domain', type: 'string (query param)', required: true, description: 'Shopify shop domain' },
+        { field: 'member_user_id', type: 'string (query param)', required: false, description: 'Member UUID — if provided, includes can_earn and next_eligible for each rule' },
+      ],
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/get-earning-rules?shop_domain=mystore.myshopify.com&member_user_id=uuid')`,
+      responseExample: `{
+  "rules": [
+    {
+      "id": "rule-uuid",
+      "rule_type": "review",
+      "name": "Write a Product Review",
+      "points_reward": 50,
+      "cooldown_days": 30,
+      "max_times": 5,
+      "can_earn": true
+    },
+    {
+      "id": "rule-uuid2",
+      "rule_type": "birthday",
+      "name": "Birthday Bonus",
+      "points_reward": 200,
+      "cooldown_days": 365,
+      "can_earn": false,
+      "next_eligible": "2027-05-15T00:00:00Z"
+    }
+  ]
+}`,
+    },
+    {
+      method: 'POST',
+      path: '/functions/v1/sync-discount-to-shopify',
+      description: 'Creates or updates a discount code in Shopify for a given reward. Called after points redemption to generate the actual Shopify discount code. Requires Shopify integration to be connected.',
+      authentication: 'Bearer Token (Anon Key)',
+      requestBody: [
+        { field: 'shop_domain', type: 'string', required: true, description: 'Shopify shop domain' },
+        { field: 'discount_code', type: 'string', required: true, description: 'The code string to create in Shopify' },
+        { field: 'discount_type', type: 'string', required: true, description: 'percentage | fixed_amount | free_shipping' },
+        { field: 'discount_value', type: 'number', required: true, description: 'Value of the discount (percentage or currency amount)' },
+        { field: 'usage_limit', type: 'number', required: false, description: 'Max number of times this code can be used (default: 1)' },
+        { field: 'expires_at', type: 'string (ISO 8601)', required: false, description: 'Expiry date for the discount code' },
+      ],
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/sync-discount-to-shopify', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer ${anonKey}',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    shop_domain: 'mystore.myshopify.com',
+    discount_code: 'LOYALTY-ABC123',
+    discount_type: 'percentage',
+    discount_value: 20,
+    usage_limit: 1,
+    expires_at: '2026-12-31T23:59:59Z'
+  })
+})`,
+      responseExample: `{
+  "success": true,
+  "shopify_price_rule_id": "gid://shopify/PriceRule/123456",
+  "shopify_discount_code_id": "gid://shopify/DiscountCode/789012"
+}`,
+      errorCodes: [
+        { code: 'no_integration', description: 'No Shopify integration found for this shop domain' },
+        { code: 'shopify_api_error', description: 'Shopify API rejected the request — check permissions' },
+      ],
     },
   ];
 
@@ -625,6 +931,7 @@ fetch('${supabaseUrl}/functions/v1/get-order-reward-link', {
     { id: 'campaigns' as const, label: 'Campaign & Rewards', endpoints: campaignEndpoints },
     { id: 'loyalty' as const, label: 'Loyalty Points', endpoints: loyaltyEndpoints },
     { id: 'widgets' as const, label: 'Widget APIs', endpoints: [...widgetEndpoints, ...extraEndpoints] },
+    { id: 'earn' as const, label: 'Earn Points', endpoints: earnEndpoints, isNew: true },
   ];
 
   const currentEndpoints = tabs.find(t => t.id === activeTab)?.endpoints || [];
@@ -643,7 +950,7 @@ fetch('${supabaseUrl}/functions/v1/get-order-reward-link', {
             <div className="text-xs text-blue-600 space-y-1">
               <p><strong>Base URL:</strong> {supabaseUrl}</p>
               <p><strong>Auth:</strong> Include Anon Key in Authorization header (some endpoints are public)</p>
-              <p><strong>Total Endpoints:</strong> {referralEndpoints.length + campaignEndpoints.length + loyaltyEndpoints.length + widgetEndpoints.length}</p>
+              <p><strong>Total Endpoints:</strong> {referralEndpoints.length + campaignEndpoints.length + loyaltyEndpoints.length + widgetEndpoints.length + extraEndpoints.length + earnEndpoints.length}</p>
             </div>
           </div>
         </div>

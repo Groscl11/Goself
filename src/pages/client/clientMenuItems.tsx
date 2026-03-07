@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, Award, Gift, Settings, ShoppingBag, Zap, BarChart3, Package, FileText, Megaphone, ShoppingCart, Sparkles, Puzzle, Mail, Activity, Layers, Sliders, Coins, UserPlus, Cog, Receipt, Tag, Building2 } from 'lucide-react';
+import { LayoutDashboard, Users, Award, Settings, ShoppingBag, Zap, BarChart3, Package, FileText, Megaphone, ShoppingCart, Sparkles, Mail, Activity, Coins, UserPlus, Cog, Receipt, Tag, Building2 } from 'lucide-react';
 
 export const clientMenuItems = [
   {
@@ -67,11 +67,6 @@ export const clientMenuItems = [
     icon: <Megaphone className="w-5 h-5" />,
   },
   {
-    label: 'Advanced Rules',
-    path: '/client/campaigns-advanced',
-    icon: <Layers className="w-5 h-5" />,
-  },
-  {
     label: 'Campaign Trigger Logs',
     path: '/client/campaign-logs',
     icon: <Activity className="w-5 h-5" />,
@@ -97,24 +92,9 @@ export const clientMenuItems = [
     icon: <ShoppingCart className="w-5 h-5" />,
   },
   {
-    label: 'Shopify Widgets',
+    label: 'Shopify & Widgets',
     path: '/client/widgets',
     icon: <Sparkles className="w-5 h-5" />,
-  },
-  {
-    label: 'App Extensions',
-    path: '/client/extensions',
-    icon: <Puzzle className="w-5 h-5" />,
-  },
-  {
-    label: 'Widget Configurations',
-    path: '/client/widget-configs',
-    icon: <Sliders className="w-5 h-5" />,
-  },
-  {
-    label: 'Tokenized Links',
-    path: '/client/tokenized-links',
-    icon: <Gift className="w-5 h-5" />,
   },
   {
     label: 'Reports',
