@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Search, Upload, Eye, UserPlus, Users } from 'lucide-react';
+import { Search, Upload, Eye, EyeOff, UserPlus, Users, Coins, ShoppingBag, Award } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { clientMenuItems } from './clientMenuItems';
@@ -12,7 +12,7 @@ interface Member {
   id: string;
   email: string;
   full_name: string;
-  phone: string;
+  phone: string | null;
   is_active: boolean;
   created_at: string;
   memberships_count?: number;
@@ -21,6 +21,45 @@ interface Member {
     source_type: string;
     created_at: string;
   };
+  // Loyalty fields
+  points_balance?: number;
+  tier_name?: string | null;
+  total_orders?: number;
+  total_spend?: number;
+}
+
+// ── PI masking helpers ────────────────────────────────────────────────────────
+
+function maskEmail(email: string): string {
+  if (!email) return '—';
+  const [local, domain] = email.split('@');
+  if (!domain) return email;
+  const visible = local.slice(0, 2);
+  return `${visible}${'*'.repeat(Math.max(local.length - 2, 3))}@${domain}`;
+}
+
+function maskPhone(phone: string): string {
+  if (!phone) return '—';
+  const digits = phone.replace(/\D/g, '');
+  return phone.slice(0, phone.indexOf(digits[0]) + 3) + '****' + digits.slice(-2);
+}
+
+function RevealCell({ masked, plain }: { masked: string; plain: string }) {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <span className="inline-flex items-center gap-1 group">
+      <span className={`text-sm ${revealed ? 'text-gray-900' : 'text-gray-500 tracking-wider'}`}>
+        {revealed ? plain : masked}
+      </span>
+      <button
+        onClick={() => setRevealed((v) => !v)}
+        title={revealed ? 'Hide' : 'Reveal'}
+        className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        {revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+      </button>
+    </span>
+  );
 }
 
 export function Members() {
@@ -52,7 +91,7 @@ export function Members() {
 
       const membersWithCounts = await Promise.all(
         (data || []).map(async (member) => {
-          const [membershipsResult, rewardsResult, sourceResult] = await Promise.all([
+          const [membershipsResult, rewardsResult, sourceResult, loyaltyResult] = await Promise.all([
             supabase
               .from('member_memberships')
               .select('id', { count: 'exact', head: true })
@@ -68,13 +107,26 @@ export function Members() {
               .order('created_at', { ascending: true })
               .limit(1)
               .maybeSingle(),
+            supabase
+              .from('member_loyalty_status')
+              .select('points_balance, total_orders, total_spend, current_tier_id, tier:loyalty_tiers(tier_name)')
+              .eq('member_user_id', member.id)
+              .order('points_balance', { ascending: false })
+              .limit(1)
+              .maybeSingle(),
           ]);
+
+          const loyalty = loyaltyResult.data as any;
 
           return {
             ...member,
             memberships_count: membershipsResult.count || 0,
             rewards_count: rewardsResult.count || 0,
             source: sourceResult.data || undefined,
+            points_balance: loyalty?.points_balance ?? 0,
+            tier_name: loyalty?.tier?.tier_name ?? null,
+            total_orders: loyalty?.total_orders ?? 0,
+            total_spend: loyalty?.total_spend ?? 0,
           };
         })
       );
@@ -88,9 +140,11 @@ export function Members() {
   };
 
   const filteredMembers = members.filter((member) => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
-      member.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.email.toLowerCase().includes(searchQuery.toLowerCase());
+      (member.full_name ?? '').toLowerCase().includes(q) ||
+      (member.email ?? '').toLowerCase().includes(q) ||
+      (member.phone ?? '').toLowerCase().includes(q);
 
     const matchesFilter = filterActive === null || member.is_active === filterActive;
 
@@ -175,15 +229,27 @@ export function Members() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="border-b border-gray-200">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-gray-200 bg-gray-50">
                     <tr>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Member</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Contact</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        Contact
+                        <span className="ml-1 text-xs font-normal text-gray-400">(hover to reveal)</span>
+                      </th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Source</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Registered</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Memberships</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Rewards</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        <span className="flex items-center gap-1"><Award className="w-3.5 h-3.5 text-amber-500" />Tier</span>
+                      </th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        <span className="flex items-center gap-1"><Coins className="w-3.5 h-3.5 text-amber-500" />Points</span>
+                      </th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        <span className="flex items-center gap-1"><ShoppingBag className="w-3.5 h-3.5 text-blue-500" />Orders</span>
+                      </th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Total Spend</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>
                     </tr>
@@ -191,10 +257,11 @@ export function Members() {
                   <tbody>
                     {filteredMembers.map((member) => (
                       <tr key={member.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        {/* Member name + ID */}
                         <td className="py-4 px-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold">
-                              {member.full_name?.[0]?.toUpperCase() || 'M'}
+                            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold flex-shrink-0">
+                              {(member.full_name ?? 'M')[0].toUpperCase()}
                             </div>
                             <div>
                               <p className="font-medium text-gray-900">{member.full_name || 'N/A'}</p>
@@ -202,12 +269,24 @@ export function Members() {
                             </div>
                           </div>
                         </td>
+
+                        {/* Contact — masked PI */}
                         <td className="py-4 px-4">
-                          <p className="text-sm text-gray-900">{member.email}</p>
-                          {member.phone && (
-                            <p className="text-sm text-gray-500">{member.phone}</p>
-                          )}
+                          <div className="flex flex-col gap-0.5">
+                            <RevealCell
+                              masked={maskEmail(member.email)}
+                              plain={member.email}
+                            />
+                            {member.phone && (
+                              <RevealCell
+                                masked={maskPhone(member.phone)}
+                                plain={member.phone}
+                              />
+                            )}
+                          </div>
                         </td>
+
+                        {/* Source */}
                         <td className="py-4 px-4">
                           {member.source ? (
                             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
@@ -220,38 +299,67 @@ export function Members() {
                               {member.source.source_type.charAt(0).toUpperCase() + member.source.source_type.slice(1)}
                             </span>
                           ) : (
-                            <span className="text-sm text-gray-400">Unknown</span>
+                            <span className="text-gray-400">Unknown</span>
                           )}
                         </td>
+
+                        {/* Registered */}
                         <td className="py-4 px-4">
-                          <p className="text-sm text-gray-900">
-                            {new Date(member.created_at).toLocaleDateString()}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {new Date(member.created_at).toLocaleTimeString()}
-                          </p>
+                          <p className="text-gray-900">{new Date(member.created_at).toLocaleDateString()}</p>
+                          <p className="text-xs text-gray-500">{new Date(member.created_at).toLocaleTimeString()}</p>
                         </td>
+
+                        {/* Memberships */}
                         <td className="py-4 px-4">
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700">
                             {member.memberships_count || 0}
                           </span>
                         </td>
+
+                        {/* Loyalty Tier */}
                         <td className="py-4 px-4">
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-50 text-green-700">
-                            {member.rewards_count || 0}
+                          {member.tier_name ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                              {member.tier_name}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
+                        </td>
+
+                        {/* Current Points */}
+                        <td className="py-4 px-4">
+                          <span className="font-semibold text-amber-700">
+                            {(member.points_balance ?? 0).toLocaleString()}
                           </span>
                         </td>
+
+                        {/* Total Orders */}
                         <td className="py-4 px-4">
-                          <span
-                            className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                              member.is_active
-                                ? 'bg-green-50 text-green-700'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}
-                          >
+                          <span className="font-medium text-gray-800">
+                            {(member.total_orders ?? 0).toLocaleString()}
+                          </span>
+                        </td>
+
+                        {/* Total Spend */}
+                        <td className="py-4 px-4">
+                          <span className="font-medium text-gray-800">
+                            {(member.total_spend ?? 0) > 0
+                              ? (member.total_spend!).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : '—'}
+                          </span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-4 px-4">
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                            member.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-700'
+                          }`}>
                             {member.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </td>
+
+                        {/* Actions */}
                         <td className="py-4 px-4">
                           <Button
                             size="sm"
