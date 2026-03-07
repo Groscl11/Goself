@@ -484,6 +484,20 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
       try {
         console.log(`Evaluating advanced rule: ${rule.name}`);
 
+        // Idempotency: skip if this order already successfully triggered this rule
+        const { data: existingLog } = await supabase
+          .from("campaign_trigger_logs")
+          .select("id")
+          .eq("campaign_rule_id", rule.id)
+          .eq("order_id", orderRecord.order_id)
+          .eq("trigger_result", "success")
+          .maybeSingle();
+
+        if (existingLog) {
+          console.log(`Order ${orderRecord.order_id} already processed for advanced rule "${rule.name}", skipping`);
+          continue;
+        }
+
         let memberId = null;
         if (orderRecord.customer_phone) {
           const { data: member } = await supabase
@@ -577,11 +591,24 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
             .single();
 
           if (enrollError) {
-            await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "failed", `Enrollment failed: ${enrollError.message}`, memberId, null, {
-              campaign_name: rule.name,
-              rule_type: "advanced",
-              error: enrollError.message,
-            });
+            if (enrollError.code === "23505") {
+              const { data: existingM } = await supabase
+                .from("member_memberships")
+                .select("id")
+                .eq("member_id", memberId)
+                .eq("program_id", rule.program_id)
+                .maybeSingle();
+              await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "already_enrolled", "Member concurrently enrolled by another webhook event (idempotent skip)", memberId, existingM?.id || null, {
+                campaign_name: rule.name,
+                rule_type: "advanced",
+              });
+            } else {
+              await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "failed", `Enrollment failed: ${enrollError.message}`, memberId, null, {
+                campaign_name: rule.name,
+                rule_type: "advanced",
+                error: enrollError.message,
+              });
+            }
           } else {
             await supabase
               .from("campaign_rules")
@@ -734,7 +761,19 @@ async function checkAndExecuteCampaignRules(supabase: any, clientId: string, ord
 
     for (const rule of sortedRules) {
       const minOrderValue = rule.trigger_conditions?.min_order_value || 0;
+      // Idempotency: skip if this order already successfully triggered this rule
+      const { data: existingLog } = await supabase
+        .from("campaign_trigger_logs")
+        .select("id")
+        .eq("campaign_rule_id", rule.id)
+        .eq("order_id", orderRecord.order_id)
+        .eq("trigger_result", "success")
+        .maybeSingle();
 
+      if (existingLog) {
+        console.log(`Order ${orderRecord.order_id} already processed for rule "${rule.name}", skipping`);
+        continue;
+      }
       console.log(`Checking rule \"${rule.name}\": min_order_value=${minOrderValue}, order_value=${orderRecord.total_price}`);
 
       if (parseFloat(orderRecord.total_price) >= minOrderValue) {
@@ -849,13 +888,29 @@ async function checkAndExecuteCampaignRules(supabase: any, clientId: string, ord
           .single();
 
         if (enrollError) {
-          const reason = `Enrollment failed: ${enrollError.message}`;
-          console.error(reason);
-          await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "failed", reason, memberId, null, {
-            campaign_name: rule.name,
-            error: enrollError.message,
-            min_order_value: minOrderValue,
-          });
+          // Unique constraint violation = another webhook already enrolled — treat as already_enrolled
+          if (enrollError.code === "23505") {
+            const { data: existingM } = await supabase
+              .from("member_memberships")
+              .select("id")
+              .eq("member_id", memberId)
+              .eq("program_id", rule.program_id)
+              .maybeSingle();
+            const reason = `Member concurrently enrolled by another webhook event (idempotent skip)`;
+            console.log(reason);
+            await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "already_enrolled", reason, memberId, existingM?.id || null, {
+              campaign_name: rule.name,
+              min_order_value: minOrderValue,
+            });
+          } else {
+            const reason = `Enrollment failed: ${enrollError.message}`;
+            console.error(reason);
+            await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "failed", reason, memberId, null, {
+              campaign_name: rule.name,
+              error: enrollError.message,
+              min_order_value: minOrderValue,
+            });
+          }
         } else {
           console.log(`Successfully auto-enrolled member ${memberId} in program ${rule.program_id} via campaign \"${rule.name}\"`);
 
