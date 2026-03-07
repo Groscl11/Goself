@@ -196,10 +196,11 @@ export function Campaigns() {
       }
 
       if (campaignId) {
-        await supabase
+        const { error: deleteRewardsError } = await supabase
           .from('campaign_rewards')
           .delete()
           .eq('campaign_id', campaignId);
+        if (deleteRewardsError) throw deleteRewardsError;
 
         if (selectedRewards.length > 0) {
           const campaignRewardsData = selectedRewards.map((rewardId, index) => ({
@@ -222,9 +223,10 @@ export function Campaigns() {
       resetForm();
       setSelectedRewards([]);
       loadData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving campaign rule:', error);
-      alert('Failed to save campaign rule');
+      const msg = error?.message || error?.toString() || 'Unknown error';
+      alert(`Failed to save campaign rule:\n${msg}`);
     }
   };
 
@@ -294,9 +296,9 @@ export function Campaigns() {
 
       if (error) throw error;
       loadData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting rule:', error);
-      alert('Failed to delete rule');
+      alert(`Failed to delete rule:\n${error?.message || error}`);
     }
   };
 
