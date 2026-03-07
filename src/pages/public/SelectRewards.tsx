@@ -28,6 +28,7 @@ export function SelectRewards() {
   const [selectedRewards, setSelectedRewards] = useState<Set<string>>(new Set());
   const [campaignName, setCampaignName] = useState('');
   const [clientName, setClientName] = useState('');
+  const [maxSelections, setMaxSelections] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [redeeming, setRedeeming] = useState(false);
 
@@ -75,16 +76,18 @@ export function SelectRewards() {
 
       setRewards(rewardsList);
 
-      // Fetch campaign name + client name
+      // Fetch campaign name + client name + program limits
       const { data: campData } = await supabase
         .from('campaign_rules')
-        .select('name, clients:client_id(name)')
+        .select('name, clients:client_id(name), membership_programs:program_id(max_rewards_total)')
         .eq('id', campaignId!)
         .single();
 
       if (campData) {
         setCampaignName(campData.name);
         setClientName((campData.clients as any)?.name || '');
+        const maxTotal = (campData.membership_programs as any)?.max_rewards_total;
+        if (maxTotal) setMaxSelections(maxTotal);
       }
     } catch (err: any) {
       console.error('Error loading rewards:', err);
@@ -99,6 +102,7 @@ export function SelectRewards() {
     if (newSelected.has(rewardId)) {
       newSelected.delete(rewardId);
     } else {
+      if (maxSelections && newSelected.size >= maxSelections) return; // limit reached
       newSelected.add(rewardId);
     }
     setSelectedRewards(newSelected);
@@ -123,7 +127,13 @@ export function SelectRewards() {
 
       if (fnError) throw fnError;
 
-      navigate(`/redemption-success?rewards=${selectedRewards.size}`);
+      navigate('/redemption-success', {
+        state: {
+          allocations: result?.allocations || [],
+          rewardCount: selectedRewards.size,
+          campaignName,
+        },
+      });
     } catch (err: any) {
       console.error('Error redeeming rewards:', err);
       alert(err.message || 'Failed to redeem rewards. Please try again.');
@@ -180,36 +190,41 @@ export function SelectRewards() {
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <p className="text-sm text-blue-800">
-            <strong>Select one or more rewards</strong> to claim your benefits. You can choose multiple rewards from this campaign.
+            <strong>Select {maxSelections ? `up to ${maxSelections}` : 'one or more'} reward{maxSelections !== 1 ? 's' : ''}</strong> to claim your benefits.
+            {maxSelections && ` (${selectedRewards.size}/${maxSelections} selected)`}
           </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 mb-8">
           {rewards.map((reward) => {
             const isSelected = selectedRewards.has(reward.id);
+            const isDisabled = !isSelected && maxSelections !== null && selectedRewards.size >= maxSelections;
             return (
-              <Card
+              <div
                 key={reward.id}
-                className={`cursor-pointer transition-all ${
+                role="button"
+                tabIndex={0}
+                onClick={() => !isDisabled && toggleReward(reward.id)}
+                onKeyDown={(e) => e.key === 'Enter' && !isDisabled && toggleReward(reward.id)}
+                className={`bg-white rounded-lg border shadow-sm transition-all select-none ${
                   isSelected
-                    ? 'ring-2 ring-blue-600 bg-blue-50'
-                    : 'hover:shadow-lg hover:border-blue-300'
+                    ? 'ring-2 ring-blue-600 border-blue-400 bg-blue-50 cursor-pointer'
+                    : isDisabled
+                    ? 'border-gray-200 opacity-50 cursor-not-allowed'
+                    : 'border-gray-200 hover:shadow-lg hover:border-blue-300 cursor-pointer'
                 }`}
-                onClick={() => toggleReward(reward.id)}
               >
-                <div className="p-6">
+                <div className="p-5">
                   <div className="flex items-start gap-4">
                     <div
-                      className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                        isSelected
-                          ? 'bg-blue-600 border-blue-600'
-                          : 'border-gray-300'
+                      className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center mt-1 ${
+                        isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
                       }`}
                     >
                       {isSelected && <Check className="w-4 h-4 text-white" />}
                     </div>
 
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       {reward.image_url && (
                         <img
                           src={reward.image_url}
@@ -218,53 +233,47 @@ export function SelectRewards() {
                         />
                       )}
 
-                      <h3 className="text-lg font-bold text-gray-900 mb-2">
-                        {reward.title}
-                      </h3>
+                      <h3 className="text-lg font-bold text-gray-900 mb-1">{reward.title}</h3>
 
                       {reward.brands && (
                         <div className="flex items-center gap-2 mb-2">
                           {reward.brands.logo_url && (
-                            <img
-                              src={reward.brands.logo_url}
-                              alt={reward.brands.name}
-                              className="w-6 h-6 object-contain"
-                            />
+                            <img src={reward.brands.logo_url} alt={reward.brands.name} className="w-5 h-5 object-contain" />
                           )}
-                          <span className="text-sm text-gray-600">
-                            {reward.brands.name}
-                          </span>
+                          <span className="text-sm text-gray-500">{reward.brands.name}</span>
                         </div>
                       )}
 
-                      <p className="text-gray-600 mb-3">{reward.description}</p>
+                      <p className="text-gray-600 text-sm mb-3">{reward.description}</p>
 
-                      {reward.reward_type === 'discount' && reward.discount_value && (
-                        <div className="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium mb-3">
-                          {reward.discount_value}% OFF
+                      {reward.discount_value && reward.reward_type && (
+                        <div className="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium mb-2">
+                          {reward.reward_type === 'percentage_discount' ? `${reward.discount_value}% OFF`
+                            : reward.reward_type === 'flat_discount' ? `₹${reward.discount_value} OFF`
+                            : reward.reward_type === 'fixed_value' ? `$${reward.discount_value} Value`
+                            : reward.reward_type === 'upto_discount' ? `Up to $${reward.discount_value} OFF`
+                            : `${reward.discount_value} OFF`}
                         </div>
                       )}
 
                       {reward.category && (
-                        <div className="inline-flex items-center px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">
+                        <span className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">
                           {reward.category}
-                        </div>
+                        </span>
                       )}
 
                       {reward.terms_conditions && (
-                        <details className="mt-3">
+                        <details className="mt-3" onClick={(e) => e.stopPropagation()}>
                           <summary className="text-sm text-gray-500 cursor-pointer hover:text-gray-700">
-                            Terms & Conditions
+                            Terms &amp; Conditions
                           </summary>
-                          <p className="text-xs text-gray-600 mt-2">
-                            {reward.terms_conditions}
-                          </p>
+                          <p className="text-xs text-gray-600 mt-2">{reward.terms_conditions}</p>
                         </details>
                       )}
                     </div>
                   </div>
                 </div>
-              </Card>
+              </div>
             );
           })}
         </div>

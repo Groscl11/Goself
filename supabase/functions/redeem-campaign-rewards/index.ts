@@ -17,10 +17,7 @@ interface RedemptionRequest {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
@@ -28,27 +25,15 @@ Deno.serve(async (req: Request) => {
 
     if (!campaign_id || !reward_ids || reward_ids.length === 0) {
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: "campaign_id and reward_ids are required"
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        JSON.stringify({ success: false, error: "campaign_id and reward_ids are required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     if (!email && !phone) {
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Either email or phone is required"
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        JSON.stringify({ success: false, error: "Either email or phone is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -56,158 +41,167 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // 1. Load campaign
     const { data: campaign, error: campaignError } = await supabase
       .from("campaign_rules")
-      .select("id, client_id, program_id, name, clients(name, communication_settings)")
+      .select("id, client_id, program_id, name, clients(name)")
       .eq("id", campaign_id)
       .eq("is_active", true)
       .maybeSingle();
 
     if (campaignError || !campaign) {
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Campaign not found or inactive"
-        }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        JSON.stringify({ success: false, error: "Campaign not found or inactive" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const clientId = campaign.client_id;
     const programId = campaign.program_id;
+    const clientName = (campaign.clients as any)?.name || "Rewards Hub";
 
+    // 2. Validate reward_ids belong to this campaign
+    const { data: campaignRewards } = await supabase
+      .from("campaign_rewards")
+      .select("reward_id")
+      .eq("campaign_id", campaign_id)
+      .in("reward_id", reward_ids)
+      .eq("is_active", true);
+
+    const validRewardIds = (campaignRewards || []).map((cr: any) => cr.reward_id);
+
+    if (validRewardIds.length === 0) {
+      return new Response(
+        JSON.stringify({ success: false, error: "No valid rewards found for this campaign" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 3. Load reward details (no client_id filter - rewards can be brand-owned)
+    const { data: rewards, error: rewardsError } = await supabase
+      .from("rewards")
+      .select("id, title, description, reward_type, coupon_type, generic_coupon_code, redemption_link")
+      .in("id", validRewardIds)
+      .eq("status", "active");
+
+    if (rewardsError || !rewards || rewards.length === 0) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Rewards not found or inactive" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 4. Find or create member_users
     let memberId: string | null = null;
 
     if (email) {
       const { data: existingMember } = await supabase
-        .from("membership_enrollments")
-        .select("member_id")
+        .from("member_users")
+        .select("id")
         .eq("client_id", clientId)
-        .eq("program_id", programId)
-        .eq("member_email", email)
+        .eq("email", email)
         .maybeSingle();
 
       if (existingMember) {
-        memberId = existingMember.member_id;
+        memberId = existingMember.id;
       } else {
-        const memberName = email.split("@")[0];
         const { data: newMember, error: memberError } = await supabase
-          .from("membership_enrollments")
+          .from("member_users")
           .insert({
             client_id: clientId,
-            program_id: programId,
-            member_email: email,
-            member_phone: phone,
-            member_name: memberName,
-            enrollment_source: "campaign",
-            enrollment_channel: "order",
-            status: "active"
+            email: email,
+            phone: phone || "",
+            full_name: email.split("@")[0],
           })
-          .select("member_id")
+          .select("id")
           .single();
 
         if (memberError) {
           console.error("Error creating member:", memberError);
           return new Response(
-            JSON.stringify({
-              success: false,
-              error: "Failed to create membership"
-            }),
-            {
-              status: 500,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            }
+            JSON.stringify({ success: false, error: "Failed to create member record" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-
-        memberId = newMember.member_id;
+        memberId = newMember.id;
       }
     }
 
-    const { data: rewards, error: rewardsError } = await supabase
-      .from("rewards")
-      .select("id, title, description, reward_type, coupon_type, generic_coupon_code, redemption_link, client_id")
-      .in("id", reward_ids)
-      .eq("client_id", clientId)
-      .eq("status", "active");
+    // 5. Find or create member_memberships
+    let membershipId: string | null = null;
 
-    if (rewardsError || !rewards || rewards.length === 0) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Rewards not found or inactive"
-        }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (memberId && programId) {
+      const { data: existingMembership } = await supabase
+        .from("member_memberships")
+        .select("id")
+        .eq("member_id", memberId)
+        .eq("program_id", programId)
+        .maybeSingle();
+
+      if (existingMembership) {
+        membershipId = existingMembership.id;
+      } else {
+        const { data: newMembership, error: membershipError } = await supabase
+          .from("member_memberships")
+          .insert({
+            member_id: memberId,
+            program_id: programId,
+            status: "active",
+            activated_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
+
+        if (!membershipError) {
+          membershipId = newMembership.id;
         }
-      );
+      }
     }
 
-    const allocations = [];
-    const voucherDetails = [];
+    // 6. Process each reward - assign voucher & allocate
+    const allocations: Array<{
+      reward_id: string;
+      reward_title: string;
+      voucher_code: string | null;
+      redemption_url: string | null;
+    }> = [];
 
     for (const reward of rewards) {
-      let voucherCode = null;
-      let redemptionUrl = null;
+      let voucherCode: string | null = null;
+      const redemptionUrl: string | null = reward.redemption_link || null;
 
       if (reward.coupon_type === "generic" && reward.generic_coupon_code) {
         voucherCode = reward.generic_coupon_code;
-      } else if (reward.coupon_type === "unique") {
+      } else {
         const { data: availableVoucher } = await supabase
-          .from("coupon_codes")
-          .select("code")
+          .from("vouchers")
+          .select("id, code")
           .eq("reward_id", reward.id)
-          .eq("is_used", false)
+          .eq("status", "available")
           .limit(1)
           .maybeSingle();
 
         if (availableVoucher) {
           voucherCode = availableVoucher.code;
-
           await supabase
-            .from("coupon_codes")
+            .from("vouchers")
             .update({
-              is_used: true,
-              used_at: new Date().toISOString(),
-              used_by_email: email || null,
-              used_by_phone: phone || null
+              status: "redeemed",
+              redeemed_at: new Date().toISOString(),
+              member_id: memberId,
             })
-            .eq("code", voucherCode)
-            .eq("reward_id", reward.id);
+            .eq("id", availableVoucher.id);
         }
       }
 
-      if (reward.redemption_link) {
-        redemptionUrl = reward.redemption_link;
+      if (memberId && membershipId) {
+        await supabase.from("member_rewards_allocation").insert({
+          member_id: memberId,
+          membership_id: membershipId,
+          reward_id: reward.id,
+          quantity_allocated: 1,
+        });
       }
-
-      if (memberId) {
-        const { error: allocationError } = await supabase
-          .from("reward_allocations")
-          .insert({
-            member_id: memberId,
-            reward_id: reward.id,
-            allocated_by: "system",
-            allocated_via: "campaign",
-            campaign_id: campaign_id,
-            status: "allocated"
-          });
-
-        if (allocationError) {
-          console.error("Error allocating reward:", allocationError);
-        }
-      }
-
-      voucherDetails.push({
-        reward_name: reward.title,
-        reward_description: reward.description,
-        voucher_code: voucherCode,
-        redemption_url: redemptionUrl,
-      });
 
       allocations.push({
         reward_id: reward.id,
@@ -217,84 +211,68 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    if (email && voucherDetails.length > 0) {
-      const clientSettings = (campaign.clients as any)?.communication_settings;
-      const emailEnabled = clientSettings?.email_enabled !== false;
-
-      if (emailEnabled) {
-        const emailBody = generateRewardEmail(
-          email,
-          campaign.name,
-          (campaign.clients as any)?.name || "Rewards Hub",
-          voucherDetails
-        );
-
-        console.log("Reward email would be sent:", emailBody);
+    // 7. Log communication
+    if (email && clientId) {
+      const messageBody = buildEmailBody(campaign.name, clientName, allocations);
+      try {
+        await supabase.from("communication_logs").insert({
+          client_id: clientId,
+          member_id: memberId,
+          campaign_rule_id: campaign_id,
+          communication_type: "email",
+          recipient_email: email,
+          subject: `Your rewards from ${campaign.name}`,
+          message_body: messageBody,
+          status: "sent",
+          sent_at: new Date().toISOString(),
+        });
+      } catch (logErr) {
+        console.error("Failed to log communication:", logErr);
       }
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Successfully redeemed ${allocations.length} reward${allocations.length > 1 ? 's' : ''}`,
-        allocations: allocations,
+        message: `Successfully redeemed ${allocations.length} reward${allocations.length !== 1 ? "s" : ""}`,
+        allocations,
         member_id: memberId,
       }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
     console.error("Error redeeming rewards:", error);
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
 
-function generateRewardEmail(
-  email: string,
+function buildEmailBody(
   campaignName: string,
   clientName: string,
-  voucherDetails: Array<{
-    reward_name: string;
-    reward_description: string;
+  allocations: Array<{
+    reward_title: string;
     voucher_code: string | null;
     redemption_url: string | null;
   }>
 ): string {
-  const rewardsList = voucherDetails
-    .map((v, index) => {
-      let details = `${index + 1}. ${v.reward_name}\n   ${v.reward_description}`;
-      if (v.voucher_code) {
-        details += `\n   Code: ${v.voucher_code}`;
-      }
-      if (v.redemption_url) {
-        details += `\n   Redeem at: ${v.redemption_url}`;
-      }
-      return details;
-    })
-    .join("\n\n");
+  const lines = allocations.map((a, i) => {
+    let line = `${i + 1}. ${a.reward_title}`;
+    if (a.voucher_code) line += `\n   Coupon Code: ${a.voucher_code}`;
+    if (a.redemption_url) line += `\n   Redeem at: ${a.redemption_url}`;
+    return line;
+  });
+  return `Dear Customer,
 
-  return `
-Dear Customer,
-
-Congratulations! You've successfully claimed your rewards from ${campaignName}.
+Congratulations! You have successfully claimed your rewards from ${campaignName}.
 
 Your Rewards:
-${rewardsList}
+${lines.join("\n\n")}
 
 Thank you for being a valued customer!
 
 Best regards,
-${clientName}
-  `.trim();
+${clientName}`.trim();
 }
