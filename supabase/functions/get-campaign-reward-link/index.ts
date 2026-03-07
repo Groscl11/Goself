@@ -91,7 +91,26 @@ Deno.serve(async (req: Request) => {
       return json({ has_rewards: false, message: "Order not found in loyalty system" });
     }
 
-    // ── 3. Find active redemption tokens for this order ───────────────────────
+    // ── 3. Resolve human-readable campaign_id → UUID if provided ─────────────
+    let campaignRuleUuid: string | null = null;
+    if (campaignId) {
+      // First check if it looks like a UUID already
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidPattern.test(campaignId)) {
+        campaignRuleUuid = campaignId;
+      } else {
+        // Look up by human-readable campaign_id field (e.g. "CAMP-0004")
+        const { data: campaignRule } = await supabase
+          .from("campaign_rules")
+          .select("id")
+          .eq("campaign_id", campaignId)
+          .eq("client_id", clientId)
+          .maybeSingle();
+        if (campaignRule?.id) campaignRuleUuid = campaignRule.id;
+      }
+    }
+
+    // ── 4. Find active redemption tokens for this order ───────────────────────
     let tokenQuery = supabase
       .from("member_redemption_tokens")
       .select("token, expires_at, used, campaign_rules(id, name)")
@@ -100,9 +119,9 @@ Deno.serve(async (req: Request) => {
       .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false });
 
-    // If campaign_id provided, filter to that campaign only
-    if (campaignId) {
-      tokenQuery = tokenQuery.eq("campaign_rule_id", campaignId);
+    // If campaign_id provided, filter to that specific campaign
+    if (campaignRuleUuid) {
+      tokenQuery = tokenQuery.eq("campaign_rule_id", campaignRuleUuid);
     }
 
     const { data: tokens } = await tokenQuery.limit(1);
@@ -114,7 +133,7 @@ Deno.serve(async (req: Request) => {
     const token = tokens[0];
     const redemptionLink = `${APP_URL}/redeem/${token.token}`;
 
-    // ── 4. Resolve customer first name ────────────────────────────────────────
+    // ── 5. Resolve customer first name ────────────────────────────────────────
     let customerFirstName = "";
     const lookupEmail = email || order.customer_email;
     if (lookupEmail) {
