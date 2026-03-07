@@ -146,27 +146,15 @@ export default function RedeemRewards() {
       setError(null);
 
       // Call edge function to process redemption
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-reward-redemption`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            token,
-            contact_method: contactMethod,
-            contact_value: contact,
-          }),
-        }
-      );
+      const { data: result, error: fnError } = await supabase.functions.invoke('process-reward-redemption', {
+        body: {
+          token,
+          contact_method: contactMethod,
+          contact_value: contact,
+        },
+      });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Redemption failed');
-      }
+      if (fnError) throw fnError;
 
       setRedeemed(true);
     } catch (err: any) {

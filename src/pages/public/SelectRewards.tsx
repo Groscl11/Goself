@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Check, Gift, AlertCircle, Loader } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 interface Reward {
   id: string;
@@ -45,46 +46,45 @@ export function SelectRewards() {
 
   const loadRewards = async () => {
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      // Fetch campaign rewards with nested reward + brand details
+      const { data: crData, error: crError } = await supabase
+        .from('campaign_rewards')
+        .select(`
+          reward_id (
+            id,
+            title,
+            description,
+            reward_type,
+            discount_value,
+            category,
+            image_url,
+            terms_conditions,
+            brand_id (name, logo_url)
+          )
+        `)
+        .eq('campaign_id', campaignId!)
+        .eq('is_active', true)
+        .order('priority');
 
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/campaign_rewards?campaign_id=eq.${campaignId}&is_active=eq.true&select=reward_id(id,title,description,reward_type,discount_value,category,image_url,terms_conditions,brand_id(name,logo_url))&order=priority`,
-        {
-          headers: {
-            'apikey': supabaseAnonKey,
-            'Authorization': `Bearer ${supabaseAnonKey}`,
-          },
-        }
-      );
+      if (crError) throw crError;
 
-      if (!response.ok) {
-        throw new Error('Failed to load rewards');
-      }
-
-      const data = await response.json();
-      const rewardsList = data
+      const rewardsList = (crData ?? [])
         .map((item: any) => item.reward_id)
-        .filter((r: any) => r && r.id);
+        .filter((r: any) => r && r.id)
+        .map((r: any) => ({ ...r, brands: r.brand_id }));
 
       setRewards(rewardsList);
 
-      const campaignResponse = await fetch(
-        `${supabaseUrl}/rest/v1/campaign_rules?id=eq.${campaignId}&select=name,clients:client_id(name)`,
-        {
-          headers: {
-            'apikey': supabaseAnonKey,
-            'Authorization': `Bearer ${supabaseAnonKey}`,
-          },
-        }
-      );
+      // Fetch campaign name + client name
+      const { data: campData } = await supabase
+        .from('campaign_rules')
+        .select('name, clients:client_id(name)')
+        .eq('id', campaignId!)
+        .single();
 
-      if (campaignResponse.ok) {
-        const campaignData = await campaignResponse.json();
-        if (campaignData.length > 0) {
-          setCampaignName(campaignData[0].name);
-          setClientName(campaignData[0].clients?.name || '');
-        }
+      if (campData) {
+        setCampaignName(campData.name);
+        setClientName((campData.clients as any)?.name || '');
       }
     } catch (err: any) {
       console.error('Error loading rewards:', err);
@@ -112,28 +112,16 @@ export function SelectRewards() {
 
     setRedeeming(true);
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const response = await fetch(`${supabaseUrl}/functions/v1/redeem-campaign-rewards`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`,
-        },
-        body: JSON.stringify({
+      const { data: result, error: fnError } = await supabase.functions.invoke('redeem-campaign-rewards', {
+        body: {
           campaign_id: campaignId,
           reward_ids: Array.from(selectedRewards),
           email: email,
           order_id: orderId,
-        }),
+        },
       });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to redeem rewards');
-      }
+      if (fnError) throw fnError;
 
       navigate(`/redemption-success?rewards=${selectedRewards.size}`);
     } catch (err: any) {
