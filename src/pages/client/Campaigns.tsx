@@ -435,7 +435,7 @@ export function Campaigns() {
                             </button>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{rule.membership_programs.name}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{rule.membership_programs?.name ?? '—'}</td>
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
                             {rule.trigger_type.replace('_', ' ')}

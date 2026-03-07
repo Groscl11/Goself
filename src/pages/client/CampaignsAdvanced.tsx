@@ -578,7 +578,7 @@ export function CampaignsAdvanced() {
                         <p className="text-sm text-gray-600 mb-3">{rule.description}</p>
                       )}
                       <div className="flex items-center gap-4 text-sm text-gray-600">
-                        <span>Program: {rule.membership_programs.name}</span>
+                        <span>Program: {rule.membership_programs?.name ?? '—'}</span>
                         <span>Priority: {rule.priority}</span>
                         <span>Enrollments: {rule.current_enrollments}{rule.max_enrollments ? ` / ${rule.max_enrollments}` : ''}</span>
                       </div>
