@@ -28,8 +28,8 @@ export function LoyaltyTransactions() {
   const [filterType, setFilterType] = useState<string>('all');
   const [dateRange, setDateRange] = useState<string>('30');
   const [stats, setStats] = useState({
-    totalEarned: 0,
-    totalRedeemed: 0,
+    totalCredits: 0,    // all positive points_amount (earned + bonus + adjusted+)
+    totalDebits: 0,     // all negative points_amount absolute (redeemed + adjusted-)
     totalExpired: 0,
     netPoints: 0,
   });
@@ -144,23 +144,29 @@ export function LoyaltyTransactions() {
       setTransactions(formattedTransactions);
 
       // Calculate stats
-      const earned = formattedTransactions
-        .filter(t => ['earn', 'earned', 'bonus'].includes(t.transaction_type))
+      // Credits = ALL positive points_amount (earned, bonus, adjusted+, custom, etc.)
+      const totalCredits = formattedTransactions
+        .filter(t => t.points_amount > 0)
+        .reduce((sum, t) => sum + t.points_amount, 0);
+
+      // Debits = ALL negative points_amount except expired
+      const totalDebits = formattedTransactions
+        .filter(t => t.points_amount < 0 && !['expire', 'expired'].includes(t.transaction_type))
         .reduce((sum, t) => sum + Math.abs(t.points_amount), 0);
 
-      const redeemed = formattedTransactions
-        .filter(t => ['redeem', 'redeemed'].includes(t.transaction_type))
-        .reduce((sum, t) => sum + Math.abs(t.points_amount), 0);
-
-      const expired = formattedTransactions
+      const totalExpired = formattedTransactions
         .filter(t => ['expire', 'expired'].includes(t.transaction_type))
         .reduce((sum, t) => sum + Math.abs(t.points_amount), 0);
 
+      // Net = true sum of every transaction's points_amount
+      const netPoints = formattedTransactions
+        .reduce((sum, t) => sum + t.points_amount, 0);
+
       setStats({
-        totalEarned: earned,
-        totalRedeemed: redeemed,
-        totalExpired: expired,
-        netPoints: earned - redeemed - expired,
+        totalCredits,
+        totalDebits,
+        totalExpired,
+        netPoints,
       });
     } catch (error) {
       console.error('Error loading transactions:', error);
@@ -219,8 +225,9 @@ export function LoyaltyTransactions() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Total Earned</p>
-                  <p className="text-2xl font-bold text-green-600">+{stats.totalEarned.toLocaleString()}</p>
+                  <p className="text-sm text-gray-600">Total Credits</p>
+                  <p className="text-2xl font-bold text-green-600">+{stats.totalCredits.toLocaleString()}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">earned + bonuses + adjustments</p>
                 </div>
                 <div className="bg-green-100 p-3 rounded-lg">
                   <TrendingUp className="h-6 w-6 text-green-600" />
@@ -233,8 +240,9 @@ export function LoyaltyTransactions() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Total Redeemed</p>
-                  <p className="text-2xl font-bold text-blue-600">-{stats.totalRedeemed.toLocaleString()}</p>
+                  <p className="text-sm text-gray-600">Total Debits</p>
+                  <p className="text-2xl font-bold text-blue-600">-{stats.totalDebits.toLocaleString()}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">redeemed + debit adjustments</p>
                 </div>
                 <div className="bg-blue-100 p-3 rounded-lg">
                   <TrendingDown className="h-6 w-6 text-blue-600" />
