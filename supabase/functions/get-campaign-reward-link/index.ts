@@ -26,39 +26,50 @@ Deno.serve(async (req: Request) => {
 
     // Support both GET (query-params) and POST (body)
     let shopifyOrderId: string | null = null;
-    let orderName: string | null = null;
     let shopDomain: string | null = null;
-    let campaignId: string | null = null;
+    let campaignId: string | null = null;   // human-readable e.g. "CAMP-0004" OR UUID
     let email: string | null = null;
 
     if (req.method === "GET") {
       const url = new URL(req.url);
       shopifyOrderId = url.searchParams.get("shopify_order_id");
-      orderName      = url.searchParams.get("order_name");
       shopDomain     = url.searchParams.get("shop_domain");
       campaignId     = url.searchParams.get("campaign_id");
       email          = url.searchParams.get("email");
     } else {
       const body = await req.json();
       shopifyOrderId = body.shopify_order_id || null;
-      orderName      = body.order_name || null;
       shopDomain     = body.shop_domain || null;
       campaignId     = body.campaign_id || null;
       email          = body.email || null;
     }
 
     if (!shopDomain) return json({ error: "shop_domain is required" }, 400);
-    if (!shopifyOrderId && !orderName) return json({ error: "shopify_order_id or order_name is required" }, 400);
 
     // ── 1. Resolve client_id from shop_domain ─────────────────────────────────
     let clientId: string | null = null;
-    const { data: ic } = await supabase
+
+    // Try integration_configs.shop_domain column
+    const { data: ic1 } = await supabase
       .from("integration_configs")
       .select("client_id")
       .eq("shop_domain", shopDomain)
       .maybeSingle();
-    if (ic?.client_id) clientId = ic.client_id;
+    if (ic1?.client_id) clientId = ic1.client_id;
 
+    // Try integration_configs.config->>'shop_domain' JSON field (Shopify integration)
+    if (!clientId) {
+      const { data: ic2 } = await supabase
+        .from("integration_configs")
+        .select("client_id")
+        .eq("platform", "shopify")
+        .eq("status", "connected")
+        .ilike("config->>shop_domain", shopDomain)
+        .maybeSingle();
+      if (ic2?.client_id) clientId = ic2.client_id;
+    }
+
+    // Try store_installations
     if (!clientId) {
       const { data: si } = await supabase
         .from("store_installations")
@@ -69,89 +80,87 @@ Deno.serve(async (req: Request) => {
       if (si?.client_id) clientId = si.client_id;
     }
 
-    if (!clientId) return json({ has_rewards: false, error: "Shop not configured" });
-
-    // ── 2. Find the internal order record ─────────────────────────────────────
-    let orderQuery = supabase
-      .from("shopify_orders")
-      .select("id, order_number, customer_email")
-      .eq("client_id", clientId);
-
-    if (shopifyOrderId) {
-      orderQuery = orderQuery.eq("shopify_order_id", shopifyOrderId);
-    } else if (orderName) {
-      // order_name can be "#BSC2002999942" or just "BSC2002999942"
-      const cleanName = orderName.replace(/^#/, "");
-      orderQuery = orderQuery.ilike("order_number", cleanName);
+    if (!clientId) {
+      console.error(`No client found for shop_domain: ${shopDomain}`);
+      return json({ has_rewards: false, error: "Shop not configured" });
     }
 
-    const { data: order } = await orderQuery.maybeSingle();
+    console.log(`Resolved client_id: ${clientId} for shop: ${shopDomain}`);
 
-    if (!order) {
-      return json({ has_rewards: false, message: "Order not found in loyalty system" });
-    }
+    // ── 2. Resolve campaign — by UUID or human-readable campaign_id field ─────
+    let campaignUuid: string | null = null;
+    let campaignName  = "";
 
-    // ── 3. Resolve human-readable campaign_id → UUID if provided ─────────────
-    let campaignRuleUuid: string | null = null;
     if (campaignId) {
-      // First check if it looks like a UUID already
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
       if (uuidPattern.test(campaignId)) {
-        campaignRuleUuid = campaignId;
-      } else {
-        // Look up by human-readable campaign_id field (e.g. "CAMP-0004")
-        const { data: campaignRule } = await supabase
+        // Already a UUID — verify it belongs to this client and is active
+        const { data: cr } = await supabase
           .from("campaign_rules")
-          .select("id")
+          .select("id, name, is_active")
+          .eq("id", campaignId)
+          .eq("client_id", clientId)
+          .maybeSingle();
+        if (cr?.is_active) { campaignUuid = cr.id; campaignName = cr.name; }
+      } else {
+        // Human-readable code like "CAMP-0004"
+        const { data: cr } = await supabase
+          .from("campaign_rules")
+          .select("id, name, is_active")
           .eq("campaign_id", campaignId)
           .eq("client_id", clientId)
           .maybeSingle();
-        if (campaignRule?.id) campaignRuleUuid = campaignRule.id;
+        if (cr?.is_active) { campaignUuid = cr.id; campaignName = cr.name; }
       }
+
+      if (!campaignUuid) {
+        console.warn(`Campaign not found or inactive: ${campaignId} for client ${clientId}`);
+        return json({ has_rewards: false, message: "Campaign not found or is not active" });
+      }
+    } else {
+      // No campaign_id provided — fall back to first active campaign for this client
+      const { data: cr } = await supabase
+        .from("campaign_rules")
+        .select("id, name")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .order("priority", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cr) { campaignUuid = cr.id; campaignName = cr.name; }
     }
 
-    // ── 4. Find active redemption tokens for this order ───────────────────────
-    let tokenQuery = supabase
-      .from("member_redemption_tokens")
-      .select("token, expires_at, used, campaign_rules(id, name)")
-      .eq("order_id", order.id)
-      .eq("used", false)
-      .gt("expires_at", new Date().toISOString())
-      .order("created_at", { ascending: false });
-
-    // If campaign_id provided, filter to that specific campaign
-    if (campaignRuleUuid) {
-      tokenQuery = tokenQuery.eq("campaign_rule_id", campaignRuleUuid);
+    if (!campaignUuid) {
+      return json({ has_rewards: false, message: "No active campaigns for this shop" });
     }
 
-    const { data: tokens } = await tokenQuery.limit(1);
-
-    if (!tokens || tokens.length === 0) {
-      return json({ has_rewards: false, message: "No active rewards for this order" });
-    }
-
-    const token = tokens[0];
-    const redemptionLink = `${APP_URL}/redeem/${token.token}`;
-
-    // ── 5. Resolve customer first name ────────────────────────────────────────
+    // ── 3. Look up customer's first name ──────────────────────────────────────
     let customerFirstName = "";
-    const lookupEmail = email || order.customer_email;
-    if (lookupEmail) {
+    if (email) {
       const { data: member } = await supabase
         .from("member_users")
         .select("first_name")
-        .eq("email", lookupEmail)
+        .eq("email", email)
         .eq("client_id", clientId)
         .maybeSingle();
       if (member?.first_name) customerFirstName = member.first_name;
     }
 
+    // ── 4. Build the claim-rewards URL ────────────────────────────────────────
+    // Destination: /claim-rewards?campaign=UUID&order=SHOPIFY_ORDER_ID&email=EMAIL
+    const params = new URLSearchParams({ campaign: campaignUuid });
+    if (shopifyOrderId) params.set("order", shopifyOrderId);
+    if (email) params.set("email", email);
+    const redemptionLink = `${APP_URL}/claim-rewards?${params.toString()}`;
+
+    console.log(`Returning reward link: ${redemptionLink}`);
+
     return json({
       has_rewards: true,
       redemption_link: redemptionLink,
-      campaign_name: (token.campaign_rules as any)?.name || "",
+      campaign_name: campaignName,
       customer_first_name: customerFirstName,
-      expires_at: token.expires_at,
     });
 
   } catch (err: unknown) {
