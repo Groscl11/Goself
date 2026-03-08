@@ -135,26 +135,58 @@ Deno.serve(async (req: Request) => {
       return json({ has_rewards: false, message: "No active campaigns for this shop" });
     }
 
-    // ── 3. Look up customer's first name ──────────────────────────────────────
+    // ── 3. Look up customer member_id + first name ───────────────────────────
     let customerFirstName = "";
+    let memberId: string | null = null;
     if (email) {
       const { data: member } = await supabase
         .from("member_users")
-        .select("first_name")
+        .select("id, first_name")
         .eq("email", email)
         .eq("client_id", clientId)
         .maybeSingle();
-      if (member?.first_name) customerFirstName = member.first_name;
+      if (member) {
+        memberId = member.id;
+        if (member.first_name) customerFirstName = member.first_name;
+      }
     }
 
-    // ── 4. Build the claim-rewards URL ────────────────────────────────────────
-    // Destination: /claim-rewards?campaign=UUID&order=SHOPIFY_ORDER_ID&email=EMAIL
-    const params = new URLSearchParams({ campaign: campaignUuid });
-    if (shopifyOrderId) params.set("order", shopifyOrderId);
-    if (email) params.set("email", email);
-    const redemptionLink = `${APP_URL}/claim-rewards?${params.toString()}`;
+    // ── 4. Generate tokenized claim link ──────────────────────────────────────
+    // campaign_tokens.email is NOT NULL — only tokenize when we have an email.
+    // Fallback (no email) still never puts email into the URL.
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    console.log(`Returning reward link: ${redemptionLink}`);
+    if (email) {
+      const tokenUuid = crypto.randomUUID();
+      const { error: insertError } = await supabase
+        .from("campaign_tokens")
+        .insert({
+          token: tokenUuid,
+          campaign_rule_id: campaignUuid,
+          email: email,
+          member_id: memberId || null,
+          expires_at: expiresAt,
+          is_claimed: false,
+        });
+
+      if (!insertError) {
+        const redemptionLink = `${APP_URL}/claim-rewards?token=${tokenUuid}`;
+        console.log(`Returning tokenized claim URL for campaign: ${campaignName}`);
+        return json({
+          has_rewards: true,
+          redemption_link: redemptionLink,
+          campaign_name: campaignName,
+          customer_first_name: customerFirstName,
+        });
+      }
+      console.error("campaign_tokens insert failed:", insertError.message);
+    }
+
+    // No email or insert failed — return campaign+order URL (still no email in URL)
+    const fallbackParams = new URLSearchParams({ campaign: campaignUuid });
+    if (shopifyOrderId) fallbackParams.set("order", shopifyOrderId);
+    const redemptionLink = `${APP_URL}/claim-rewards?${fallbackParams.toString()}`;
+    console.log(`Returning non-tokenized claim URL (no email) for campaign: ${campaignName}`);
 
     return json({
       has_rewards: true,

@@ -116,29 +116,60 @@ Deno.serve(async (req: Request) => {
     // Fall back to first campaign even if no rewards table entry found
     if (!selectedCampaign) selectedCampaign = campaigns[0];
 
-    // ── 3. Resolve customer first name ────────────────────────────────────────
+    // ── 3. Look up customer member_id + first name ───────────────────────────
     let customerFirstName = "";
+    let memberId: string | null = null;
     if (customerEmail) {
       const { data: member } = await supabase
         .from("member_users")
-        .select("first_name")
+        .select("id, first_name")
         .eq("email", customerEmail)
         .eq("client_id", clientId)
         .maybeSingle();
-      if (member?.first_name) customerFirstName = member.first_name;
+      if (member) {
+        memberId = member.id;
+        if (member.first_name) customerFirstName = member.first_name;
+      }
     }
 
-    // ── 4. Build claim URL ─────────────────────────────────────────────────────
-    // Uses the existing /claim-rewards page which reads ?campaign, ?order, ?email
-    const params = new URLSearchParams({ campaign: selectedCampaign.id });
-    if (orderId) params.set("order", orderId);
-    if (customerEmail) params.set("email", customerEmail);
-    const claimUrl = `${APP_URL}/claim-rewards?${params.toString()}`;
-
-    // expires_at: 7 days from now
+    // ── 4. Generate tokenized claim link ──────────────────────────────────────
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    console.log(`Returning claim URL for campaign: ${selectedCampaign.name}`);
+    // campaign_tokens.email is NOT NULL — only create a token when we have an email.
+    // Without email the fallback URL is still safe (no PII exposed).
+    if (customerEmail) {
+      const tokenUuid = crypto.randomUUID();
+      const { error: insertError } = await supabase
+        .from("campaign_tokens")
+        .insert({
+          token: tokenUuid,
+          campaign_rule_id: selectedCampaign.id,
+          email: customerEmail,
+          member_id: memberId || null,
+          expires_at: expiresAt,
+          is_claimed: false,
+        });
+
+      if (!insertError) {
+        const claimUrl = `${APP_URL}/claim-rewards?token=${tokenUuid}`;
+        console.log(`Returning tokenized claim URL for campaign: ${selectedCampaign.name}`);
+        return json({
+          has_reward: true,
+          claim_url: claimUrl,
+          campaign_name: selectedCampaign.name,
+          customer_first_name: customerFirstName,
+          expires_at: expiresAt,
+          pre_verified: true,
+        });
+      }
+      console.error("campaign_tokens insert failed:", insertError.message);
+    }
+
+    // Fallback: no email available or insert failed — build URL without email
+    const fallbackParams = new URLSearchParams({ campaign: selectedCampaign.id });
+    if (orderId) fallbackParams.set("order", orderId);
+    const claimUrl = `${APP_URL}/claim-rewards?${fallbackParams.toString()}`;
+    console.log(`Returning non-tokenized claim URL (no email) for campaign: ${selectedCampaign.name}`);
 
     return json({
       has_reward: true,
