@@ -122,26 +122,14 @@ Deno.serve(async (req: Request) => {
     let pointsBalance = 0;
 
     if (memberUserId) {
-      // Try with clientId first, fallback to any loyalty status for this member
-      const { data: s1 } = await supabase
+      // member_loyalty_status has NO client_id column — query by member_user_id only
+      const { data: sRows } = await supabase
         .from("member_loyalty_status")
         .select("points_balance")
         .eq("member_user_id", memberUserId)
-        .eq("client_id", clientId)
-        .maybeSingle();
-
-      if (s1) {
-        pointsBalance = s1.points_balance ?? 0;
-      } else {
-        const { data: s2 } = await supabase
-          .from("member_loyalty_status")
-          .select("points_balance")
-          .eq("member_user_id", memberUserId)
-          .order("points_balance", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        pointsBalance = s2?.points_balance ?? 0;
-      }
+        .order("points_balance", { ascending: false })
+        .limit(1);
+      pointsBalance = sRows?.[0]?.points_balance ?? 0;
     }
 
     // ── 4. Fetch discount rewards (Shopify-backed) ────────────────────────────
@@ -169,7 +157,7 @@ Deno.serve(async (req: Request) => {
       .select(
         "id, points_cost, note, " +
         "reward:rewards!reward_id(" +
-          "id, title, description, value_description, voucher_count, " +
+          "id, title, description, value_description, voucher_count, coupon_type, generic_coupon_code, " +
           "category, expiry_date, image_url, terms_conditions, " +
           "brands!brand_id(id, name, logo_url, website_url)" +
         ")"
@@ -177,10 +165,13 @@ Deno.serve(async (req: Request) => {
       .eq("client_id", clientId)
       .eq("is_active", true);
 
-    // Count live available (unassigned) vouchers per reward
+    // Count live available (unassigned) vouchers per reward (only needed for unique-code rewards)
     const brandRewardIds = (rawBrand ?? [])
       .map((cfg: any) => cfg.reward?.id)
-      .filter(Boolean);
+      .filter((id: any) => {
+        const cfg = (rawBrand ?? []).find((c: any) => c.reward?.id === id);
+        return cfg?.reward?.coupon_type !== "generic";
+      });
 
     let availableVoucherCounts: Record<string, number> = {};
     if (brandRewardIds.length > 0) {
@@ -197,7 +188,13 @@ Deno.serve(async (req: Request) => {
     }
 
     const brandRewards = (rawBrand ?? [])
-      .filter((cfg: any) => cfg.reward && (availableVoucherCounts[cfg.reward.id] ?? 0) > 0)
+      .filter((cfg: any) => {
+        if (!cfg.reward) return false;
+        // Generic code rewards are always available (same code given to everyone)
+        if (cfg.reward.coupon_type === "generic") return !!cfg.reward.generic_coupon_code;
+        // Unique code rewards need available vouchers in the pool
+        return (availableVoucherCounts[cfg.reward.id] ?? 0) > 0;
+      })
       .map((cfg: any) => ({
         config_id: cfg.id,
         reward_id: cfg.reward.id,
@@ -212,6 +209,8 @@ Deno.serve(async (req: Request) => {
         brand_logo: cfg.reward.brands?.logo_url ?? null,
         brand_website_url: cfg.reward.brands?.website_url ?? null,
         category: cfg.reward.category ?? "brand",
+        coupon_type: cfg.reward.coupon_type ?? "unique",
+        generic_coupon_code: cfg.reward.coupon_type === "generic" ? cfg.reward.generic_coupon_code : null,
         points_cost: cfg.points_cost,
         note: cfg.note ?? null,
         can_redeem: pointsBalance >= cfg.points_cost,
@@ -240,18 +239,37 @@ Deno.serve(async (req: Request) => {
     const existingBrandCodes: Record<string, { code: string; expires_at: string | null }> = {};
 
     if (memberUserId && brandRewards.length > 0) {
-      const brandRewardIds = brandRewards.map((r: any) => r.reward_id);
-      const { data: bVouchers } = await supabase
-        .from("vouchers")
-        .select("reward_id, code, expires_at")
-        .eq("member_id", memberUserId)
-        .eq("status", "available")
-        .in("reward_id", brandRewardIds);
+      const allBrandRewardIds = brandRewards.map((r: any) => r.reward_id);
 
-      if (bVouchers) {
-        for (const v of bVouchers) {
+      // Unique codes: check vouchers table
+      const uniqueBrandIds = brandRewards.filter((r: any) => r.coupon_type !== "generic").map((r: any) => r.reward_id);
+      if (uniqueBrandIds.length > 0) {
+        const { data: bVouchers } = await supabase
+          .from("vouchers")
+          .select("reward_id, code, expires_at")
+          .eq("member_id", memberUserId)
+          .eq("status", "available")
+          .in("reward_id", uniqueBrandIds);
+        for (const v of (bVouchers ?? [])) {
           if (v.reward_id && !existingBrandCodes[v.reward_id]) {
             existingBrandCodes[v.reward_id] = { code: v.code, expires_at: v.expires_at };
+          }
+        }
+      }
+
+      // Generic codes: check transaction history for prior redemptions
+      const genericBrandIds = brandRewards.filter((r: any) => r.coupon_type === "generic").map((r: any) => r.reward_id);
+      if (genericBrandIds.length > 0) {
+        const { data: genTxns } = await supabase
+          .from("loyalty_points_transactions")
+          .select("reference_id, metadata")
+          .eq("member_user_id", memberUserId)
+          .eq("transaction_type", "redeemed")
+          .in("reference_id", genericBrandIds)
+          .order("created_at", { ascending: false });
+        for (const txn of (genTxns ?? [])) {
+          if (txn.reference_id && txn.metadata?.voucher_code && !existingBrandCodes[txn.reference_id]) {
+            existingBrandCodes[txn.reference_id] = { code: txn.metadata.voucher_code, expires_at: null };
           }
         }
       }

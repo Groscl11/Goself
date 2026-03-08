@@ -127,7 +127,7 @@ Deno.serve(async (req: Request) => {
     // ── 3. Load brand info ────────────────────────────────────────────────────
     const { data: rewardRow } = await supabase
       .from("rewards")
-      .select("id, title, brands!brand_id(name, website_url)")
+      .select("id, title, coupon_type, generic_coupon_code, expiry_date, brands!brand_id(name, website_url)")
       .eq("id", reward_id)
       .maybeSingle();
 
@@ -149,25 +149,52 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Member loyalty status not found" }, 404);
     }
 
-    // ── 5. Check for an already-issued but unused voucher ─────────────────────
-    const { data: existingVoucher } = await supabase
-      .from("vouchers")
-      .select("id, code, expires_at")
-      .eq("member_id", member_user_id)
-      .eq("reward_id", reward_id)
-      .eq("status", "available")
-      .maybeSingle();
+    const isGeneric = (rewardRow as any)?.coupon_type === "generic";
+    const genericCode: string | null = (rewardRow as any)?.generic_coupon_code ?? null;
 
-    if (existingVoucher) {
-      return json({
-        success: true,
-        voucher_code: existingVoucher.code,
-        expires_at: existingVoucher.expires_at,
-        brand_name: brandName,
-        brand_website_url: brandWebsiteUrl,
-        new_points_balance: status.points_balance,
-        already_exists: true,
-      });
+    // ── 5. Check for already-issued voucher / prior generic redemption ────────
+    if (isGeneric) {
+      // Prevent double-charging: if member already redeemed this generic reward, return code
+      const { data: priorTxn } = await supabase
+        .from("loyalty_points_transactions")
+        .select("metadata")
+        .eq("member_user_id", member_user_id)
+        .eq("reference_id", reward_id)
+        .eq("transaction_type", "redeemed")
+        .limit(1)
+        .maybeSingle();
+
+      if (priorTxn) {
+        return json({
+          success: true,
+          voucher_code: priorTxn.metadata?.voucher_code ?? genericCode,
+          expires_at: (rewardRow as any)?.expiry_date ?? null,
+          brand_name: brandName,
+          brand_website_url: brandWebsiteUrl,
+          new_points_balance: status.points_balance,
+          already_exists: true,
+        });
+      }
+    } else {
+      const { data: existingVoucher } = await supabase
+        .from("vouchers")
+        .select("id, code, expires_at")
+        .eq("member_id", member_user_id)
+        .eq("reward_id", reward_id)
+        .eq("status", "available")
+        .maybeSingle();
+
+      if (existingVoucher) {
+        return json({
+          success: true,
+          voucher_code: existingVoucher.code,
+          expires_at: existingVoucher.expires_at,
+          brand_name: brandName,
+          brand_website_url: brandWebsiteUrl,
+          new_points_balance: status.points_balance,
+          already_exists: true,
+        });
+      }
     }
 
     // ── 6. Validate points ────────────────────────────────────────────────────
@@ -179,36 +206,7 @@ Deno.serve(async (req: Request) => {
       }, 400);
     }
 
-    // ── 7. Claim an unassigned voucher ────────────────────────────────────────
-    const { data: availableVouchers } = await supabase
-      .from("vouchers")
-      .select("id, code, expires_at")
-      .eq("reward_id", reward_id)
-      .is("member_id", null)
-      .eq("status", "available")
-      .limit(1);
-
-    if (!availableVouchers || availableVouchers.length === 0) {
-      return json({ error: "No vouchers are currently available for this reward. Please try again later." }, 409);
-    }
-
-    const voucher = availableVouchers[0];
-
-    // ── 8. Assign voucher to member (atomic-ish) ──────────────────────────────
-    const { error: assignError } = await supabase
-      .from("vouchers")
-      .update({
-        member_id: member_user_id,
-        issued_at: new Date().toISOString(),
-      })
-      .eq("id", voucher.id)
-      .is("member_id", null); // guard against race condition
-
-    if (assignError) {
-      return json({ error: "Failed to assign voucher. Please try again." }, 500);
-    }
-
-    // ── 9. Deduct points ──────────────────────────────────────────────────────
+    // ── 7. Deduct points ──────────────────────────────────────────────────────
     const newBalance = status.points_balance - pointsCost;
 
     await supabase
@@ -222,6 +220,74 @@ Deno.serve(async (req: Request) => {
       })
       .eq("id", status.id);
 
+    // ── 8. For GENERIC codes: return the shared code directly ─────────────────
+    if (isGeneric) {
+      if (!genericCode) {
+        return json({ error: "Generic coupon code not set for this reward." }, 409);
+      }
+
+      await supabase.from("loyalty_points_transactions").insert({
+        member_loyalty_status_id: status.id,
+        member_user_id,
+        transaction_type: "redeemed",
+        points_amount: -pointsCost,
+        balance_after: newBalance,
+        description: `Redeemed brand reward: ${rewardRow?.title ?? reward_id}`,
+        reference_id: reward_id,
+        metadata: { reward_type: "brand_voucher", coupon_type: "generic", voucher_code: genericCode },
+      });
+
+      return json({
+        success: true,
+        voucher_code: genericCode,
+        expires_at: (rewardRow as any)?.expiry_date ?? null,
+        brand_name: brandName,
+        brand_website_url: brandWebsiteUrl,
+        new_points_balance: newBalance,
+        already_exists: false,
+      });
+    }
+
+    // ── 9. For UNIQUE codes: claim from voucher pool ──────────────────────────
+    const { data: availableVouchers } = await supabase
+      .from("vouchers")
+      .select("id, code, expires_at")
+      .eq("reward_id", reward_id)
+      .is("member_id", null)
+      .eq("status", "available")
+      .limit(1);
+
+    if (!availableVouchers || availableVouchers.length === 0) {
+      // Rollback points deduction
+      await supabase.from("member_loyalty_status").update({
+        points_balance: status.points_balance,
+        lifetime_points_redeemed: (status as any).lifetime_points_redeemed,
+        updated_at: new Date().toISOString(),
+      }).eq("id", status.id);
+      return json({ error: "No vouchers are currently available for this reward. Please try again later." }, 409);
+    }
+
+    const voucher = availableVouchers[0];
+
+    const { error: assignError } = await supabase
+      .from("vouchers")
+      .update({
+        member_id: member_user_id,
+        issued_at: new Date().toISOString(),
+      })
+      .eq("id", voucher.id)
+      .is("member_id", null);
+
+    if (assignError) {
+      // Rollback points
+      await supabase.from("member_loyalty_status").update({
+        points_balance: status.points_balance,
+        lifetime_points_redeemed: (status as any).lifetime_points_redeemed,
+        updated_at: new Date().toISOString(),
+      }).eq("id", status.id);
+      return json({ error: "Failed to assign voucher. Please try again." }, 500);
+    }
+
     // ── 10. Log transaction ───────────────────────────────────────────────────
     await supabase.from("loyalty_points_transactions").insert({
       member_loyalty_status_id: status.id,
@@ -231,7 +297,7 @@ Deno.serve(async (req: Request) => {
       balance_after: newBalance,
       description: `Redeemed brand reward: ${rewardRow?.title ?? reward_id}`,
       reference_id: reward_id,
-      metadata: { reward_type: "brand_voucher", voucher_code: voucher.code },
+      metadata: { reward_type: "brand_voucher", coupon_type: "unique", voucher_code: voucher.code },
     });
 
     return json({
