@@ -33,6 +33,7 @@ export function SelectRewards() {
   const [error, setError] = useState('');
   const [redeeming, setRedeeming] = useState(false);
   const [tokenMode, setTokenMode] = useState(false);
+  const [standaloneMode, setStandaloneMode] = useState(false);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
 
   const email = searchParams.get('email');
@@ -87,7 +88,35 @@ export function SelectRewards() {
 
   const loadRewards = async () => {
     try {
-      // Fetch campaign rewards with nested reward + brand details
+      // ── Try standalone campaign rule first (new wizard campaigns) ──────────
+      const { data: standaloneData, error: standaloneFnError } = await supabase.functions.invoke(
+        'claim-standalone-campaign',
+        { body: { campaign_rule_id: campaignId } }
+      );
+
+      if (!standaloneFnError && standaloneData?.success) {
+        // This is a standalone campaign — use its reward pool
+        setStandaloneMode(true);
+        setCampaignName(standaloneData.campaign_name || '');
+        setMinSelections(standaloneData.min_rewards ?? 1);
+        setMaxSelections(standaloneData.max_rewards ?? null);
+        // Map rewards to local shape (standalone uses value_description not discount_value)
+        const rewardsList = (standaloneData.rewards || []).map((r: any) => ({
+          id: r.id,
+          title: r.title,
+          description: r.description,
+          reward_type: r.category,
+          discount_value: 0,
+          category: r.category,
+          image_url: r.image_url,
+          terms_conditions: r.value_description,
+          brands: r.brand ? { name: r.brand.name, logo_url: r.brand.logo_url } : undefined,
+        }));
+        setRewards(rewardsList);
+        return;
+      }
+
+      // ── Fall back: legacy membership campaign (old campaign_rewards table) ──
       const { data: crData, error: crError } = await supabase
         .from('campaign_rewards')
         .select(`
@@ -160,7 +189,35 @@ export function SelectRewards() {
 
     setRedeeming(true);
     try {
-      if (tokenMode) {
+      if (standaloneMode) {
+        // Standalone campaign — direct URL flow (no token)
+        const { data: result, error: fnError } = await supabase.functions.invoke('claim-standalone-campaign', {
+          body: {
+            campaign_rule_id: campaignId,
+            email,
+            reward_ids: Array.from(selectedRewards),
+            claim: true,
+          },
+        });
+
+        if (fnError) throw fnError;
+        if (!result?.success) {
+          const reasons: Record<string, string> = {
+            campaign_inactive: 'This campaign is no longer active.',
+            campaign_ended: 'This campaign has ended.',
+            no_rewards_selected: 'Please select at least one reward.',
+          };
+          throw new Error(reasons[result?.reason] || 'Failed to claim rewards. Please try again.');
+        }
+
+        navigate('/redemption-success', {
+          state: {
+            allocations: result?.allocations || [],
+            rewardCount: selectedRewards.size,
+            campaignName,
+          },
+        });
+      } else if (tokenMode) {
         // Standalone token claim
         const { data: result, error: fnError } = await supabase.functions.invoke('validate-campaign-token', {
           body: {
