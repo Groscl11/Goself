@@ -106,7 +106,7 @@ export function SelectRewards() {
           title: r.title,
           description: r.description,
           reward_type: r.category,
-          discount_value: 0,
+          discount_value: undefined,
           category: r.category,
           image_url: r.image_url,
           terms_conditions: r.value_description,

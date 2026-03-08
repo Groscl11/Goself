@@ -31,7 +31,7 @@ Deno.serve(async (req: Request) => {
     if (!campaign_rule_id) {
       return new Response(
         JSON.stringify({ success: false, reason: "missing_campaign_rule_id" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -105,7 +105,7 @@ Deno.serve(async (req: Request) => {
       console.error("Pool load error:", poolError);
       return new Response(
         JSON.stringify({ success: false, reason: "pool_load_error" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -148,14 +148,14 @@ Deno.serve(async (req: Request) => {
     if (!email) {
       return new Response(
         JSON.stringify({ success: false, reason: "missing_email" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     if (!reward_ids || reward_ids.length === 0) {
       return new Response(
         JSON.stringify({ success: false, reason: "no_rewards_selected" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -164,7 +164,7 @@ Deno.serve(async (req: Request) => {
       if (reward_ids.length < min || reward_ids.length > max) {
         return new Response(
           JSON.stringify({ success: false, reason: `select_between_${min}_and_${max}` }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
     }
