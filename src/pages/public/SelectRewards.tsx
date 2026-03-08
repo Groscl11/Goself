@@ -207,7 +207,7 @@ export function SelectRewards() {
             campaign_ended: 'This campaign has ended.',
             no_rewards_selected: 'Please select at least one reward.',
           };
-          throw new Error(reasons[result?.reason] || 'Failed to claim rewards. Please try again.');
+          throw new Error(reasons[result?.reason] || result?.error || `Claim failed: ${result?.reason || 'unknown error'}`);
         }
 
         navigate('/redemption-success', {

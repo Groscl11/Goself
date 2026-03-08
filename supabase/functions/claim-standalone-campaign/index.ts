@@ -276,7 +276,7 @@ Deno.serve(async (req: Request) => {
     console.error("claim-standalone-campaign error:", error);
     return new Response(
       JSON.stringify({ success: false, reason: "server_error", error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
