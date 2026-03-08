@@ -28,17 +28,20 @@ Deno.serve(async (req: Request) => {
     let orderId: string | null = null;
     let shop: string | null = null;
     let customerEmail: string | null = null;
+    let customerPhone: string | null = null;
 
     if (req.method === "GET") {
       const url = new URL(req.url);
       orderId       = url.searchParams.get("order_id");
       shop          = url.searchParams.get("shop");
       customerEmail = url.searchParams.get("customer_email");
+      customerPhone = url.searchParams.get("customer_phone");
     } else {
       const body = await req.json();
       orderId       = body.order_id || null;
       shop          = body.shop || null;
       customerEmail = body.customer_email || null;
+      customerPhone = body.customer_phone || null;
     }
 
     if (!shop) return json({ has_reward: false, error: "shop is required" }, 400);
@@ -130,21 +133,34 @@ Deno.serve(async (req: Request) => {
         memberId = member.id;
         if (member.first_name) customerFirstName = member.first_name;
       }
+    } else if (customerPhone) {
+      const { data: member } = await supabase
+        .from("member_users")
+        .select("id, first_name")
+        .eq("phone", customerPhone)
+        .eq("client_id", clientId)
+        .maybeSingle();
+      if (member) {
+        memberId = member.id;
+        if (member.first_name) customerFirstName = member.first_name;
+      }
     }
 
     // ── 4. Generate tokenized claim link ──────────────────────────────────────
+    // email column is nullable (migration 20260308000005). Tokenize with email OR phone.
+    // Fallback to ?campaign= URL only when neither is available.
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const identifier = customerEmail || customerPhone;
 
-    // campaign_tokens.email is NOT NULL — only create a token when we have an email.
-    // Without email the fallback URL is still safe (no PII exposed).
-    if (customerEmail) {
+    if (identifier) {
       const tokenUuid = crypto.randomUUID();
       const { error: insertError } = await supabase
         .from("campaign_tokens")
         .insert({
           token: tokenUuid,
           campaign_rule_id: selectedCampaign.id,
-          email: customerEmail,
+          email: customerEmail || null,
+          phone: customerPhone || null,
           member_id: memberId || null,
           expires_at: expiresAt,
           is_claimed: false,
@@ -152,7 +168,8 @@ Deno.serve(async (req: Request) => {
 
       if (!insertError) {
         const claimUrl = `${APP_URL}/claim-rewards?token=${tokenUuid}`;
-        console.log(`Returning tokenized claim URL for campaign: ${selectedCampaign.name}`);
+        const via = customerEmail ? "email" : "phone";
+        console.log(`Returning tokenized claim URL (via ${via}) for campaign: ${selectedCampaign.name}`);
         return json({
           has_reward: true,
           claim_url: claimUrl,
@@ -165,11 +182,11 @@ Deno.serve(async (req: Request) => {
       console.error("campaign_tokens insert failed:", insertError.message);
     }
 
-    // Fallback: no email available or insert failed — build URL without email
+    // Fallback: no identifier or insert failed — build URL without any PII
     const fallbackParams = new URLSearchParams({ campaign: selectedCampaign.id });
     if (orderId) fallbackParams.set("order", orderId);
     const claimUrl = `${APP_URL}/claim-rewards?${fallbackParams.toString()}`;
-    console.log(`Returning non-tokenized claim URL (no email) for campaign: ${selectedCampaign.name}`);
+    console.log(`Returning non-tokenized claim URL for campaign: ${selectedCampaign.name}`);
 
     return json({
       has_reward: true,
