@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Plus, Edit, Trash2, Play, Pause, Zap, Users, MapPin, TrendingUp, Shield, Gift, ChevronDown, ChevronUp, Megaphone, Layers, Activity, Search, X, Tag, Clock, Image } from 'lucide-react';
+import { Plus, Edit, Trash2, Play, Pause, Zap, Users, MapPin, TrendingUp, Shield, Gift, ChevronDown, ChevronUp, ChevronRight, Megaphone, Layers, Activity, Search, X, Tag, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { clientMenuItems } from './clientMenuItems';
 import { RuleBuilder } from '../../components/RuleBuilder';
+import { RewardPickerModal } from '../../components/RewardPickerModal';
 
 interface CampaignRule {
   id: string;
@@ -80,13 +81,10 @@ export function CampaignsAdvanced() {
   const [programs, setPrograms] = useState<any[]>([]);
 
   // Reward pool state
-  const [poolSearch, setPoolSearch] = useState('');
-  const [poolFilterBrand, setPoolFilterBrand] = useState('');
-  const [poolFilterType, setPoolFilterType] = useState('');
-  const [poolFilterCoupon, setPoolFilterCoupon] = useState('');
   const [allRewards, setAllRewards] = useState<RewardPoolItem[]>([]);
   const [allBrands, setAllBrands] = useState<any[]>([]);
   const [selectedPool, setSelectedPool] = useState<RewardPoolItem[]>([]);
+  const [showPoolPicker, setShowPoolPicker] = useState(false);
 
   // Collection search state
   const [collectionQuery, setCollectionQuery] = useState('');
@@ -659,10 +657,6 @@ export function CampaignsAdvanced() {
       is_active: true,
     });
     setSelectedPool([]);
-    setPoolSearch('');
-    setPoolFilterBrand('');
-    setPoolFilterType('');
-    setPoolFilterCoupon('');
   };
 
   const handleDelete = async (id: string) => {
@@ -697,6 +691,7 @@ export function CampaignsAdvanced() {
   };
 
   return (
+    <>
     <DashboardLayout menuItems={clientMenuItems} title="Reward Campaigns">
       <div className="space-y-6">
         {/* Tab bar */}
@@ -1061,118 +1056,36 @@ export function CampaignsAdvanced() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Reward Pool <span className="text-red-500">*</span>
-                        {selectedPool.length > 0 && (
-                          <span className="ml-2 text-purple-600 font-normal">({selectedPool.length} selected)</span>
-                        )}
                       </label>
 
-                      {/* Filters */}
-                      <div className="flex gap-2 mb-3 flex-wrap">
-                        <div className="relative flex-1 min-w-40">
-                          <Search className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
-                          <input
-                            type="text"
-                            placeholder="Search rewards..."
-                            value={poolSearch}
-                            onChange={(e) => setPoolSearch(e.target.value)}
-                            className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
-                          />
-                        </div>
-                        <select
-                          value={poolFilterBrand}
-                          onChange={(e) => setPoolFilterBrand(e.target.value)}
-                          className="px-2 py-2 border border-gray-300 rounded-lg text-sm"
-                        >
-                          <option value="">All Brands</option>
-                          {allBrands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                        </select>
-                        <select
-                          value={poolFilterType}
-                          onChange={(e) => setPoolFilterType(e.target.value)}
-                          className="px-2 py-2 border border-gray-300 rounded-lg text-sm"
-                        >
-                          <option value="">All Types</option>
-                          <option value="discount">Discount</option>
-                          <option value="cashback">Cashback</option>
-                          <option value="gift">Gift</option>
-                          <option value="general">General</option>
-                        </select>
-                        <select
-                          value={poolFilterCoupon}
-                          onChange={(e) => setPoolFilterCoupon(e.target.value)}
-                          className="px-2 py-2 border border-gray-300 rounded-lg text-sm"
-                        >
-                          <option value="">Any Coupon</option>
-                          <option value="generic">Generic Code</option>
-                          <option value="unique">Unique Codes</option>
-                        </select>
-                      </div>
-
-                      {/* Reward Grid */}
-                      <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-                        {allRewards
-                          .filter(r => {
-                            const matchSearch = !poolSearch || r.title.toLowerCase().includes(poolSearch.toLowerCase()) || r.brand?.name.toLowerCase().includes(poolSearch.toLowerCase());
-                            const matchBrand = !poolFilterBrand || r.brand?.id === poolFilterBrand;
-                            const matchType = !poolFilterType || r.category === poolFilterType;
-                            const matchCoupon = !poolFilterCoupon || r.coupon_type === poolFilterCoupon;
-                            return matchSearch && matchBrand && matchType && matchCoupon;
-                          })
-                          .map(reward => {
-                            const isSelected = selectedPool.some(r => r.id === reward.id);
-                            return (
-                              <div
-                                key={reward.id}
-                                onClick={() => togglePoolReward(reward)}
-                                className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 transition-colors ${isSelected ? 'bg-purple-50' : ''}`}
-                              >
-                                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300'}`}>
-                                  {isSelected && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="currentColor"><path d="M1 4l2.5 2.5L9 1"/></svg>}
-                                </div>
-                                {reward.image_url ? (
-                                  <img src={reward.image_url} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
-                                ) : (
-                                  <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center flex-shrink-0">
-                                    <Image className="w-4 h-4 text-gray-400" />
-                                  </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-gray-900 truncate">{reward.title}</p>
-                                  <p className="text-xs text-gray-500">{reward.brand?.name ?? 'No Brand'} · {reward.value_description}</p>
-                                </div>
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                  <span className={`px-1.5 py-0.5 rounded text-xs ${reward.coupon_type === 'generic' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
-                                    {reward.coupon_type}
-                                  </span>
-                                  <span className="text-xs text-gray-400">{reward.available_vouchers} avail.</span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        {allRewards.filter(r => {
-                          const matchSearch = !poolSearch || r.title.toLowerCase().includes(poolSearch.toLowerCase()) || r.brand?.name.toLowerCase().includes(poolSearch.toLowerCase());
-                          const matchBrand = !poolFilterBrand || r.brand?.id === poolFilterBrand;
-                          const matchType = !poolFilterType || r.category === poolFilterType;
-                          const matchCoupon = !poolFilterCoupon || r.coupon_type === poolFilterCoupon;
-                          return matchSearch && matchBrand && matchType && matchCoupon;
-                        }).length === 0 && (
-                          <div className="p-4 text-sm text-gray-500 text-center">No active rewards with available vouchers found.</div>
-                        )}
-                      </div>
-
-                      {/* Selected pool chips */}
+                      {/* Selected chips — compact preview */}
                       {selectedPool.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-3">
+                        <div className="flex flex-wrap gap-1.5 mb-2">
                           {selectedPool.map(r => (
                             <span key={r.id} className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">
-                              {r.title}
-                              <button type="button" onClick={() => togglePoolReward(r)} className="hover:text-purple-900">
+                              <span className="max-w-[160px] truncate">{r.title}</span>
+                              <button type="button" onClick={() => togglePoolReward(r)} className="hover:text-purple-900 flex-shrink-0">
                                 <X className="w-3 h-3" />
                               </button>
                             </span>
                           ))}
                         </div>
                       )}
+
+                      {/* Browse trigger button */}
+                      <button
+                        type="button"
+                        onClick={() => setShowPoolPicker(true)}
+                        className="w-full flex items-center justify-between px-4 py-3 border-2 border-dashed border-purple-300 rounded-lg text-sm text-purple-600 hover:border-purple-500 hover:bg-purple-50 transition-colors"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Gift className="w-4 h-4" />
+                          {selectedPool.length === 0
+                            ? 'Browse & select rewards for this pool...'
+                            : `${selectedPool.length} reward${selectedPool.length !== 1 ? 's' : ''} selected — click to change`}
+                        </span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
                     </div>
 
                     {/* Collection Search */}
@@ -1566,5 +1479,17 @@ export function CampaignsAdvanced() {
         )}
       </div>
     </DashboardLayout>
+
+    {/* Reward picker — full-screen overlay, renders outside the form modal */}
+    {showPoolPicker && (
+      <RewardPickerModal
+        rewards={allRewards}
+        brands={allBrands}
+        selected={selectedPool}
+        onToggle={togglePoolReward}
+        onClose={() => setShowPoolPicker(false)}
+      />
+    )}
+    </>
   );
 }
