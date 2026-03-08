@@ -26,14 +26,14 @@ Deno.serve(async (req: Request) => {
     if (!campaign_id || !reward_ids || reward_ids.length === 0) {
       return new Response(
         JSON.stringify({ success: false, error: "campaign_id and reward_ids are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     if (!email && !phone) {
       return new Response(
         JSON.stringify({ success: false, error: "Either email or phone is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -52,7 +52,7 @@ Deno.serve(async (req: Request) => {
     if (campaignError || !campaign) {
       return new Response(
         JSON.stringify({ success: false, error: "Campaign not found or inactive" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -73,7 +73,7 @@ Deno.serve(async (req: Request) => {
     if (validRewardIds.length === 0) {
       return new Response(
         JSON.stringify({ success: false, error: "No valid rewards found for this campaign" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -87,7 +87,7 @@ Deno.serve(async (req: Request) => {
     if (rewardsError || !rewards || rewards.length === 0) {
       return new Response(
         JSON.stringify({ success: false, error: "Rewards not found or inactive" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -120,7 +120,7 @@ Deno.serve(async (req: Request) => {
           console.error("Error creating member:", memberError);
           return new Response(
             JSON.stringify({ success: false, error: "Failed to create member record" }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
         memberId = newMember.id;
@@ -244,7 +244,7 @@ Deno.serve(async (req: Request) => {
     console.error("Error redeeming rewards:", error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

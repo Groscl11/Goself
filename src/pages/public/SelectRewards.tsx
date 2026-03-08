@@ -256,6 +256,9 @@ export function SelectRewards() {
         });
 
         if (fnError) throw fnError;
+        if (!result?.success) {
+          throw new Error(result?.error || `Claim failed: ${result?.reason || 'unknown error'}`);
+        }
 
         navigate('/redemption-success', {
           state: {
