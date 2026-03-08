@@ -46,6 +46,7 @@ Deno.serve(async (req: Request) => {
       .from("campaign_tokens")
       .select(`
         id, email, phone, is_claimed, claimed_at, expires_at, member_id, claimed_rewards,
+        is_pre_verified,
         campaign_rule_id,
         campaign_rules (
           id, name, client_id, is_active,
@@ -89,29 +90,32 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (!identity) {
-      const hints: string[] = [];
-      if (tokenRow.email) hints.push(maskEmail(tokenRow.email));
-      if (tokenRow.phone) hints.push(maskPhone(tokenRow.phone));
-      return new Response(
-        JSON.stringify({
-          valid: true,
-          requires_identity: true,
-          identity_hint: hints.join(" or "),
-          has_email: !!tokenRow.email,
-          has_phone: !!tokenRow.phone,
-          campaign_name: campaign.name,
-          expires_at: tokenRow.expires_at,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!identityMatches(identity, tokenRow.email, tokenRow.phone)) {
-      return new Response(
-        JSON.stringify({ valid: false, reason: "identity_mismatch" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Pre-verified tokens (issued from a Shopify purchase session) skip identity entirely.
+    // For all other tokens: probe returns requires_identity and verify checks the input.
+    if (!(tokenRow as any).is_pre_verified) {
+      if (!identity) {
+        const hints: string[] = [];
+        if (tokenRow.email) hints.push(maskEmail(tokenRow.email));
+        if (tokenRow.phone) hints.push(maskPhone(tokenRow.phone));
+        return new Response(
+          JSON.stringify({
+            valid: true,
+            requires_identity: true,
+            identity_hint: hints.join(" or "),
+            has_email: !!tokenRow.email,
+            has_phone: !!tokenRow.phone,
+            campaign_name: campaign.name,
+            expires_at: tokenRow.expires_at,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (!identityMatches(identity, tokenRow.email, tokenRow.phone)) {
+        return new Response(
+          JSON.stringify({ valid: false, reason: "identity_mismatch" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     const { data: poolRows, error: poolError } = await supabase

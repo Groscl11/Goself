@@ -164,6 +164,7 @@ Deno.serve(async (req: Request) => {
           member_id: memberId || null,
           expires_at: expiresAt,
           is_claimed: false,
+          is_pre_verified: true,
         });
 
       if (!insertError) {
