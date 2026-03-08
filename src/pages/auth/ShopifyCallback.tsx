@@ -104,8 +104,10 @@ export default function ShopifyCallback() {
         profile = newProfile;
       }
 
-      // If profile has no client_id but we have one from URL, update it
-      if (profile && !profile.client_id && clientId) {
+      // If the URL has a client_id (from SSO magic link), always sync it onto
+      // the profile so the merchant is pointed at the correct store, even if
+      // they previously had a different client_id (e.g. another store).
+      if (profile && clientId && profile.client_id !== clientId) {
         await supabase
           .from('profiles')
           .update({ client_id: clientId, role: 'client' })

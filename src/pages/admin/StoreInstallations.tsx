@@ -19,8 +19,10 @@ import {
   Search,
   Filter,
   Eye,
-  RefreshCw
-,ArrowLeft } from 'lucide-react';
+  RefreshCw,
+  ArrowLeft,
+  Wrench,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { adminMenuItems } from './adminMenuItems';
 
@@ -249,6 +251,51 @@ export function StoreInstallations() {
       setShowDetails(true);
     } catch (error) {
       console.error('Error loading store details:', error);
+    }
+  };
+
+  const fixProfileLink = async (store: StoreInstallation) => {
+    try {
+      // Resolve the correct client_id for this store
+      const { data: ic } = await supabase
+        .from('integration_configs')
+        .select('client_id')
+        .eq('shop_domain', store.shop_domain)
+        .maybeSingle();
+
+      const clientId = ic?.client_id || store.client_id;
+      if (!clientId) {
+        alert('No client_id found for this store.');
+        return;
+      }
+
+      // Find the merchant's profile by their store email
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('id, client_id')
+        .eq('email', store.shop_email)
+        .maybeSingle();
+
+      if (!prof) {
+        alert(`No profile found for ${store.shop_email}. The merchant needs to log in once first.`);
+        return;
+      }
+
+      if (prof.client_id === clientId) {
+        alert(`Profile already correctly linked to client ${clientId}`);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ client_id: clientId, role: 'client' })
+        .eq('id', prof.id);
+
+      if (error) throw error;
+      alert(`✅ Profile for ${store.shop_email} linked to client ${clientId}`);
+    } catch (err: any) {
+      console.error('Fix profile error:', err);
+      alert(`Failed: ${err.message}`);
     }
   };
 
@@ -488,12 +535,22 @@ export function StoreInstallations() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <Button
-                            onClick={() => loadStoreDetails(store.id, store.client_id)}
-                            className="text-blue-600 hover:text-blue-900"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              onClick={() => loadStoreDetails(store.id, store.client_id)}
+                              className="text-blue-600 hover:text-blue-900"
+                              title="View details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <button
+                              onClick={() => fixProfileLink(store)}
+                              title="Fix merchant profile → client_id link"
+                              className="p-1.5 rounded text-orange-500 hover:bg-orange-50 hover:text-orange-700 transition-colors"
+                            >
+                              <Wrench className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

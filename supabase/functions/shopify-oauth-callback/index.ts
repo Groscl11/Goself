@@ -267,9 +267,11 @@ Deno.serve(async (req: Request) => {
           (u: any) => u.email === shopDetails.email
         );
 
+        let resolvedUserId: string | undefined = existingUser?.id;
+
         if (!existingUser) {
           // Create auth user for this merchant
-          await supabase.auth.admin.createUser({
+          const { data: createdUser } = await supabase.auth.admin.createUser({
             email: shopDetails.email,
             email_confirm: true,
             user_metadata: {
@@ -279,16 +281,19 @@ Deno.serve(async (req: Request) => {
               role: 'client',
             }
           });
+          resolvedUserId = createdUser?.user?.id;
+        }
 
-          // Ensure profile row exists with client role
+        // Always ensure profile has the correct client_id for this store,
+        // regardless of whether the auth user is new or pre-existing.
+        if (resolvedUserId) {
           await supabase.from('profiles').upsert({
-            id: (await supabase.auth.admin.getUserByEmail(shopDetails.email))
-              .data?.user?.id,
+            id: resolvedUserId,
             email: shopDetails.email,
             full_name: shopDetails.shop_owner || shopDetails.name,
             role: 'client',
             client_id: clientId,
-          }, { onConflict: 'id', ignoreDuplicates: true });
+          }, { onConflict: 'id', ignoreDuplicates: false });
         }
 
         // Generate magic link pointing to Goself dashboard SSO callback
