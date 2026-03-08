@@ -499,24 +499,38 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
         }
 
         let memberId = null;
-        if (orderRecord.customer_phone) {
+        const customerEmail = orderRecord.customer_email;
+        const customerPhone = orderRecord.customer_phone;
+
+        if (customerPhone) {
           const { data: member } = await supabase
             .from("member_users")
             .select("id")
             .eq("client_id", clientId)
-            .eq("phone", orderRecord.customer_phone)
+            .eq("phone", customerPhone)
             .maybeSingle();
           if (member) memberId = member.id;
         }
 
-        if (!memberId && orderRecord.customer_email) {
+        if (!memberId && customerEmail) {
           const { data: member } = await supabase
             .from("member_users")
             .select("id")
             .eq("client_id", clientId)
-            .eq("email", orderRecord.customer_email)
+            .eq("email", customerEmail)
             .maybeSingle();
           if (member) memberId = member.id;
+        }
+
+        // For standalone campaigns, auto-create member if not found
+        const ruleMode = rule.rule_mode || "membership";
+        if (!memberId && ruleMode === "standalone" && customerEmail) {
+          const { data: newMember } = await supabase
+            .from("member_users")
+            .insert({ client_id: clientId, email: customerEmail, full_name: customerEmail })
+            .select("id")
+            .single();
+          if (newMember) memberId = newMember.id;
         }
 
         if (!memberId) {
@@ -527,19 +541,22 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
           continue;
         }
 
-        const { data: existingMembership } = await supabase
-          .from("member_memberships")
-          .select("id")
-          .eq("member_id", memberId)
-          .eq("program_id", rule.program_id)
-          .maybeSingle();
+        // For membership campaigns: skip if already enrolled
+        if (ruleMode === "membership") {
+          const { data: existingMembership } = await supabase
+            .from("member_memberships")
+            .select("id")
+            .eq("member_id", memberId)
+            .eq("program_id", rule.program_id)
+            .maybeSingle();
 
-        if (existingMembership) {
-          await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "already_enrolled", "Member already enrolled in program", memberId, existingMembership.id, {
-            campaign_name: rule.name,
-            rule_type: "advanced",
-          });
-          continue;
+          if (existingMembership) {
+            await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "already_enrolled", "Member already enrolled in program", memberId, existingMembership.id, {
+              campaign_name: rule.name,
+              rule_type: "advanced",
+            });
+            continue;
+          }
         }
 
         const evaluationContext = {
@@ -563,62 +580,114 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
           (rule.attribution_conditions?.length === 0 || attributionMatches.allPassed);
 
         if (allPassed) {
-          console.log(`Advanced rule \"${rule.name}\" matched for order ${orderRecord.order_number}`);
+          console.log(`Advanced rule "${rule.name}" matched for order ${orderRecord.order_number}`);
 
-          const validityDays = rule.membership_programs?.validity_days || 365;
-          const expiresAt = new Date();
-          expiresAt.setDate(expiresAt.getDate() + validityDays);
+          if (ruleMode === "standalone") {
+            // Standalone campaign: issue a tokenized claim link
+            const expiresAt = new Date();
+            expiresAt.setHours(expiresAt.getHours() + (rule.link_expiry_hours || 72));
 
-          const { data: newMembership, error: enrollError } = await supabase
-            .from("member_memberships")
-            .insert({
-              member_id: memberId,
-              program_id: rule.program_id,
-              campaign_rule_id: rule.id,
-              enrollment_source: "campaign_auto",
-              status: "active",
-              activated_at: new Date().toISOString(),
-              expires_at: expiresAt.toISOString(),
-              enrollment_metadata: {
-                order_id: orderRecord.order_id,
-                order_value: orderRecord.total_price,
-                triggered_by: "advanced_campaign",
+            const { data: newToken, error: tokenError } = await supabase
+              .from("campaign_tokens")
+              .insert({
+                campaign_rule_id: rule.id,
+                order_id: orderRecord.id,
+                member_id: memberId,
+                email: orderRecord.customer_email,
+                expires_at: expiresAt.toISOString(),
+              })
+              .select("token")
+              .single();
+
+            if (tokenError) {
+              await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "failed", `Token creation failed: ${tokenError.message}`, memberId, null, {
                 campaign_name: rule.name,
-                rule_version: 2,
-              },
-            })
-            .select()
-            .single();
-
-          if (enrollError) {
-            if (enrollError.code === "23505") {
-              const { data: existingM } = await supabase
-                .from("member_memberships")
-                .select("id")
-                .eq("member_id", memberId)
-                .eq("program_id", rule.program_id)
-                .maybeSingle();
-              await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "already_enrolled", "Member concurrently enrolled by another webhook event (idempotent skip)", memberId, existingM?.id || null, {
-                campaign_name: rule.name,
-                rule_type: "advanced",
+                rule_type: "standalone",
+                error: tokenError.message,
               });
             } else {
-              await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "failed", `Enrollment failed: ${enrollError.message}`, memberId, null, {
-                campaign_name: rule.name,
-                rule_type: "advanced",
-                error: enrollError.message,
+              await supabase.rpc("increment_campaign_enrollments", { campaign_id: rule.id });
+
+              // Queue communication with the claim link
+              await supabase.from("communication_logs").insert({
+                client_id: clientId,
+                member_id: memberId,
+                campaign_rule_id: rule.id,
+                type: "standalone_reward_link",
+                status: "queued",
+                metadata: {
+                  token: newToken.token,
+                  expires_at: expiresAt.toISOString(),
+                  order_id: orderRecord.order_id,
+                  campaign_name: rule.name,
+                },
               });
+
+              await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "success", "Standalone campaign token issued", memberId, null, {
+                campaign_name: rule.name,
+                rule_type: "standalone",
+                token: newToken.token,
+              });
+
+              console.log(`Standalone token issued for member ${memberId} via rule "${rule.name}"`);
             }
           } else {
-            await supabase.rpc("increment_campaign_enrollments", { campaign_id: rule.id });
+            // Membership campaign: enroll member in program
+            const validityDays = rule.membership_programs?.validity_days || 365;
+            const expiresAt = new Date();
+            expiresAt.setDate(expiresAt.getDate() + validityDays);
 
-            await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "success", "Member successfully enrolled via advanced rule", memberId, newMembership.id, {
-              campaign_name: rule.name,
-              rule_type: "advanced",
-              program_id: rule.program_id,
-            });
+            const { data: newMembership, error: enrollError } = await supabase
+              .from("member_memberships")
+              .insert({
+                member_id: memberId,
+                program_id: rule.program_id,
+                campaign_rule_id: rule.id,
+                enrollment_source: "campaign_auto",
+                status: "active",
+                activated_at: new Date().toISOString(),
+                expires_at: expiresAt.toISOString(),
+                enrollment_metadata: {
+                  order_id: orderRecord.order_id,
+                  order_value: orderRecord.total_price,
+                  triggered_by: "advanced_campaign",
+                  campaign_name: rule.name,
+                  rule_version: 2,
+                },
+              })
+              .select()
+              .single();
 
-            console.log(`Successfully enrolled member ${memberId} via advanced rule \"${rule.name}\"`);
+            if (enrollError) {
+              if (enrollError.code === "23505") {
+                const { data: existingM } = await supabase
+                  .from("member_memberships")
+                  .select("id")
+                  .eq("member_id", memberId)
+                  .eq("program_id", rule.program_id)
+                  .maybeSingle();
+                await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "already_enrolled", "Member concurrently enrolled by another webhook event (idempotent skip)", memberId, existingM?.id || null, {
+                  campaign_name: rule.name,
+                  rule_type: "advanced",
+                });
+              } else {
+                await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "failed", `Enrollment failed: ${enrollError.message}`, memberId, null, {
+                  campaign_name: rule.name,
+                  rule_type: "advanced",
+                  error: enrollError.message,
+                });
+              }
+            } else {
+              await supabase.rpc("increment_campaign_enrollments", { campaign_id: rule.id });
+
+              await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "success", "Member successfully enrolled via advanced rule", memberId, newMembership.id, {
+                campaign_name: rule.name,
+                rule_type: "advanced",
+                program_id: rule.program_id,
+              });
+
+              console.log(`Successfully enrolled member ${memberId} via advanced rule "${rule.name}"`);
+            }
           }
         } else {
           const failedConditions = [

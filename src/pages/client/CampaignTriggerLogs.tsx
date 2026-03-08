@@ -31,6 +31,7 @@ export default function CampaignTriggerLogs() {
   const [logs, setLogs] = useState<CampaignTriggerLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterResult, setFilterResult] = useState<string>('all');
+  const [filterType, setFilterType] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [stats, setStats] = useState({
@@ -136,6 +137,12 @@ export default function CampaignTriggerLogs() {
   };
 
   const filteredLogs = logs.filter(log => {
+    if (filterType === 'membership') {
+      const rt = log.metadata?.rule_type;
+      if (rt === 'standalone') return false;
+    } else if (filterType === 'standalone') {
+      if (log.metadata?.rule_type !== 'standalone') return false;
+    }
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
@@ -269,6 +276,28 @@ export default function CampaignTriggerLogs() {
 
       <div className="bg-white shadow rounded-lg">
         <div className="p-4 border-b border-gray-200">
+          {/* Campaign type chips */}
+          <div className="flex items-center gap-2 mb-3">
+            {[
+              { key: 'all', label: 'All Types' },
+              { key: 'membership', label: 'Membership' },
+              { key: 'standalone', label: 'Standalone' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setFilterType(key)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  filterType === key
+                    ? key === 'standalone'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <input
@@ -347,6 +376,11 @@ export default function CampaignTriggerLogs() {
                       <div className="text-sm font-medium text-gray-900">
                         {log.campaign_rules?.name || 'Unknown Campaign'}
                       </div>
+                      {log.metadata?.rule_type === 'standalone' ? (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700 mt-1">Standalone</span>
+                      ) : log.metadata?.rule_type === 'advanced' ? (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700 mt-1">Membership</span>
+                      ) : null}
                       {log.metadata?.min_order_value && (
                         <div className="text-xs text-gray-500">
                           Min: ${log.metadata.min_order_value}

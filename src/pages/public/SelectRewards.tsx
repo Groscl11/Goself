@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Check, Gift, AlertCircle, Loader } from 'lucide-react';
+import { Check, Gift, AlertCircle, Loader, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface Reward {
@@ -29,21 +29,61 @@ export function SelectRewards() {
   const [campaignName, setCampaignName] = useState('');
   const [clientName, setClientName] = useState('');
   const [maxSelections, setMaxSelections] = useState<number | null>(null);
+  const [minSelections, setMinSelections] = useState<number>(1);
   const [error, setError] = useState('');
   const [redeeming, setRedeeming] = useState(false);
+  const [tokenMode, setTokenMode] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
 
   const email = searchParams.get('email');
   const campaignId = searchParams.get('campaign');
   const orderId = searchParams.get('order');
+  const token = searchParams.get('token');
 
   useEffect(() => {
-    if (!campaignId) {
+    if (token) {
+      loadFromToken();
+    } else if (!campaignId) {
       setError('Invalid reward link');
       setLoading(false);
-      return;
+    } else {
+      loadRewards();
     }
-    loadRewards();
-  }, [campaignId]);
+  }, [token, campaignId]);
+
+  const loadFromToken = async () => {
+    try {
+      setLoading(true);
+      const { data, error: fnError } = await supabase.functions.invoke('validate-campaign-token', {
+        body: { token },
+      });
+
+      if (fnError) throw fnError;
+
+      if (!data?.valid) {
+        const reasons: Record<string, string> = {
+          not_found: 'This reward link is invalid or has already been used.',
+          already_claimed: 'This reward link has already been claimed.',
+          expired: 'This reward link has expired.',
+          campaign_inactive: 'This campaign is no longer active.',
+        };
+        setError(reasons[data?.reason] || 'This reward link is no longer valid.');
+        return;
+      }
+
+      setTokenMode(true);
+      setCampaignName(data.campaign_name || '');
+      setExpiresAt(data.expires_at || null);
+      setMinSelections(data.min_rewards ?? 1);
+      setMaxSelections(data.max_rewards ?? null);
+      setRewards(data.rewards || []);
+    } catch (err: any) {
+      console.error('Error validating token:', err);
+      setError('Failed to load your rewards. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadRewards = async () => {
     try {
@@ -113,27 +153,61 @@ export function SelectRewards() {
       alert('Please select at least one reward');
       return;
     }
+    if (selectedRewards.size < minSelections) {
+      alert(`Please select at least ${minSelections} reward${minSelections !== 1 ? 's' : ''}`);
+      return;
+    }
 
     setRedeeming(true);
     try {
-      const { data: result, error: fnError } = await supabase.functions.invoke('redeem-campaign-rewards', {
-        body: {
-          campaign_id: campaignId,
-          reward_ids: Array.from(selectedRewards),
-          email: email,
-          order_id: orderId,
-        },
-      });
+      if (tokenMode) {
+        // Standalone token claim
+        const { data: result, error: fnError } = await supabase.functions.invoke('validate-campaign-token', {
+          body: {
+            token,
+            claim: true,
+            reward_ids: Array.from(selectedRewards),
+          },
+        });
 
-      if (fnError) throw fnError;
+        if (fnError) throw fnError;
+        if (!result?.valid) {
+          const reasons: Record<string, string> = {
+            already_claimed: 'This reward link has already been claimed.',
+            expired: 'This reward link has expired.',
+            campaign_inactive: 'This campaign is no longer active.',
+          };
+          throw new Error(reasons[result?.reason] || 'Failed to claim rewards. Please try again.');
+        }
 
-      navigate('/redemption-success', {
-        state: {
-          allocations: result?.allocations || [],
-          rewardCount: selectedRewards.size,
-          campaignName,
-        },
-      });
+        navigate('/redemption-success', {
+          state: {
+            allocations: result?.allocations || [],
+            rewardCount: selectedRewards.size,
+            campaignName,
+          },
+        });
+      } else {
+        // Legacy campaign rewards claim
+        const { data: result, error: fnError } = await supabase.functions.invoke('redeem-campaign-rewards', {
+          body: {
+            campaign_id: campaignId,
+            reward_ids: Array.from(selectedRewards),
+            email: email,
+            order_id: orderId,
+          },
+        });
+
+        if (fnError) throw fnError;
+
+        navigate('/redemption-success', {
+          state: {
+            allocations: result?.allocations || [],
+            rewardCount: selectedRewards.size,
+            campaignName,
+          },
+        });
+      }
     } catch (err: any) {
       console.error('Error redeeming rewards:', err);
       alert(err.message || 'Failed to redeem rewards. Please try again.');
@@ -190,9 +264,31 @@ export function SelectRewards() {
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <p className="text-sm text-blue-800">
-            <strong>Select {maxSelections ? `up to ${maxSelections}` : 'one or more'} reward{maxSelections !== 1 ? 's' : ''}</strong> to claim your benefits.
-            {maxSelections && ` (${selectedRewards.size}/${maxSelections} selected)`}
+            {minSelections > 1 || (maxSelections && maxSelections > 1) ? (
+              <>
+                <strong>
+                  Select {minSelections === maxSelections
+                    ? `exactly ${minSelections}`
+                    : maxSelections
+                    ? `${minSelections}–${maxSelections}`
+                    : `at least ${minSelections}`} reward{(maxSelections ?? minSelections) !== 1 ? 's' : ''}
+                </strong>{' '}
+                to claim your benefits.
+                {maxSelections && ` (${selectedRewards.size}/${maxSelections} selected)`}
+              </>
+            ) : (
+              <>
+                <strong>Select {maxSelections ? `up to ${maxSelections}` : 'one or more'} reward{maxSelections !== 1 ? 's' : ''}</strong> to claim your benefits.
+                {maxSelections && ` (${selectedRewards.size}/${maxSelections} selected)`}
+              </>
+            )}
           </p>
+          {expiresAt && (
+            <p className="text-xs text-orange-700 mt-1 flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              Link expires: {new Date(expiresAt).toLocaleString()}
+            </p>
+          )}
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 mb-8">
@@ -287,7 +383,7 @@ export function SelectRewards() {
             </div>
             <Button
               onClick={handleRedeem}
-              disabled={selectedRewards.size === 0 || redeeming}
+              disabled={selectedRewards.size === 0 || selectedRewards.size < minSelections || redeeming}
               className="min-w-[200px]"
             >
               {redeeming ? (
