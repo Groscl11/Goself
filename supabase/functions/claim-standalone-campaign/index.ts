@@ -236,12 +236,13 @@ Deno.serve(async (req: Request) => {
 
       // Record allocation
       if (memberId) {
-        await supabase.from("member_rewards_allocation").insert({
+        const { error: allocErr } = await supabase.from("member_rewards_allocation").insert({
           member_id: memberId,
           membership_id: null,
           reward_id: rewardId,
           quantity_allocated: 1,
-        }).catch(console.error);
+        });
+        if (allocErr) console.error("allocation insert error:", allocErr);
       }
 
       allocations.push({
@@ -254,7 +255,7 @@ Deno.serve(async (req: Request) => {
 
     // ── 8. Log communication ─────────────────────────────────────────────────
     if (memberId && allocations.length > 0) {
-      await supabase.from("communication_logs").insert({
+      const { error: logErr } = await supabase.from("communication_logs").insert({
         client_id: campaign.client_id,
         member_id: memberId,
         campaign_rule_id: campaign.id,
@@ -264,7 +265,8 @@ Deno.serve(async (req: Request) => {
         message_body: `Rewards claimed: ${allocations.map((a) => a.reward_title).join(", ")}`,
         status: "sent",
         sent_at: new Date().toISOString(),
-      }).catch(console.error);
+      });
+      if (logErr) console.error("communication_log insert error:", logErr);
     }
 
     return new Response(
