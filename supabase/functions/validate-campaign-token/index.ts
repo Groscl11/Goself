@@ -137,11 +137,15 @@ Deno.serve(async (req: Request) => {
     const now = new Date();
     const rewards = (poolRows || [])
       .map((r: any) => r.rewards)
-      .filter((r: any) =>
-        r && r.status === "active" &&
-        (!r.expiry_date || new Date(r.expiry_date) > now) &&
-        (r.vouchers || []).some((v: any) => v.status === "available")
-      )
+      .filter((r: any) => {
+        if (!r || r.status !== "active") return false;
+        if (r.expiry_date && new Date(r.expiry_date) <= now) return false;
+        // If the reward has vouchers loaded, require at least one available.
+        // If it has no vouchers (brand-handled / generic rewards), always show it.
+        const voucherList = r.vouchers || [];
+        if (voucherList.length > 0 && !voucherList.some((v: any) => v.status === "available")) return false;
+        return true;
+      })
       .map((r: any) => ({
         id: r.id,
         title: r.title,
