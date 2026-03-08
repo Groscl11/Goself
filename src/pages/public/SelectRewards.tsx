@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Check, Gift, AlertCircle, Loader, Clock } from 'lucide-react';
+import { Check, Gift, AlertCircle, Loader, Clock, ShieldCheck, Mail } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface Reward {
@@ -35,6 +35,17 @@ export function SelectRewards() {
   const [tokenMode, setTokenMode] = useState(false);
   const [standaloneMode, setStandaloneMode] = useState(false);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  // Phase 1: identity verification
+  const [identityRequired, setIdentityRequired] = useState(false);
+  const [identityHint, setIdentityHint] = useState('');
+  const [identityInput, setIdentityInput] = useState('');
+  const [identityError, setIdentityError] = useState('');
+  const [verifyingIdentity, setVerifyingIdentity] = useState(false);
+  const [verifiedIdentity, setVerifiedIdentity] = useState('');
+  // Phase 2: already-claimed replay
+  const [alreadyClaimed, setAlreadyClaimed] = useState(false);
+  const [claimedRewards, setClaimedRewards] = useState<any[]>([]);
+  const [claimedAt, setClaimedAt] = useState('');
 
   const email = searchParams.get('email');
   const campaignId = searchParams.get('campaign');
@@ -61,14 +72,31 @@ export function SelectRewards() {
 
       if (fnError) throw fnError;
 
+      // Phase 2: already claimed — show replay page
+      if (!data?.valid && data?.reason === 'already_claimed') {
+        setAlreadyClaimed(true);
+        setClaimedRewards(data.claimed_rewards || []);
+        setClaimedAt(data.claimed_at || '');
+        return;
+      }
+
       if (!data?.valid) {
         const reasons: Record<string, string> = {
           not_found: 'This reward link is invalid or has already been used.',
-          already_claimed: 'This reward link has already been claimed.',
           expired: 'This reward link has expired.',
           campaign_inactive: 'This campaign is no longer active.',
         };
         setError(reasons[data?.reason] || 'This reward link is no longer valid.');
+        return;
+      }
+
+      // Phase 1: identity verification required before showing rewards
+      if (data?.requires_identity) {
+        setTokenMode(true);
+        setCampaignName(data.campaign_name || '');
+        setExpiresAt(data.expires_at || null);
+        setIdentityHint(data.identity_hint || '');
+        setIdentityRequired(true);
         return;
       }
 
@@ -83,6 +111,48 @@ export function SelectRewards() {
       setError('Failed to load your rewards. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const verifyIdentity = async () => {
+    if (!identityInput.trim()) {
+      setIdentityError('Please enter your email or phone number.');
+      return;
+    }
+    setVerifyingIdentity(true);
+    setIdentityError('');
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('validate-campaign-token', {
+        body: { token, identity: identityInput.trim() },
+      });
+
+      if (fnError) throw fnError;
+
+      if (data?.reason === 'identity_mismatch') {
+        setIdentityError('The email or phone number you entered does not match our records. Please try again.');
+        return;
+      }
+      if (!data?.valid) {
+        const reasons: Record<string, string> = {
+          expired: 'This reward link has expired.',
+          already_claimed: 'These rewards have already been claimed.',
+          campaign_inactive: 'This campaign is no longer active.',
+        };
+        setError(reasons[data?.reason] || 'This reward link is no longer valid.');
+        setIdentityRequired(false);
+        return;
+      }
+      // Identity verified — reveal rewards
+      setVerifiedIdentity(identityInput.trim());
+      setIdentityRequired(false);
+      setMinSelections(data.min_rewards ?? 1);
+      setMaxSelections(data.max_rewards ?? null);
+      setRewards(data.rewards || []);
+    } catch (err: any) {
+      console.error('Identity verification error:', err);
+      setIdentityError('Verification failed. Please try again.');
+    } finally {
+      setVerifyingIdentity(false);
     }
   };
 
@@ -222,6 +292,7 @@ export function SelectRewards() {
         const { data: result, error: fnError } = await supabase.functions.invoke('validate-campaign-token', {
           body: {
             token,
+            identity: verifiedIdentity,
             claim: true,
             reward_ids: Array.from(selectedRewards),
           },
@@ -282,6 +353,98 @@ export function SelectRewards() {
         <Card className="p-8 text-center">
           <Loader className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
           <p className="text-gray-600">Loading your rewards...</p>
+        </Card>
+      </div>
+    );
+  }
+
+  // Phase 2: already claimed — show what was redeemed
+  if (alreadyClaimed) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <Card className="p-8 text-center max-w-md w-full">
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-green-100 rounded-full mb-4">
+            <Check className="w-7 h-7 text-green-600" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-1">Rewards Already Claimed</h2>
+          {claimedAt && (
+            <p className="text-sm text-gray-500 mb-4">Claimed on {new Date(claimedAt).toLocaleString()}</p>
+          )}
+          {claimedRewards.length > 0 ? (
+            <div className="text-left space-y-3 mb-6">
+              {claimedRewards.map((r: any, i: number) => (
+                <div key={i} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                  <p className="font-medium text-gray-900 text-sm">{r.reward_title}</p>
+                  {r.voucher_code && (
+                    <p className="text-xs text-blue-700 mt-1 font-mono bg-blue-50 px-2 py-1 rounded inline-block">
+                      Code: {r.voucher_code}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm mb-6">Your rewards have already been redeemed through this link.</p>
+          )}
+          <Button onClick={() => window.close()} className="w-full">Close</Button>
+        </Card>
+      </div>
+    );
+  }
+
+  // Phase 1: identity gate — verify before showing rewards
+  if (identityRequired) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <Card className="p-8 max-w-md w-full">
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-14 h-14 bg-blue-600 rounded-full mb-4">
+              <ShieldCheck className="w-7 h-7 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 mb-1">Verify Your Identity</h2>
+            <p className="text-sm text-gray-600">
+              {campaignName && <span className="font-medium">{campaignName} — </span>}
+              Enter the email or phone number associated with your reward.
+            </p>
+            {identityHint && (
+              <p className="text-xs text-gray-400 mt-2 flex items-center justify-center gap-1">
+                <Mail className="w-3 h-3" /> Hint: {identityHint}
+              </p>
+            )}
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email or Phone Number</label>
+              <input
+                type="text"
+                value={identityInput}
+                onChange={(e) => { setIdentityInput(e.target.value); setIdentityError(''); }}
+                onKeyDown={(e) => e.key === 'Enter' && verifyIdentity()}
+                placeholder="e.g. john@example.com or +919876543210"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+              {identityError && (
+                <p className="text-red-600 text-xs mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {identityError}
+                </p>
+              )}
+            </div>
+            {expiresAt && (
+              <p className="text-xs text-orange-600 flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Link expires: {new Date(expiresAt).toLocaleString()}
+              </p>
+            )}
+            <Button
+              onClick={verifyIdentity}
+              disabled={verifyingIdentity || !identityInput.trim()}
+              className="w-full"
+            >
+              {verifyingIdentity ? (
+                <><Loader className="w-4 h-4 mr-2 animate-spin" />Verifying...</>
+              ) : 'Verify & View Rewards'}
+            </Button>
+          </div>
         </Card>
       </div>
     );
