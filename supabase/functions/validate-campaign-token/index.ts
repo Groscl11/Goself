@@ -90,9 +90,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Pre-verified tokens (issued from a Shopify purchase session) skip identity entirely.
-    // For all other tokens: probe returns requires_identity and verify checks the input.
-    if (!(tokenRow as any).is_pre_verified) {
+    // Identity gate: always required unless the caller passes is_pre_verified=true
+    // in the request body (set by the Shopify plugin via get-order-token, Phase 5).
+    // The DB column is NOT used as a bypass to avoid permanently skipping the gate
+    // for anyone who happens to get the link.
+    const callerPreVerified = !!(body.is_pre_verified === true);
+    if (!callerPreVerified) {
       if (!identity) {
         const hints: string[] = [];
         if (tokenRow.email) hints.push(maskEmail(tokenRow.email));
