@@ -90,12 +90,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Identity gate: always required unless the caller passes is_pre_verified=true
-    // in the request body (set by the Shopify plugin via get-order-token, Phase 5).
-    // The DB column is NOT used as a bypass to avoid permanently skipping the gate
-    // for anyone who happens to get the link.
-    const callerPreVerified = !!(body.is_pre_verified === true);
-    if (!callerPreVerified) {
+    // Identity gate: skipped when the token was issued from a trusted Shopify session
+    // (is_pre_verified=true set by the webhook — customer was authenticated by Shopify).
+    // Also skipped when the Shopify plugin passes is_pre_verified:true in the request
+    // body (Phase 5 get-order-token flow, customer confirmed logged in on Shopify side).
+    const preVerified = !!(tokenRow as any).is_pre_verified || body.is_pre_verified === true;
+    if (!preVerified) {
       if (!identity) {
         const hints: string[] = [];
         if (tokenRow.email) hints.push(maskEmail(tokenRow.email));
