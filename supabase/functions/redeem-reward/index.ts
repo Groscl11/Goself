@@ -58,6 +58,9 @@ async function createShopifyDiscount(
       },
     };
 
+    const priceRuleController = new AbortController();
+    const priceRuleTimeout = setTimeout(() => priceRuleController.abort(), 10000);
+
     const priceRuleRes = await fetch(
       `https://${shopDomain}/admin/api/2024-01/price_rules.json`,
       {
@@ -67,8 +70,10 @@ async function createShopifyDiscount(
           "X-Shopify-Access-Token": accessToken,
         },
         body: JSON.stringify(priceRuleBody),
+        signal: priceRuleController.signal,
       },
     );
+    clearTimeout(priceRuleTimeout);
 
     if (!priceRuleRes.ok) {
       const err = await priceRuleRes.text();
@@ -77,6 +82,9 @@ async function createShopifyDiscount(
     }
 
     const { price_rule } = await priceRuleRes.json();
+
+    const discountController = new AbortController();
+    const discountTimeout = setTimeout(() => discountController.abort(), 10000);
 
     const discountRes = await fetch(
       `https://${shopDomain}/admin/api/2024-01/price_rules/${price_rule.id}/discount_codes.json`,
@@ -87,8 +95,10 @@ async function createShopifyDiscount(
           "X-Shopify-Access-Token": accessToken,
         },
         body: JSON.stringify({ discount_code: { code } }),
+        signal: discountController.signal,
       },
     );
+    clearTimeout(discountTimeout);
 
     if (!discountRes.ok) {
       const err = await discountRes.text();
