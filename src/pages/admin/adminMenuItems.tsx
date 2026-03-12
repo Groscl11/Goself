@@ -1,4 +1,4 @@
-import { LayoutDashboard, Building2, Award, Gift, Users, Settings, BarChart3, Ticket, Zap, ShoppingCart, Store, Layers, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, Building2, Award, Gift, Users, Settings, BarChart3, Ticket, Zap, ShoppingCart, Store, Layers, RefreshCw, GitBranch, Globe, TrendingUp } from 'lucide-react';
 
 export const adminMenuItems = [
   {
@@ -47,6 +47,11 @@ export const adminMenuItems = [
     icon: <Zap className="w-5 h-5" />,
   },
   {
+    label: 'Network Rules',
+    path: '/admin/network-rules',
+    icon: <GitBranch className="w-5 h-5" />,
+  },
+  {
     label: 'Orders',
     path: '/admin/orders',
     icon: <ShoppingCart className="w-5 h-5" />,
@@ -60,6 +65,16 @@ export const adminMenuItems = [
     label: 'Users',
     path: '/admin/users',
     icon: <Users className="w-5 h-5" />,
+  },
+  {
+    label: 'Global Users',
+    path: '/admin/global-users',
+    icon: <Globe className="w-5 h-5" />,
+  },
+  {
+    label: 'Referral Analytics',
+    path: '/admin/referral-analytics',
+    icon: <TrendingUp className="w-5 h-5" />,
   },
   {
     label: 'Settings',

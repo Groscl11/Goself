@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude mcp add supabase https://mcp.supabase.com/mcp)",
+      "Bash(claude mcp add netlify https://netlify-mcp.netlify.app/mcp)"
+    ]
+  }
+}

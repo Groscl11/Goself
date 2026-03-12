@@ -71,6 +71,9 @@ import { MemberVouchers } from './pages/member/MemberVouchers';
 import { MemberSettings } from './pages/member/MemberSettings';
 import MemberLoyaltyPoints from './pages/member/LoyaltyPoints';
 import { AdminSettings } from './pages/admin/AdminSettings';
+import { NetworkRewardRules } from './pages/admin/NetworkRewardRules';
+import { GlobalUsers } from './pages/admin/GlobalUsers';
+import { ReferralAnalytics } from './pages/admin/ReferralAnalytics';
 import { ClientSubscriptionManager } from './pages/admin/ClientSubscriptionManager';
 import { FeatureFlagPanel } from './pages/admin/FeatureFlagPanel';
 import { PlanBilling } from './pages/client/PlanBilling';
@@ -158,6 +161,9 @@ function App() {
           <Route path="/admin/users/:id" element={<RoleBasedRoute allowedRoles={['admin']}><UserDetail /></RoleBasedRoute>} />
           <Route path="/admin/users/:id/edit" element={<RoleBasedRoute allowedRoles={['admin']}><UserForm /></RoleBasedRoute>} />
           <Route path="/admin/settings" element={<RoleBasedRoute allowedRoles={['admin']}><AdminSettings /></RoleBasedRoute>} />
+          <Route path="/admin/network-rules" element={<RoleBasedRoute allowedRoles={['admin']}><NetworkRewardRules /></RoleBasedRoute>} />
+          <Route path="/admin/global-users" element={<RoleBasedRoute allowedRoles={['admin']}><GlobalUsers /></RoleBasedRoute>} />
+          <Route path="/admin/referral-analytics" element={<RoleBasedRoute allowedRoles={['admin']}><ReferralAnalytics /></RoleBasedRoute>} />
           <Route path="/client" element={<RoleBasedRoute allowedRoles={['client']}><ClientDashboard /></RoleBasedRoute>} />
           <Route path="/client/programs" element={<RoleBasedRoute allowedRoles={['client']}><MembershipManagement /></RoleBasedRoute>} />
           <Route path="/client/programs/new" element={<RoleBasedRoute allowedRoles={['client']}><CreateMembershipProgram /></RoleBasedRoute>} />

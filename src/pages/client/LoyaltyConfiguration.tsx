@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase';
 import {
   Users, Gift, Calendar, Share2, Star, UserCheck, Plus, Edit2, Trash2,
   ToggleLeft, ToggleRight, Save, X, ChevronDown, ChevronUp, Instagram,
-  Youtube, Twitter, Facebook, Linkedin, Coins,
+  Youtube, Twitter, Facebook, Linkedin, Coins, GitBranch,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -135,8 +135,19 @@ export function LoyaltyConfiguration() {
   const [editingType, setEditingType] = useState<RuleType | null>(null);
   const [form, setForm] = useState<ReturnType<typeof EMPTY_RULE> | null>(null);
 
+  // Referral Settings state
+  const [programId, setProgramId] = useState<string>('');
+  const [referralRuleId, setReferralRuleId] = useState<string>('');
+  const [refTrigger, setRefTrigger] = useState<'first_order' | 'signup' | 'both'>('first_order');
+  const [refSignupPts, setRefSignupPts] = useState<number>(50);
+  const [refFirstOrderPts, setRefFirstOrderPts] = useState<number>(100);
+  const [refDiscountType, setRefDiscountType] = useState<'flat' | 'percentage'>('flat');
+  const [refDiscountValue, setRefDiscountValue] = useState<number>(0);
+  const [refSaving, setRefSaving] = useState(false);
+  const [refSaved, setRefSaved] = useState(false);
+
   useEffect(() => { loadProfile(); }, []);
-  useEffect(() => { if (clientId) loadRules(); }, [clientId]);
+  useEffect(() => { if (clientId) { loadRules(); loadReferralSettings(); } }, [clientId]);
 
   async function loadProfile() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -254,6 +265,46 @@ export function LoyaltyConfiguration() {
     setForm(prev => prev ? { ...prev, [k]: v } : prev);
   }
 
+  async function loadReferralSettings() {
+    const [progRes, ruleRes] = await Promise.all([
+      supabase.from('loyalty_programs').select('id, referral_reward_trigger').eq('client_id', clientId).maybeSingle(),
+      supabase.from('loyalty_earning_rules').select('id, points_reward, referral_signup_points, referral_discount_type, referral_discount_value').eq('client_id', clientId).eq('rule_type', 'referral').maybeSingle(),
+    ]);
+    if (progRes.data) {
+      setProgramId(progRes.data.id);
+      setRefTrigger((progRes.data.referral_reward_trigger as 'first_order' | 'signup' | 'both') || 'first_order');
+    }
+    if (ruleRes.data) {
+      setReferralRuleId(ruleRes.data.id);
+      setRefFirstOrderPts(ruleRes.data.points_reward || 100);
+      setRefSignupPts((ruleRes.data as any).referral_signup_points || 50);
+      setRefDiscountType(ruleRes.data.referral_discount_type || 'flat');
+      setRefDiscountValue(ruleRes.data.referral_discount_value || 0);
+    }
+  }
+
+  async function saveReferralSettings() {
+    setRefSaving(true);
+    try {
+      if (programId) {
+        await supabase.from('loyalty_programs').update({ referral_reward_trigger: refTrigger }).eq('id', programId);
+      }
+      if (referralRuleId) {
+        await supabase.from('loyalty_earning_rules').update({
+          points_reward: refFirstOrderPts,
+          referral_signup_points: refSignupPts,
+          referral_discount_type: refDiscountType,
+          referral_discount_value: refDiscountValue,
+        }).eq('id', referralRuleId);
+      }
+      setRefSaved(true);
+      setTimeout(() => setRefSaved(false), 2000);
+    } catch (err: any) {
+      alert('Error saving: ' + err.message);
+    }
+    setRefSaving(false);
+  }
+
   if (loading) {
     return (
       <DashboardLayout menuItems={clientMenuItems} title="Ways to Earn Points">
@@ -340,6 +391,102 @@ export function LoyaltyConfiguration() {
             </div>
           );
         })}
+
+        {/* ── Referral Settings ─────────────────────────────────────────── */}
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <button
+            className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors"
+            onClick={() => setExpanded(expanded === ('referral_settings' as any) ? null : ('referral_settings' as any))}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-teal-100 text-teal-600">
+                <GitBranch className="w-5 h-5" />
+              </div>
+              <div className="text-left">
+                <span className="font-semibold text-gray-900">Referral Settings</span>
+                <p className="text-xs text-gray-500 mt-0.5">When to reward referrers and what discount to give the referee</p>
+              </div>
+            </div>
+            {expanded === ('referral_settings' as any)
+              ? <ChevronUp className="w-5 h-5 text-gray-400 flex-shrink-0" />
+              : <ChevronDown className="w-5 h-5 text-gray-400 flex-shrink-0" />}
+          </button>
+
+          {expanded === ('referral_settings' as any) && (
+            <div className="border-t border-gray-100 px-6 pb-6">
+              <div className="mt-5 space-y-5">
+                {/* When to reward referrer */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">When to reward the referrer</label>
+                  <div className="space-y-2">
+                    {([
+                      { value: 'first_order', label: 'When referred friend places their first order' },
+                      { value: 'signup', label: 'When referred friend registers' },
+                      { value: 'both', label: 'At signup AND on first order (separate point amounts)' },
+                    ] as { value: 'first_order' | 'signup' | 'both'; label: string }[]).map(opt => (
+                      <label key={opt.value} className="flex items-center gap-3 cursor-pointer">
+                        <input type="radio" name="refTrigger" value={opt.value} checked={refTrigger === opt.value}
+                          onChange={() => setRefTrigger(opt.value)}
+                          className="w-4 h-4 text-teal-600 border-gray-300 focus:ring-teal-500" />
+                        <span className="text-sm text-gray-700">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Points fields */}
+                <div className="grid grid-cols-2 gap-4">
+                  {(refTrigger === 'signup' || refTrigger === 'both') && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Signup reward (pts)</label>
+                      <input type="number" min="0" value={refSignupPts}
+                        onChange={e => setRefSignupPts(Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+                    </div>
+                  )}
+                  {(refTrigger === 'first_order' || refTrigger === 'both') && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">First order reward (pts)</label>
+                      <input type="number" min="0" value={refFirstOrderPts}
+                        onChange={e => setRefFirstOrderPts(Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Referee discount */}
+                <div>
+                  <div className="text-sm font-semibold text-gray-800 mb-2">Discount for the referee (referred friend)</div>
+                  <p className="text-xs text-gray-500 mb-3">This discount goes to the person being referred, not the referrer.</p>
+                  <div className="flex items-center gap-3">
+                    <select value={refDiscountType} onChange={e => setRefDiscountType(e.target.value as 'flat' | 'percentage')}
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500">
+                      <option value="flat">Flat amount (₹)</option>
+                      <option value="percentage">Percentage (%)</option>
+                    </select>
+                    <input type="number" min="0" value={refDiscountValue}
+                      onChange={e => setRefDiscountValue(Number(e.target.value))}
+                      placeholder={refDiscountType === 'flat' ? '₹ amount' : '% value'}
+                      className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+                    <span className="text-sm text-gray-500">{refDiscountType === 'flat' ? '₹ off their first order' : '% off their first order'}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    onClick={saveReferralSettings}
+                    disabled={refSaving}
+                    className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    {refSaving ? 'Saving…' : 'Save Referral Settings'}
+                  </button>
+                  {refSaved && <span className="text-sm text-teal-600 font-medium">✓ Saved</span>}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );
