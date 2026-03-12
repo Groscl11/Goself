@@ -41,14 +41,20 @@ export function GlobalUsers() {
 
   async function fetchData() {
     setLoading(true);
-    const [membersRes, clientsRes] = await Promise.all([
+    const [membersRes, clientsRes, storesRes] = await Promise.all([
       supabase
         .from('member_users')
-        .select('id, full_name, email, phone, client_id, total_points, created_at, clients(name), shopify_store_installations(shop_name)')
+        .select('id, full_name, email, phone, client_id, total_points, created_at, clients(name)')
         .order('created_at', { ascending: false })
         .limit(500),
       supabase.from('clients').select('id, name').order('name'),
+      supabase.from('shopify_store_installations').select('client_id, shop_name'),
     ]);
+    // Build client_id → shop_name lookup (first store per client)
+    const storeMap = new Map<string, string>();
+    (storesRes.data || []).forEach((s: any) => {
+      if (s.client_id && !storeMap.has(s.client_id)) storeMap.set(s.client_id, s.shop_name);
+    });
     const rows: MemberRow[] = (membersRes.data || []).map((m: any) => ({
       id: m.id,
       full_name: m.full_name || null,
@@ -58,7 +64,7 @@ export function GlobalUsers() {
       client_name: m.clients?.name || null,
       total_points: m.total_points || 0,
       created_at: m.created_at,
-      store_name: m.shopify_store_installations?.shop_name || null,
+      store_name: storeMap.get(m.client_id) || null,
     }));
     setAllMembers(rows);
     if (clientsRes.data) setClients(clientsRes.data);

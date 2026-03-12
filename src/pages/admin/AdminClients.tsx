@@ -28,6 +28,7 @@ export function AdminClients() {
   const [programCounts, setProgramCounts] = useState<Map<string, number>>(new Map());
   const [rewardCounts, setRewardCounts] = useState<Map<string, number>>(new Map());
   const [storeCounts, setStoreCounts] = useState<Map<string, number>>(new Map());
+  const [clientBrandsMap, setClientBrandsMap] = useState<Map<string, string[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -40,7 +41,7 @@ export function AdminClients() {
         supabase.from('clients').select('*').order('created_at', { ascending: false }),
         supabase.from('member_users').select('client_id'),
         supabase.from('membership_programs').select('client_id'),
-        supabase.from('rewards').select('brand_id'),
+        supabase.from('rewards').select('brand_id, client_id, brands(name)'),
         supabase.from('shopify_store_installations').select('client_id'),
       ]);
 
@@ -61,6 +62,16 @@ export function AdminClients() {
       const sMap = new Map<string, number>();
       (storesRes.data || []).forEach((r: any) => r.client_id && sMap.set(r.client_id, (sMap.get(r.client_id) || 0) + 1));
       setStoreCounts(sMap);
+
+      // Build client_id → brand names map
+      const bMap = new Map<string, string[]>();
+      (rewardsRes.data || []).forEach((r: any) => {
+        if (!r.client_id || !r.brands?.name) return;
+        const existing = bMap.get(r.client_id) || [];
+        if (!existing.includes(r.brands.name)) existing.push(r.brands.name);
+        bMap.set(r.client_id, existing);
+      });
+      setClientBrandsMap(bMap);
     } catch (error) {
       console.error('Error fetching clients:', error);
     } finally {
@@ -174,6 +185,7 @@ export function AdminClients() {
                         <th className="text-left px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Contact</th>
                         <th className="text-center px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Members</th>
                         <th className="text-center px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Programs</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Brands</th>
                         <th className="text-center px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Stores</th>
                         <th className="text-left px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Joined</th>
                         <th className="px-4 py-3 w-24 text-right font-medium text-gray-500 whitespace-nowrap">Actions</th>
@@ -184,6 +196,7 @@ export function AdminClients() {
                         const members = memberCounts.get(client.id) || 0;
                         const programs = programCounts.get(client.id) || 0;
                         const stores = storeCounts.get(client.id) || 0;
+                        const linkedBrands = clientBrandsMap.get(client.id) || [];
                         return (
                           <tr key={client.id} className="hover:bg-gray-50/80 transition-colors">
                             <td className="px-4 py-3">
@@ -239,6 +252,18 @@ export function AdminClients() {
                                 <Gift className="w-3.5 h-3.5" />
                                 {programs}
                               </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {linkedBrands.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {linkedBrands.slice(0, 3).map(b => (
+                                    <span key={b} className="inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-orange-50 text-orange-700 border border-orange-100 truncate max-w-[90px]">{b}</span>
+                                  ))}
+                                  {linkedBrands.length > 3 && (
+                                    <span className="inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-500">+{linkedBrands.length - 3}</span>
+                                  )}
+                                </div>
+                              ) : <span className="text-gray-300 text-sm">—</span>}
                             </td>
                             <td className="px-4 py-3 text-center">
                               <Link to={`/admin/store-installations?client=${client.id}`}

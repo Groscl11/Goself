@@ -259,8 +259,8 @@ export function CampaignRules() {
                           <div className="text-sm font-medium text-gray-900">{rule.name}</div>
                           <div className="text-xs text-gray-500">{rule.description}</div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{rule.clients.name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{rule.membership_programs.name}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{rule.clients?.name || <span className="text-gray-400">—</span>}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{rule.membership_programs?.name || <span className="text-gray-400">—</span>}</td>
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
                             {rule.trigger_type.replace('_', ' ')}

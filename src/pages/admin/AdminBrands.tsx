@@ -28,14 +28,21 @@ interface Brand {
 
 interface RewardRow {
   brand_id: string;
+  client_id: string | null;
   status: string;
   voucher_count: number | null;
   redeemed_count: number | null;
 }
 
+interface ClientRow {
+  id: string;
+  name: string;
+}
+
 export function AdminBrands() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [rewardRows, setRewardRows] = useState<RewardRow[]>([]);
+  const [clientRows, setClientRows] = useState<ClientRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -46,12 +53,14 @@ export function AdminBrands() {
 
   const fetchData = async () => {
     try {
-      const [brandsRes, rewardsRes] = await Promise.all([
+      const [brandsRes, rewardsRes, clientsRes] = await Promise.all([
         supabase.from('brands').select('*').order('created_at', { ascending: false }),
-        supabase.from('rewards').select('brand_id, status, voucher_count, redeemed_count'),
+        supabase.from('rewards').select('brand_id, client_id, status, voucher_count, redeemed_count'),
+        supabase.from('clients').select('id, name').order('name'),
       ]);
       setBrands(brandsRes.data || []);
       setRewardRows(rewardsRes.data || []);
+      setClientRows(clientsRes.data || []);
     } catch (error) {
       console.error('Error fetching brands:', error);
     } finally {
@@ -70,6 +79,21 @@ export function AdminBrands() {
     });
     return map;
   }, [rewardRows]);
+
+  // brand_id → Set of client names
+  const brandClientMap = useMemo(() => {
+    const clientNameMap = new Map<string, string>(clientRows.map(c => [c.id, c.name]));
+    const map = new Map<string, string[]>();
+    rewardRows.forEach((r) => {
+      if (!r.client_id) return;
+      const clientName = clientNameMap.get(r.client_id);
+      if (!clientName) return;
+      const existing = map.get(r.brand_id) || [];
+      if (!existing.includes(clientName)) existing.push(clientName);
+      map.set(r.brand_id, existing);
+    });
+    return map;
+  }, [rewardRows, clientRows]);
 
   const industries = useMemo(() => [...new Set(brands.map(b => b.industry).filter(Boolean))].sort(), [brands]);
   const countries = useMemo(() => [...new Set(brands.map(b => b.country).filter(Boolean))].sort(), [brands]);
@@ -215,6 +239,7 @@ export function AdminBrands() {
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50/50">
                         <th className="text-left px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Brand</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Client(s)</th>
                         <th className="text-left px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Industry</th>
                         <th className="text-center px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Status</th>
                         <th className="text-left px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Location</th>
@@ -228,6 +253,7 @@ export function AdminBrands() {
                     <tbody className="divide-y divide-gray-50">
                       {filteredBrands.map((brand) => {
                         const stats = brandStats.get(brand.id) || { total: 0, active: 0, redeemed: 0 };
+                        const brandClients = brandClientMap.get(brand.id) || [];
                         return (
                           <tr key={brand.id} className="hover:bg-gray-50/80 transition-colors">
                             <td className="px-4 py-3">
@@ -244,6 +270,15 @@ export function AdminBrands() {
                                   {brand.tagline && <div className="text-xs text-gray-400 truncate max-w-[160px]">{brand.tagline}</div>}
                                 </div>
                               </Link>
+                            </td>
+                            <td className="px-4 py-3">
+                              {brandClients.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {brandClients.map(c => (
+                                    <span key={c} className="inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-100">{c}</span>
+                                  ))}
+                                </div>
+                              ) : <span className="text-gray-300 text-sm">—</span>}
                             </td>
                             <td className="px-4 py-3 text-gray-500 text-sm">{brand.industry || <span className="text-gray-200">—</span>}</td>
                             <td className="px-4 py-3 text-center">

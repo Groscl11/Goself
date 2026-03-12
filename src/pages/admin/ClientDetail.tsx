@@ -13,6 +13,7 @@ import {
   ShoppingBag,
   CreditCard,
   Layers,
+  LayoutDashboard,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
@@ -167,6 +168,12 @@ export function ClientDetail() {
             Features
           </Button>
         </Link>
+        <Link to={`/admin/users?client=${id}`}>
+          <Button variant="secondary">
+            <LayoutDashboard className="w-4 h-4 mr-2" />
+            Manage Client
+          </Button>
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -260,13 +267,14 @@ export function ClientDetail() {
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            Members ({members.length})
+            Members ({stats.totalMembers})
           </button>
         </nav>
       </div>
 
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <div className="p-6">
               <h2 className="text-xl font-semibold mb-4">Client Information</h2>
@@ -333,6 +341,42 @@ export function ClientDetail() {
                     })}
                   </div>
                 </div>
+              </div>
+            </div>
+          </Card>
+          </div>
+
+          {/* Client Management Hub — manage on behalf of client */}
+          <Card>
+            <div className="p-6">
+              <h2 className="text-xl font-semibold mb-1">Manage on Behalf of Client</h2>
+              <p className="text-sm text-gray-500 mb-5">Quick links to manage this client's account settings and data.</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <Link to={`/admin/clients/${id}/edit`}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all text-center group">
+                  <Edit className="w-6 h-6 text-gray-400 group-hover:text-blue-500" />
+                  <span className="text-xs font-medium text-gray-600 group-hover:text-blue-700">Edit Profile</span>
+                </Link>
+                <Link to={`/admin/clients/${id}/subscription`}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 hover:border-purple-300 hover:bg-purple-50 transition-all text-center group">
+                  <CreditCard className="w-6 h-6 text-gray-400 group-hover:text-purple-500" />
+                  <span className="text-xs font-medium text-gray-600 group-hover:text-purple-700">Subscription</span>
+                </Link>
+                <Link to={`/admin/clients/${id}/features`}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-all text-center group">
+                  <Layers className="w-6 h-6 text-gray-400 group-hover:text-indigo-500" />
+                  <span className="text-xs font-medium text-gray-600 group-hover:text-indigo-700">Features</span>
+                </Link>
+                <Link to={`/admin/users?client=${id}`}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 hover:border-green-300 hover:bg-green-50 transition-all text-center group">
+                  <Users className="w-6 h-6 text-gray-400 group-hover:text-green-500" />
+                  <span className="text-xs font-medium text-gray-600 group-hover:text-green-700">View Members</span>
+                </Link>
+                <Link to={`/admin/store-installations?client=${id}`}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-all text-center group">
+                  <Gift className="w-6 h-6 text-gray-400 group-hover:text-orange-500" />
+                  <span className="text-xs font-medium text-gray-600 group-hover:text-orange-700">Stores</span>
+                </Link>
               </div>
             </div>
           </Card>
