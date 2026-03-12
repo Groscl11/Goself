@@ -73,7 +73,7 @@ export function ClientDetail() {
 
   const fetchClientData = async () => {
     try {
-      const [clientResult, programsResult, membersResult] = await Promise.all([
+      const [clientResult, programsResult, membersResult, memberCountResult] = await Promise.all([
         supabase.from('clients').select('*').eq('id', id).maybeSingle(),
         supabase
           .from('membership_programs')
@@ -86,6 +86,10 @@ export function ClientDetail() {
           .eq('client_id', id)
           .order('created_at', { ascending: false })
           .limit(10),
+        supabase
+          .from('member_users')
+          .select('id, is_active', { count: 'exact', head: false })
+          .eq('client_id', id),
       ]);
 
       if (clientResult.error) throw clientResult.error;
@@ -96,9 +100,10 @@ export function ClientDetail() {
       setPrograms(programsResult.data || []);
       setMembers(membersResult.data || []);
 
+      const allMemberRows = memberCountResult.data || [];
       setStats({
-        totalMembers: membersResult.data?.length || 0,
-        activeMembers: membersResult.data?.filter((m) => m.is_active).length || 0,
+        totalMembers: allMemberRows.length,
+        activeMembers: allMemberRows.filter((m: any) => m.is_active).length,
         totalPrograms: programsResult.data?.length || 0,
         activePrograms: programsResult.data?.filter((p) => p.is_active).length || 0,
       });
