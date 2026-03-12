@@ -71,6 +71,9 @@ import { MemberVouchers } from './pages/member/MemberVouchers';
 import { MemberSettings } from './pages/member/MemberSettings';
 import MemberLoyaltyPoints from './pages/member/LoyaltyPoints';
 import { AdminSettings } from './pages/admin/AdminSettings';
+import { ClientSubscriptionManager } from './pages/admin/ClientSubscriptionManager';
+import { FeatureFlagPanel } from './pages/admin/FeatureFlagPanel';
+import { PlanBilling } from './pages/client/PlanBilling';
 import { BrandSettings } from './pages/brand/BrandSettings';
 import { LoyaltyMembers } from './pages/client/LoyaltyMembers';
 import { LoyaltyTransactions } from './pages/client/LoyaltyTransactions';
@@ -148,6 +151,8 @@ function App() {
           <Route path="/admin/clients/new" element={<RoleBasedRoute allowedRoles={['admin']}><ClientForm /></RoleBasedRoute>} />
           <Route path="/admin/clients/:id" element={<RoleBasedRoute allowedRoles={['admin']}><ClientDetail /></RoleBasedRoute>} />
           <Route path="/admin/clients/:id/edit" element={<RoleBasedRoute allowedRoles={['admin']}><ClientForm /></RoleBasedRoute>} />
+          <Route path="/admin/clients/:id/subscription" element={<RoleBasedRoute allowedRoles={['admin']}><ClientSubscriptionManager /></RoleBasedRoute>} />
+          <Route path="/admin/clients/:id/features" element={<RoleBasedRoute allowedRoles={['admin']}><FeatureFlagPanel /></RoleBasedRoute>} />
           <Route path="/admin/users" element={<RoleBasedRoute allowedRoles={['admin']}><AdminUsers /></RoleBasedRoute>} />
           <Route path="/admin/users/new" element={<RoleBasedRoute allowedRoles={['admin']}><UserForm /></RoleBasedRoute>} />
           <Route path="/admin/users/:id" element={<RoleBasedRoute allowedRoles={['admin']}><UserDetail /></RoleBasedRoute>} />
@@ -187,6 +192,7 @@ function App() {
           <Route path="/client/tokenized-links" element={<RoleBasedRoute allowedRoles={['client']}><TokenizedLinks /></RoleBasedRoute>} />
           <Route path="/client/reports" element={<RoleBasedRoute allowedRoles={['client']}><Reports /></RoleBasedRoute>} />
           <Route path="/client/settings" element={<RoleBasedRoute allowedRoles={['client']}><ClientSettings /></RoleBasedRoute>} />
+          <Route path="/client/billing" element={<RoleBasedRoute allowedRoles={['client']}><PlanBilling /></RoleBasedRoute>} />
           <Route path="/brand" element={<RoleBasedRoute allowedRoles={['brand']}><BrandDashboard /></RoleBasedRoute>} />
           <Route path="/brand/rewards" element={<RoleBasedRoute allowedRoles={['brand']}><BrandRewards /></RoleBasedRoute>} />
           <Route path="/brand/rewards/new" element={<RoleBasedRoute allowedRoles={['brand']}><BrandRewardForm /></RoleBasedRoute>} />

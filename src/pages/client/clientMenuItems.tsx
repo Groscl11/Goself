@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, Award, Settings, ShoppingBag, Zap, BarChart3, Package, FileText, Megaphone, ShoppingCart, Sparkles, Mail, Coins, UserPlus, Cog, Receipt, Tag, Building2 } from 'lucide-react';
+import { LayoutDashboard, Users, Award, Settings, ShoppingBag, Zap, BarChart3, Package, FileText, Megaphone, ShoppingCart, Sparkles, Mail, Coins, UserPlus, Cog, Receipt, Tag, Building2, CreditCard } from 'lucide-react';
 
 export const clientMenuItems = [
   {
@@ -100,5 +100,10 @@ export const clientMenuItems = [
     label: 'Settings',
     path: '/client/settings',
     icon: <Settings className="w-5 h-5" />,
+  },
+  {
+    label: 'Plan & Billing',
+    path: '/client/billing',
+    icon: <CreditCard className="w-5 h-5" />,
   },
 ];

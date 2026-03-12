@@ -11,6 +11,8 @@ import {
   TrendingUp,
   Award,
   ShoppingBag,
+  CreditCard,
+  Layers,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
@@ -146,6 +148,18 @@ export function ClientDetail() {
           <Button variant="secondary">
             <Edit className="w-4 h-4 mr-2" />
             Edit Client
+          </Button>
+        </Link>
+        <Link to={`/admin/clients/${id}/subscription`}>
+          <Button variant="secondary">
+            <CreditCard className="w-4 h-4 mr-2" />
+            Subscription
+          </Button>
+        </Link>
+        <Link to={`/admin/clients/${id}/features`}>
+          <Button variant="secondary">
+            <Layers className="w-4 h-4 mr-2" />
+            Features
           </Button>
         </Link>
       </div>
