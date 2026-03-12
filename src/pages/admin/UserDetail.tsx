@@ -62,16 +62,16 @@ interface RewardAllocation {
     reward_id: string;
     brand: {
       name: string;
-    };
-  };
+    } | null;
+  } | null;
   membership: {
     program: {
       name: string;
       client: {
         name: string;
-      };
-    };
-  };
+      } | null;
+    } | null;
+  } | null;
 }
 
 interface Redemption {
@@ -83,8 +83,8 @@ interface Redemption {
     reward_id: string;
     brand: {
       name: string;
-    };
-  };
+    } | null;
+  } | null;
 }
 
 interface MemberUserData {
@@ -284,7 +284,8 @@ export function UserDetail() {
   const connectedBrands = useMemo(() => {
     const brandMap = new Map<string, { name: string; allocated: number; redeemed: number; rewardCount: number }>();
     allocations.forEach((a) => {
-      const brandName = a.reward.brand.name;
+      const brandName = a.reward?.brand?.name;
+      if (!brandName) return;
       const existing = brandMap.get(brandName) || { name: brandName, allocated: 0, redeemed: 0, rewardCount: 0 };
       existing.allocated += a.quantity_allocated;
       existing.redeemed += a.quantity_redeemed;
@@ -374,7 +375,7 @@ export function UserDetail() {
                 <TrendingUp className="w-4 h-4 text-purple-500" />
               </div>
               <div className="text-2xl font-bold text-gray-900">
-                {new Set(allocations.map((a) => a.membership.program.name)).size}
+                {new Set(allocations.map((a) => a.membership?.program?.name).filter(Boolean)).size}
               </div>
               <div className="text-xs text-gray-600 mt-1">Enrolled</div>
             </div>
@@ -856,13 +857,13 @@ export function UserDetail() {
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                        {allocation.reward.title}
+                        {allocation.reward?.title ?? 'Unknown Reward'}
                       </h3>
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Award className="w-4 h-4" />
-                        <span>{allocation.reward.brand.name}</span>
+                        <span>{allocation.reward?.brand?.name ?? 'Unknown Brand'}</span>
                         <span className="text-gray-400">•</span>
-                        <span className="font-mono text-xs">{allocation.reward.reward_id}</span>
+                        <span className="font-mono text-xs">{allocation.reward?.reward_id ?? ''}</span>
                       </div>
                     </div>
                     <div className="text-right">
@@ -875,11 +876,11 @@ export function UserDetail() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <div className="text-gray-500 mb-1">Client</div>
-                      <div className="font-medium">{allocation.membership.program.client.name}</div>
+                      <div className="font-medium">{allocation.membership?.program?.client?.name ?? 'Unknown'}</div>
                     </div>
                     <div>
                       <div className="text-gray-500 mb-1">Program</div>
-                      <div className="font-medium">{allocation.membership.program.name}</div>
+                      <div className="font-medium">{allocation.membership?.program?.name ?? 'Unknown'}</div>
                     </div>
                     <div>
                       <div className="text-gray-500 mb-1">Allocated</div>
@@ -935,13 +936,13 @@ export function UserDetail() {
                     </div>
                     <div className="flex-1">
                       <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                        {redemption.reward.title}
+                        {redemption.reward?.title ?? 'Unknown Reward'}
                       </h3>
                       <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
                         <Award className="w-4 h-4" />
-                        <span>{redemption.reward.brand.name}</span>
+                        <span>{redemption.reward?.brand?.name ?? 'Unknown Brand'}</span>
                         <span className="text-gray-400">•</span>
-                        <span className="font-mono text-xs">{redemption.reward.reward_id}</span>
+                        <span className="font-mono text-xs">{redemption.reward?.reward_id ?? ''}</span>
                       </div>
                       <div className="flex items-center gap-4 text-sm text-gray-500">
                         <div className="flex items-center gap-1">
