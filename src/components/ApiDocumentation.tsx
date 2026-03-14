@@ -199,35 +199,211 @@ fetch('${supabaseUrl}/functions/v1/validate-referral-code', {
     },
     {
       method: 'POST',
-      path: '/functions/v1/get-order-reward-link',
-      description: 'Get the redemption link for a specific order after the webhook has processed it. Returns a tokenized link the customer can use to claim their rewards.',
+      path: '/functions/v1/get-campaign-reward-link',
+      description: 'Generate a tokenised reward-claim link for a Shopify order tied to a specific campaign. Supports both GET (query params) and POST (JSON body). Returns a unique /claim-rewards URL the customer can open to pick and claim their rewards.',
       authentication: 'No Authentication Required (Public)',
       badge: 'NEW',
       requestBody: [
-        { field: 'order_id', type: 'string', required: true, description: 'Shopify order ID' },
-        { field: 'customer_email', type: 'string', required: true, description: 'Customer email' },
-        { field: 'shop_domain', type: 'string', required: true, description: 'Shopify shop domain' },
+        { field: 'shop_domain', type: 'string', required: true, description: 'Shopify shop domain (e.g. mystore.myshopify.com)' },
+        { field: 'shopify_order_id', type: 'string', required: false, description: 'Shopify order ID (used in fallback URL)' },
+        { field: 'campaign_id', type: 'string', required: false, description: 'Campaign UUID or human-readable code (e.g. CAMP-0004). Defaults to the highest-priority active campaign.' },
+        { field: 'email', type: 'string', required: false, description: 'Customer email — used to create a pre-verified token' },
+        { field: 'phone', type: 'string', required: false, description: 'Customer phone — used when email is not available' },
       ],
-      exampleRequest: `// Call from thank-you page — retry every 2s for up to 10s if webhook is pending
-fetch('${supabaseUrl}/functions/v1/get-order-reward-link', {
+      exampleRequest: `fetch('${supabaseUrl}/functions/v1/get-campaign-reward-link', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    order_id: '12345',
-    customer_email: 'customer@example.com',
-    shop_domain: 'mystore.myshopify.com'
+    shop_domain: 'mystore.myshopify.com',
+    shopify_order_id: '12345',
+    campaign_id: 'CAMP-0004',
+    email: 'customer@example.com'
   })
 })`,
-      responseExample: `// Rewards ready
+      responseExample: `// Tokenised link (email/phone provided)
 {
   "has_rewards": true,
-  "redemption_url": "https://yourapp.com/redeem?token=abc123",
-  "rewards": [{ "title": "20% Off", "campaign_name": "VIP" }],
-  "primary_link": { "token": "abc123", "reward_count": 2 }
+  "redemption_link": "https://goself.netlify.app/claim-rewards?token=uuid",
+  "campaign_name": "VIP Summer Rewards",
+  "customer_first_name": "Jane"
 }
 
-// Webhook not processed yet — retry
-{ "has_rewards": false, "reason": "not_yet" }`,
+// Fallback (no email/phone)
+{
+  "has_rewards": true,
+  "redemption_link": "https://goself.netlify.app/claim-rewards?campaign=uuid&order=12345",
+  "campaign_name": "VIP Summer Rewards",
+  "customer_first_name": ""
+}
+
+// Not configured
+{ "has_rewards": false, "message": "No active campaigns for this shop" }`,
+    },
+    {
+      method: 'POST',
+      path: '/functions/v1/get-order-token',
+      description: 'Generate a pre-verified, tokenised claim URL for a Shopify order. Designed for the order thank-you page — the returned claim_url opens the reward-claim flow with the customer already authenticated. Supports both GET (query params) and POST (JSON body).',
+      authentication: 'No Authentication Required (Public)',
+      badge: 'NEW',
+      requestBody: [
+        { field: 'shop', type: 'string', required: true, description: 'Shopify shop domain (e.g. mystore.myshopify.com)' },
+        { field: 'order_id', type: 'string', required: false, description: 'Shopify order ID (included in fallback URL)' },
+        { field: 'customer_email', type: 'string', required: false, description: 'Customer email — used to create a pre-verified token' },
+        { field: 'customer_phone', type: 'string', required: false, description: 'Customer phone — fallback when email is unavailable' },
+      ],
+      exampleRequest: `// Embed in Shopify thank-you page (Additional Scripts)
+fetch('${supabaseUrl}/functions/v1/get-order-token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    shop: 'mystore.myshopify.com',
+    order_id: '{{ order.id }}',
+    customer_email: '{{ customer.email }}'
+  })
+})`,
+      responseExample: `// Token created — show personalised reward button
+{
+  "has_reward": true,
+  "claim_url": "https://goself.netlify.app/claim-rewards?token=uuid",
+  "campaign_name": "VIP Summer Rewards",
+  "customer_first_name": "Jane",
+  "expires_at": "2025-07-30T10:00:00.000Z",
+  "pre_verified": true
+}
+
+// No active campaigns configured for this shop
+{ "has_reward": false, "message": "No active campaigns available" }`,
+    },
+    {
+      method: 'POST',
+      path: '/functions/v1/validate-campaign-token',
+      description: 'Three-step token validation endpoint that powers the /claim-rewards page. Step 1 (PROBE): check token validity and whether identity verification is needed. Step 2 (VERIFY): submit customer email/phone to unlock the reward pool. Step 3 (CLAIM): claim the selected rewards and receive voucher codes.',
+      authentication: 'No Authentication Required (Public)',
+      badge: 'NEW',
+      requestBody: [
+        { field: 'token', type: 'string', required: true, description: 'Claim token from get-order-token or get-campaign-reward-link' },
+        { field: 'identity', type: 'string', required: false, description: 'Customer email or phone for identity gate (Steps 2 & 3)' },
+        { field: 'claim', type: 'boolean', required: false, description: 'Set true to claim rewards (Step 3)' },
+        { field: 'reward_ids', type: 'array', required: false, description: 'Array of reward UUIDs to redeem (Step 3)' },
+        { field: 'is_pre_verified', type: 'boolean', required: false, description: 'Skip identity gate when customer was already authenticated by Shopify (Phase 5 flow)' },
+      ],
+      exampleRequest: `// Step 1 — probe
+fetch('${supabaseUrl}/functions/v1/validate-campaign-token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: 'uuid-token' })
+})
+
+// Step 2 — verify identity
+fetch('${supabaseUrl}/functions/v1/validate-campaign-token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: 'uuid-token', identity: 'customer@example.com' })
+})
+
+// Step 3 — claim
+fetch('${supabaseUrl}/functions/v1/validate-campaign-token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    token: 'uuid-token',
+    identity: 'customer@example.com',
+    claim: true,
+    reward_ids: ['reward-uuid-1', 'reward-uuid-2']
+  })
+})`,
+      responseExample: `// Step 1 — valid, identity required
+{
+  "valid": true,
+  "requires_identity": true,
+  "identity_hint": "cust***@example.com",
+  "campaign_name": "VIP Summer Rewards",
+  "expires_at": "2025-07-30T10:00:00.000Z"
+}
+
+// Step 2 — identity verified, reward pool returned
+{
+  "valid": true,
+  "verified": true,
+  "rewards": [{ "id": "uuid", "title": "20% Off Next Order" }],
+  "min_rewards": 1,
+  "max_rewards": 2,
+  "reward_selection_mode": "choice"
+}
+
+// Step 3 — claimed
+{ "valid": true, "claimed": true, "allocations": [{ "reward_id": "uuid", "voucher_code": "SAVE20-ABC" }] }
+
+// Already redeemed
+{ "valid": false, "reason": "already_claimed", "claimed_at": "2025-07-01T09:00:00Z", "claimed_rewards": [...] }`,
+      errorCodes: [
+        { code: 'not_found', description: 'Token does not exist' },
+        { code: 'expired', description: 'Token is past its expiry date' },
+        { code: 'already_claimed', description: 'Rewards were already claimed for this token' },
+        { code: 'campaign_inactive', description: 'The associated campaign has been deactivated' },
+        { code: 'identity_mismatch', description: 'Provided email/phone does not match the token\'s customer record' },
+        { code: 'missing_token', description: 'token field was not supplied in the request' },
+      ],
+    },
+    {
+      method: 'POST',
+      path: '/functions/v1/claim-standalone-campaign',
+      description: 'Two-mode endpoint for standalone campaigns accessed via a direct /claim-rewards?campaign=RULE_ID URL. Mode 1 (read-only, no claim flag): returns campaign metadata and available reward pool. Mode 2 (claim: true): validates inputs, allocates vouchers and returns the allocations.',
+      authentication: 'No Authentication Required (Public)',
+      badge: 'NEW',
+      requestBody: [
+        { field: 'campaign_rule_id', type: 'string', required: true, description: 'UUID of the standalone campaign rule' },
+        { field: 'email', type: 'string', required: false, description: 'Customer email — required when claim is true' },
+        { field: 'reward_ids', type: 'array', required: false, description: 'UUIDs of rewards to claim — required when claim is true' },
+        { field: 'claim', type: 'boolean', required: false, description: 'Set true to allocate vouchers (default: false returns read-only pool)' },
+      ],
+      exampleRequest: `// Read-only: load campaign & reward pool
+fetch('${supabaseUrl}/functions/v1/claim-standalone-campaign', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ campaign_rule_id: 'campaign-rule-uuid' })
+})
+
+// Claim rewards
+fetch('${supabaseUrl}/functions/v1/claim-standalone-campaign', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    campaign_rule_id: 'campaign-rule-uuid',
+    email: 'customer@example.com',
+    reward_ids: ['reward-uuid-1'],
+    claim: true
+  })
+})`,
+      responseExample: `// Read-only — campaign metadata + reward pool
+{
+  "success": true,
+  "campaign_id": "uuid",
+  "campaign_name": "Summer Giveaway",
+  "reward_selection_mode": "choice",
+  "min_rewards": 1,
+  "max_rewards": 2,
+  "rewards": [
+    {
+      "id": "uuid",
+      "title": "Free Coffee",
+      "available_vouchers": 45,
+      "brand": { "name": "Coffee Co", "logo_url": "..." }
+    }
+  ]
+}
+
+// Claimed successfully
+{ "success": true, "allocations": [{ "reward_id": "uuid", "voucher_code": "FREE-COFFEE-XYZ" }] }`,
+      errorCodes: [
+        { code: 'campaign_not_found', description: 'No campaign rule exists with the given UUID' },
+        { code: 'campaign_inactive', description: 'Campaign is_active flag is false' },
+        { code: 'campaign_not_started', description: 'Campaign start_date has not been reached' },
+        { code: 'campaign_ended', description: 'Campaign end_date has passed' },
+        { code: 'not_standalone', description: 'Campaign rule_mode is not "standalone"' },
+        { code: 'missing_email', description: 'email is required when claim is true' },
+        { code: 'no_rewards_selected', description: 'reward_ids is empty when claim is true' },
+      ],
     },
     {
       method: 'POST',
