@@ -1,0 +1,3 @@
+-- Placeholder for remote-applied migration 20260310173605.
+-- The SQL for this migration is not present in the local repository.
+-- This file exists only to align local migration history with the linked remote project.
