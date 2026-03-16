@@ -10,17 +10,17 @@ import {
 import { ManageCodesDrawer, AdoptModal } from '../../components/offers/Drawers';
 import { NewOfferDrawer } from '../../components/offers/NewOfferDrawer';
 import { PartnerWizard } from '../../components/offers/PartnerWizard';
-
+ 
 // ─── Tab ids ─────────────────────────────────────────────────────────────────
 type TabId = 'store' | 'partner' | 'marketplace' | 'distribution';
-
+ 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'store',        label: 'My Store Offers' },
   { id: 'partner',      label: 'Partner Vouchers' },
   { id: 'marketplace',  label: 'Marketplace' },
   { id: 'distribution', label: 'Distribution & Points' },
 ];
-
+ 
 // ─── Skeleton loader ─────────────────────────────────────────────────────────
 function CardSkeleton() {
   return (
@@ -41,41 +41,41 @@ function CardSkeleton() {
     </div>
   );
 }
-
+ 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function OffersPage() {
   const { profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const clientId = profile?.client_id ?? '';
-  const shopDomain = profile?.shop_domain ?? '';
-
+  const shopDomain = (profile as any)?.shop_domain ?? '';
+ 
   const activeTab = (searchParams.get('tab') as TabId) || 'store';
   const setTab = (t: TabId) => setSearchParams({ tab: t }, { replace: true });
-
+ 
   // Store offers state
   const [storeOffers, setStoreOffers] = useState<Offer[]>([]);
   const [storeLoading, setStoreLoading] = useState(false);
   const [storeFilter, setStoreFilter] = useState('all');
-
+ 
   // Partner vouchers state
   const [partnerOffers, setPartnerOffers] = useState<Offer[]>([]);
   const [partnerLoading, setPartnerLoading] = useState(false);
-
+ 
   // Marketplace state
   const [mktOffers, setMktOffers] = useState<MarketplaceOffer[]>([]);
   const [mktLoading, setMktLoading] = useState(false);
-  const [mktFilter, setMktFilter] = useState('all');
+  const [mktFilter, setMktFilter] = useState('All');
   const [mktSubtab, setMktSubtab] = useState<'browse' | 'submit'>('browse');
   const [submissions, setSubmissions] = useState<Offer[]>([]);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
-
+ 
   // Distribution state
   const [distributions, setDistributions] = useState<OfferDistribution[]>([]);
   const [distLoading, setDistLoading] = useState(false);
   const [distEdits, setDistEdits] = useState<Record<string, string>>({});
   const [distSaving, setDistSaving] = useState<Record<string, boolean>>({});
   const [distSaved, setDistSaved] = useState<Record<string, boolean>>({});
-
+ 
   // Drawer / modal state
   const [newOfferOpen, setNewOfferOpen] = useState(false);
   const [partnerWizardOpen, setPartnerWizardOpen] = useState(false);
@@ -84,7 +84,7 @@ export default function OffersPage() {
   const [adoptLoading, setAdoptLoading] = useState(false);
   const [newOfferDropdown, setNewOfferDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
+ 
   // Close dropdown on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -94,7 +94,7 @@ export default function OffersPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
-
+ 
   // ── Data fetching ───────────────────────────────────────────────────────────
   const fetchStoreOffers = useCallback(async () => {
     if (!clientId) return;
@@ -108,7 +108,7 @@ export default function OffersPage() {
     setStoreOffers(data ?? []);
     setStoreLoading(false);
   }, [clientId]);
-
+ 
   const fetchPartnerOffers = useCallback(async () => {
     if (!clientId) return;
     setPartnerLoading(true);
@@ -121,25 +121,49 @@ export default function OffersPage() {
     setPartnerOffers(data ?? []);
     setPartnerLoading(false);
   }, [clientId]);
-
+ 
+  // ── FIXED: fetchMarketplace now queries Supabase directly ──────────────────
   const fetchMarketplace = useCallback(async () => {
     if (!clientId) return;
     setMktLoading(true);
     try {
-      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        `${SUPABASE_URL}/functions/v1/get-marketplace-offers?shop=${encodeURIComponent(shopDomain)}`,
-        { headers: { 'Authorization': `Bearer ${session?.access_token}` } }
+      // First get which offers this client has already adopted
+      const { data: adoptedDists } = await supabase
+        .from('offer_distributions')
+        .select('offer_id, points_cost')
+        .eq('distributing_client_id', clientId)
+        .eq('is_active', true);
+ 
+      const adoptedMap = new Map(
+        (adoptedDists ?? []).map(d => [d.offer_id, d.points_cost])
       );
-      const json = await res.json();
-      setMktOffers(json.offers ?? []);
-    } catch {
+ 
+      // Query marketplace offers directly — no edge function, no shopDomain needed
+      const { data, error } = await supabase
+        .from('rewards')
+        .select('*')
+        .eq('offer_type', 'marketplace_offer')
+        .eq('is_marketplace_listed', true)
+        .eq('is_active', true)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+ 
+      if (error) throw error;
+ 
+      const enriched = (data ?? []).map(o => ({
+        ...o,
+        already_adopted: adoptedMap.has(o.id),
+        my_points_cost: adoptedMap.get(o.id) ?? null,
+      }));
+ 
+      setMktOffers(enriched);
+    } catch (err) {
+      console.error('fetchMarketplace error:', err);
       setMktOffers([]);
     }
     setMktLoading(false);
-  }, [clientId, shopDomain]);
-
+  }, [clientId]);
+ 
   const fetchSubmissions = useCallback(async () => {
     if (!clientId) return;
     setSubmissionsLoading(true);
@@ -152,7 +176,7 @@ export default function OffersPage() {
     setSubmissions(data ?? []);
     setSubmissionsLoading(false);
   }, [clientId]);
-
+ 
   const fetchDistributions = useCallback(async () => {
     if (!clientId) return;
     setDistLoading(true);
@@ -171,7 +195,7 @@ export default function OffersPage() {
     setDistributions(data ?? []);
     setDistLoading(false);
   }, [clientId]);
-
+ 
   // Load data per tab
   useEffect(() => {
     if (activeTab === 'store')        fetchStoreOffers();
@@ -179,17 +203,17 @@ export default function OffersPage() {
     if (activeTab === 'marketplace')  fetchMarketplace();
     if (activeTab === 'distribution') fetchDistributions();
   }, [activeTab, fetchStoreOffers, fetchPartnerOffers, fetchMarketplace, fetchDistributions]);
-
+ 
   useEffect(() => {
     if (mktSubtab === 'submit' && activeTab === 'marketplace') fetchSubmissions();
   }, [mktSubtab, activeTab, fetchSubmissions]);
-
+ 
   // ── Helpers ─────────────────────────────────────────────────────────────────
   function getDistForOffer(offer: Offer): OfferDistribution | null {
     const dists = offer.offer_distributions as OfferDistribution[] | undefined;
     return dists?.find(d => d.distributing_client_id === clientId && d.is_active) ?? null;
   }
-
+ 
   const storeFiltered = storeOffers.filter(o => {
     if (storeFilter === 'all') return true;
     if (storeFilter === 'active') return o.status === 'active';
@@ -197,13 +221,24 @@ export default function OffersPage() {
     if (storeFilter === 'low') return o.coupon_type === 'unique' && (o.available_codes ?? 0) < 10;
     return true;
   });
-
+ 
+  // ── FIXED: category filter maps UI labels → actual DB category values ──────
   const MKT_FILTERS = ['All', 'Fashion', 'Food & Drink', 'Lifestyle', 'Health', 'Electronics'];
+ 
+  const FILTER_CATEGORY_MAP: Record<string, string[]> = {
+    'Fashion':      ['fashion'],
+    'Food & Drink': ['food', 'dining'],
+    'Lifestyle':    ['wellness', 'general', 'subscription', 'travel'],
+    'Health':       ['fitness', 'wellness'],
+    'Electronics':  ['electronics'],
+  };
+ 
   const mktFiltered = mktOffers.filter(o => {
-    if (mktFilter === 'all' || mktFilter === 'All') return true;
-    return (o.tags ?? []).some(t => t.toLowerCase().includes(mktFilter.toLowerCase()));
+    if (mktFilter === 'All') return true;
+    const allowed = FILTER_CATEGORY_MAP[mktFilter] ?? [];
+    return allowed.includes((o.category ?? '').toLowerCase());
   });
-
+ 
   // ── Adopt offer ──────────────────────────────────────────────────────────────
   async function handleAdopt(config: { access_type: string; points_cost: number; max_per_member: number }) {
     if (!adoptTarget) return;
@@ -237,7 +272,7 @@ export default function OffersPage() {
     } catch {}
     setAdoptLoading(false);
   }
-
+ 
   // ── Distribution inline save ─────────────────────────────────────────────────
   async function saveDistPoints(distId: string) {
     const val = distEdits[distId];
@@ -250,37 +285,37 @@ export default function OffersPage() {
     setDistSaved(p => ({ ...p, [distId]: true }));
     setTimeout(() => setDistSaved(p => ({ ...p, [distId]: false })), 2000);
   }
-
+ 
   async function removeDistribution(distId: string) {
     if (!window.confirm('Remove this offer from your members?')) return;
     await supabase.from('offer_distributions').update({ is_active: false }).eq('id', distId);
     setDistributions(prev => prev.filter(d => d.id !== distId));
   }
-
+ 
   async function updateDistAccessType(distId: string, accessType: AccessType) {
     await supabase.from('offer_distributions').update({ access_type: accessType }).eq('id', distId);
     setDistributions(prev => prev.map(d => d.id === distId ? { ...d, access_type: accessType } : d));
   }
-
+ 
   // ── Source type helper ────────────────────────────────────────────────────────
   function sourceType(offer: Offer): 'own' | 'partner' | 'marketplace' {
     if (offer.offer_type === 'store_discount') return 'own';
     if (offer.offer_type === 'partner_voucher') return 'partner';
     return 'marketplace';
   }
-
+ 
   const accessBadgeVariant: Record<AccessType, { label: string; variant: 'purple' | 'blue' | 'gray' | 'teal' }> = {
     points_redemption: { label: 'Points',    variant: 'purple' },
     campaign_reward:   { label: 'Campaign',  variant: 'blue' },
     free_claim:        { label: 'Free',      variant: 'gray' },
     both:              { label: 'Both',      variant: 'teal' },
   };
-
+ 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto px-4 py-8">
-
+ 
         {/* Page header */}
         <div className="flex items-start justify-between mb-6">
           <div>
@@ -289,7 +324,7 @@ export default function OffersPage() {
               Manage discount codes, partner vouchers, and marketplace offers for your members
             </p>
           </div>
-
+ 
           {/* "+ New Offer" dropdown */}
           <div className="relative" ref={dropdownRef}>
             <button
@@ -318,7 +353,7 @@ export default function OffersPage() {
             )}
           </div>
         </div>
-
+ 
         {/* Tabs */}
         <div className="flex border-b border-gray-200 mb-6">
           {TABS.map(t => (
@@ -331,7 +366,7 @@ export default function OffersPage() {
             </button>
           ))}
         </div>
-
+ 
         {/* ── TAB 1: My Store Offers ────────────────────────────────────────── */}
         {activeTab === 'store' && (
           <div>
@@ -384,7 +419,7 @@ export default function OffersPage() {
             )}
           </div>
         )}
-
+ 
         {/* ── TAB 2: Partner Vouchers ───────────────────────────────────────── */}
         {activeTab === 'partner' && (
           <div>
@@ -435,7 +470,7 @@ export default function OffersPage() {
             )}
           </div>
         )}
-
+ 
         {/* ── TAB 3: Marketplace ────────────────────────────────────────────── */}
         {activeTab === 'marketplace' && (
           <div>
@@ -451,7 +486,7 @@ export default function OffersPage() {
                 </button>
               ))}
             </div>
-
+ 
             {/* Browse sub-tab */}
             {mktSubtab === 'browse' && (
               <div>
@@ -460,14 +495,14 @@ export default function OffersPage() {
                   {MKT_FILTERS.map(f => (
                     <button key={f} onClick={() => setMktFilter(f)}
                       className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors
-                        ${mktFilter === f || (mktFilter === 'all' && f === 'All')
+                        ${mktFilter === f
                           ? 'bg-gray-900 text-white'
                           : 'bg-white border border-gray-300 text-gray-600 hover:border-gray-400'}`}>
                       {f}
                     </button>
                   ))}
                 </div>
-
+ 
                 {mktLoading ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {[...Array(6)].map((_, i) => (
@@ -490,7 +525,7 @@ export default function OffersPage() {
                 )}
               </div>
             )}
-
+ 
             {/* Submissions sub-tab */}
             {mktSubtab === 'submit' && (
               <div>
@@ -550,7 +585,7 @@ export default function OffersPage() {
             )}
           </div>
         )}
-
+ 
         {/* ── TAB 4: Distribution & Points ──────────────────────────────────── */}
         {activeTab === 'distribution' && (
           <div>
@@ -669,7 +704,7 @@ export default function OffersPage() {
           </div>
         )}
       </div>
-
+ 
       {/* ── Drawers & Modals ─────────────────────────────────────────────────── */}
       <NewOfferDrawer
         open={newOfferOpen}
@@ -678,21 +713,21 @@ export default function OffersPage() {
         shopDomain={shopDomain}
         onCreated={() => { fetchStoreOffers(); fetchDistributions(); }}
       />
-
+ 
       <PartnerWizard
         open={partnerWizardOpen}
         onClose={() => setPartnerWizardOpen(false)}
         clientId={clientId}
         onCreated={() => { fetchPartnerOffers(); fetchDistributions(); }}
       />
-
+ 
       <ManageCodesDrawer
         open={!!codesDrawer}
         onClose={() => setCodesDrawer(null)}
         offer={codesDrawer}
         clientId={clientId}
       />
-
+ 
       <AdoptModal
         open={!!adoptTarget}
         onClose={() => setAdoptTarget(null)}
@@ -703,7 +738,7 @@ export default function OffersPage() {
     </div>
   );
 }
-
+ 
 // ─── Filter row ───────────────────────────────────────────────────────────────
 function FilterRow({ filters, active, onChange }: {
   filters: { id: string; label: string }[];
@@ -724,11 +759,11 @@ function FilterRow({ filters, active, onChange }: {
     </div>
   );
 }
-
+ 
 // ─── Marketplace card ─────────────────────────────────────────────────────────
 function MktCard({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => void }) {
   const outOfStock = offer.coupon_type === 'unique' && offer.available_codes === 0;
-
+ 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors">
       {offer.issuer_name && (
@@ -754,7 +789,7 @@ function MktCard({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => v
             ? 'Out of stock'
             : `${offer.available_codes} codes available`}
       </p>
-
+ 
       {offer.already_adopted ? (
         <div className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -774,12 +809,12 @@ function MktCard({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => v
     </div>
   );
 }
-
+ 
 // ─── More menu (⋯) ────────────────────────────────────────────────────────────
 function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () => void; clientId: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
+ 
   useEffect(() => {
     function h(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -787,7 +822,7 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-
+ 
   async function toggleMarketplace() {
     await supabase.from('rewards').update({
       is_marketplace_listed: !offer.is_marketplace_listed,
@@ -795,7 +830,7 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
     setOpen(false);
     onRefresh();
   }
-
+ 
   async function togglePause() {
     await supabase.from('rewards').update({
       status: offer.status === 'paused' ? 'active' : 'paused',
@@ -803,7 +838,7 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
     setOpen(false);
     onRefresh();
   }
-
+ 
   return (
     <div className="relative ml-auto" ref={ref}>
       <Btn onClick={() => setOpen(v => !v)}>
