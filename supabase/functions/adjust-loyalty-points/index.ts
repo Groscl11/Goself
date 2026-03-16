@@ -20,7 +20,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { shop_domain, email, phone, points, reason, order_id } = await req.json();
+    const { shop_domain, email, phone, points, reason, order_id, order_amount } = await req.json();
 
     if (!shop_domain || (!email && !phone) || points === undefined || points === null) {
       return new Response(
@@ -39,6 +39,20 @@ Deno.serve(async (req: Request) => {
     if (isNaN(pointsValue)) {
       return new Response(
         JSON.stringify({ error: 'points must be a valid number' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    const parsedOrderAmount = order_amount === undefined || order_amount === null || order_amount === ''
+      ? null
+      : Number(order_amount);
+
+    if (parsedOrderAmount !== null && isNaN(parsedOrderAmount)) {
+      return new Response(
+        JSON.stringify({ error: 'order_amount must be a valid number when provided' }),
         {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -226,6 +240,15 @@ Deno.serve(async (req: Request) => {
 
     if (pointsValue > 0) {
       updateFields.lifetime_points_earned = (loyaltyStatus.lifetime_points_earned || 0) + pointsValue;
+
+      // Treat positive point adjustments with an order_id as completed order awards.
+      if (order_id) {
+        updateFields.total_orders = (loyaltyStatus.total_orders || 0) + 1;
+
+        if (parsedOrderAmount !== null) {
+          updateFields.total_spend = Number(loyaltyStatus.total_spend || 0) + parsedOrderAmount;
+        }
+      }
     } else {
       updateFields.lifetime_points_redeemed = (loyaltyStatus.lifetime_points_redeemed || 0) + Math.abs(pointsValue);
     }
@@ -254,6 +277,7 @@ Deno.serve(async (req: Request) => {
       points_amount: pointsValue,
       balance_after: newBalance,
       order_id: null, // Set to null since external order IDs aren't UUIDs
+      order_amount: parsedOrderAmount,
       description: reason || (pointsValue > 0 ? 'Points adjustment (added)' : 'Points adjustment (removed)'),
       reference_id: order_id || null, // Use reference_id for external order IDs
     };

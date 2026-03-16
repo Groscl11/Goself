@@ -374,6 +374,38 @@ export function Integrations() {
           </p>
         </div>
 
+        <Card className="mb-6 border-indigo-200 bg-indigo-50/40">
+          <CardHeader>
+            <CardTitle className="text-lg">Current Process and Edge Functions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="font-semibold text-gray-900 mb-2">Current Process</p>
+                <ol className="space-y-1 text-gray-700 list-decimal ml-5">
+                  <li>Connect Shopify store (OAuth or Admin API token)</li>
+                  <li>Save integration in <code className="bg-white px-1 rounded">integration_configs</code></li>
+                  <li>Register Shopify webhooks using <code className="bg-white px-1 rounded">shopify-register-webhooks</code></li>
+                  <li>Auto-sync orders and loyalty events</li>
+                  <li>Manage marketplace/adopted offers and code pools from Rewards Catalog</li>
+                </ol>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900 mb-2">Edge Functions in Use</p>
+                <ul className="space-y-1 text-gray-700">
+                  <li><code className="bg-white px-1 rounded">shopify-oauth-connect</code> - starts OAuth flow</li>
+                  <li><code className="bg-white px-1 rounded">shopify-register-webhooks</code> - registers order/customer webhooks</li>
+                  <li><code className="bg-white px-1 rounded">get-rewards-catalog</code> - loads distributed offers by type</li>
+                  <li><code className="bg-white px-1 rounded">get-marketplace-offers</code> - lists adoptable marketplace offers</li>
+                  <li><code className="bg-white px-1 rounded">adopt-marketplace-offer</code> - adopts an offer into your catalog</li>
+                  <li><code className="bg-white px-1 rounded">upload-offer-codes</code> - uploads unique code pools</li>
+                  <li><code className="bg-white px-1 rounded">upload-redemption-data</code> - syncs manual redemptions</li>
+                </ul>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {integration?.status !== 'connected' && (
           <Card className="mb-6 border-blue-200 bg-white shadow-lg">
             <CardHeader className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
@@ -725,7 +757,7 @@ export function Integrations() {
                           <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                           <div>
                             <p className="font-semibold text-yellow-900 mb-1">Requested Permissions:</p>
-                            <p className="text-xs text-yellow-900">Shopify will show that the app requests: <strong>read_orders</strong>, <strong>read_customers</strong>, <strong>read_products</strong>, and <strong>write_webhooks</strong>. These are required for the integration to work.</p>
+                            <p className="text-xs text-yellow-900">Shopify should show order and customer read permissions. Webhook registration is handled by the backend after connection and does not require manually adding deprecated webhook scopes.</p>
                           </div>
                         </div>
                       </div>

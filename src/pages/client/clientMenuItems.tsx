@@ -32,8 +32,8 @@ export const clientMenuItems = [
     icon: <Receipt className="w-5 h-5" />,
   },
   {
-    label: 'Rewards Catalog',
-    path: '/client/rewards-catalog',
+    label: 'Offers & Rewards',
+    path: '/client/offers',
     icon: <Tag className="w-5 h-5" />,
   },
   {
@@ -50,11 +50,6 @@ export const clientMenuItems = [
     label: 'Ways to Earn Points',
     path: '/client/loyalty-config',
     icon: <Cog className="w-5 h-5" />,
-  },
-  {
-    label: 'My Rewards',
-    path: '/client/my-rewards',
-    icon: <Package className="w-5 h-5" />,
   },
   {
     label: 'Rewards Marketplace',

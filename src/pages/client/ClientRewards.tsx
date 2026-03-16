@@ -1,467 +1,482 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { Search, Plus, Edit, Trash2, Tag, FileSpreadsheet } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 import { clientMenuItems } from './clientMenuItems';
-import { RewardForm } from '../../components/RewardForm';
-import { ExcelUploadModal } from '../../components/ExcelUploadModal';
+import { supabase } from '../../lib/supabase';
 
-interface Brand {
+interface OfferRow {
   id: string;
-  name: string;
-  logo_url: string | null;
-}
-
-interface Reward {
-  id: string;
-  brand_id: string;
-  client_id: string | null;
   title: string;
-  description: string;
-  terms_conditions: string;
-  value_description: string;
-  image_url: string | null;
-  category: string;
-  status: string;
-  is_marketplace: boolean;
-  voucher_count: number;
-  expiry_date: string | null;
-  brands: Brand;
-  reward_type: string;
+  offer_type: string;
   coupon_type: string;
+  tracking_type: string;
+  is_active: boolean;
+  is_marketplace_listed: boolean;
+  available_codes: number;
+  total_codes_uploaded: number;
+  created_at: string;
 }
+
+interface MarketplaceOffer {
+  id: string;
+  title: string;
+  description: string | null;
+  issuer_name: string | null;
+  coupon_type: string;
+  available_codes: number;
+  already_adopted: boolean;
+  my_points_cost: number | null;
+}
+
+const TABS = [
+  { id: 'my_offers', label: 'My Offers' },
+  { id: 'marketplace', label: 'Marketplace' },
+  { id: 'analytics', label: 'Analytics' },
+] as const;
+
+type TabId = (typeof TABS)[number]['id'];
 
 export function ClientRewards() {
-  const [rewards, setRewards] = useState<Reward[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
+  const [clientId, setClientId] = useState('');
+  const [shopDomain, setShopDomain] = useState('');
+  const [tab, setTab] = useState<TabId>('my_offers');
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [showForm, setShowForm] = useState(false);
-  const [showExcelUpload, setShowExcelUpload] = useState(false);
-  const [editingReward, setEditingReward] = useState<Reward | null>(null);
-  const [clientId, setClientId] = useState<string>('');
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const [myOffers, setMyOffers] = useState<OfferRow[]>([]);
+  const [marketplaceOffers, setMarketplaceOffers] = useState<MarketplaceOffer[]>([]);
+
+  const [redeemOfferId, setRedeemOfferId] = useState<string | null>(null);
+  const [redeemRowsText, setRedeemRowsText] = useState('');
+
+  const [adoptOffer, setAdoptOffer] = useState<MarketplaceOffer | null>(null);
+  const [adoptPointsCost, setAdoptPointsCost] = useState('500');
+  const [adoptAccessType, setAdoptAccessType] = useState<'points_redemption' | 'campaign_reward' | 'both'>('points_redemption');
 
   useEffect(() => {
-    loadClientId();
+    void bootstrap();
   }, []);
 
-  useEffect(() => {
-    if (clientId) {
-      loadRewards();
-      loadBrands();
-    }
-  }, [clientId]);
-
-  const loadClientId = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('client_id')
-        .eq('id', user.id)
-        .single();
-
-      if (error) throw error;
-      if (profile?.client_id) {
-        setClientId(profile.client_id);
-      }
-    } catch (error) {
-      console.error('Error loading client ID:', error);
-    }
-  };
-
-  const loadRewards = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('rewards')
-        .select(`
-          *,
-          brands (
-            id,
-            name,
-            logo_url
-          )
-        `)
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setRewards(data || []);
-    } catch (error) {
-      console.error('Error loading rewards:', error);
-    } finally {
+  async function bootstrap() {
+    const { data: auth } = await supabase.auth.getUser();
+    const user = auth.user;
+    if (!user) {
       setLoading(false);
+      return;
     }
-  };
 
-  const loadBrands = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('brands')
-        .select('id, name, logo_url')
-        .eq('status', 'approved')
-        .order('name');
+    const { data: profile } = await supabase
+      .from('profiles' as any)
+      .select('client_id')
+      .eq('id', user.id)
+      .maybeSingle();
 
-      if (error) throw error;
-      setBrands(data || []);
-    } catch (error) {
-      console.error('Error loading brands:', error);
+    const resolvedClientId = (profile as any)?.client_id as string | undefined;
+    if (!resolvedClientId) {
+      setLoading(false);
+      return;
     }
-  };
 
-  const handleSubmit = async (formSubmitData: any) => {
-    try {
-      const { unique_coupon_codes, ...rewardData } = formSubmitData;
+    setClientId(resolvedClientId);
 
-      const rewardPayload = {
-        ...rewardData,
-        client_id: clientId,
-        is_marketplace: false,
-      };
+    const { data: install } = await supabase
+      .from('store_installations' as any)
+      .select('shop_domain')
+      .eq('client_id', resolvedClientId)
+      .eq('installation_status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-      if (editingReward) {
-        const { error } = await supabase
-          .from('rewards')
-          .update({
-            ...rewardPayload,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', editingReward.id);
+    const installShopDomain = (install as any)?.shop_domain as string | undefined;
 
-        if (error) throw error;
+    const { data: integration } = !installShopDomain
+      ? await supabase
+          .from('integration_configs' as any)
+          .select('shop_domain')
+          .eq('client_id', resolvedClientId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
 
-        if (rewardData.coupon_type === 'unique' && unique_coupon_codes && unique_coupon_codes.length > 0) {
-          const vouchersToInsert = unique_coupon_codes.map((code: string) => ({
-            reward_id: editingReward.id,
-            code: code,
-            status: 'available',
-            redemption_link: rewardData.redemption_link,
-          }));
+    const resolvedShop = (installShopDomain || (integration as any)?.shop_domain || '') as string;
+    setShopDomain(resolvedShop);
 
-          const { error: voucherError } = await supabase
-            .from('vouchers')
-            .insert(vouchersToInsert);
+    await Promise.all([loadMyOffers(resolvedClientId), loadMarketplace(resolvedClientId, resolvedShop)]);
+    setLoading(false);
+  }
 
-          if (voucherError) throw voucherError;
-        }
-      } else {
-        const { data: newReward, error } = await supabase
-          .from('rewards')
-          .insert([rewardPayload])
-          .select()
-          .single();
+  async function loadMyOffers(currentClientId = clientId) {
+    if (!currentClientId) return;
 
-        if (error) throw error;
+    const { data, error } = await supabase
+      .from('rewards')
+      .select('id, title, offer_type, coupon_type, tracking_type, is_active, is_marketplace_listed, available_codes, total_codes_uploaded, created_at')
+      .or(`owner_client_id.eq.${currentClientId},client_id.eq.${currentClientId}`)
+      .order('created_at', { ascending: false });
 
-        if (rewardData.coupon_type === 'unique' && unique_coupon_codes && unique_coupon_codes.length > 0) {
-          const vouchersToInsert = unique_coupon_codes.map((code: string) => ({
-            reward_id: newReward.id,
-            code: code,
-            status: 'available',
-            redemption_link: rewardData.redemption_link,
-          }));
-
-          const { error: voucherError } = await supabase
-            .from('vouchers')
-            .insert(vouchersToInsert);
-
-          if (voucherError) throw voucherError;
-        }
-      }
-
-      setShowForm(false);
-      setEditingReward(null);
-      loadRewards();
-    } catch (error) {
-      console.error('Error saving reward:', error);
-      alert('Failed to save reward. Please try again.');
+    if (error) {
+      alert(`Failed to load offers: ${error.message}`);
+      return;
     }
-  };
 
-  const handleEdit = (reward: Reward) => {
-    setEditingReward(reward);
-    setShowForm(true);
-  };
+    setMyOffers((data || []) as OfferRow[]);
+  }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this reward?')) return;
+  async function loadMarketplace(currentClientId = clientId, currentShop = shopDomain) {
+    if (!currentClientId && !currentShop) return;
 
-    try {
-      const { error } = await supabase.from('rewards').delete().eq('id', id);
+    const { data, error } = await supabase.functions.invoke('get-marketplace-offers', {
+      body: {
+        client_id: currentClientId || undefined,
+        shop_domain: currentShop || undefined,
+      },
+    });
 
-      if (error) throw error;
-      loadRewards();
-    } catch (error) {
-      console.error('Error deleting reward:', error);
-      alert('Failed to delete reward. Please try again.');
+    if (error || !data?.success) {
+      setMarketplaceOffers([]);
+      return;
     }
-  };
 
-  const handleExcelUpload = async (data: any[]) => {
-    try {
-      for (const row of data) {
-        const { data: brandData } = await supabase
-          .from('brands')
-          .select('id')
-          .eq('name', row.brand_name)
-          .maybeSingle();
+    setMarketplaceOffers((data.offers || []) as MarketplaceOffer[]);
+  }
 
-        if (!brandData) {
-          throw new Error(`Brand "${row.brand_name}" not found`);
-        }
+  async function toggleMarketplaceListing(offer: OfferRow) {
+    setSaving(offer.id);
 
-        const rewardData = {
-          brand_id: brandData.id,
-          client_id: clientId,
-          title: row.title,
-          description: row.description,
-          category: row.category,
-          reward_type: row.reward_type,
-          discount_value: row.discount_value,
-          max_discount_value: row.max_discount_value,
-          min_purchase_amount: row.min_purchase_amount,
-          currency: row.currency,
-          coupon_type: row.coupon_type,
-          generic_coupon_code: row.generic_coupon_code,
-          redemption_link: row.redemption_link,
-          value_description: row.value_description,
-          terms_conditions: row.terms_conditions,
-          expiry_date: row.expiry_date,
-          is_marketplace: false,
-          status: row.status || 'active',
+    const { error } = await (supabase
+      .from('rewards' as any) as any)
+      .update({
+        is_marketplace_listed: !offer.is_marketplace_listed,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', offer.id);
+
+    if (error) {
+      alert(`Failed to update listing: ${error.message}`);
+      setSaving(null);
+      return;
+    }
+
+    await Promise.all([loadMyOffers(), loadMarketplace()]);
+    setSaving(null);
+  }
+
+  async function submitRedemptionUpload() {
+    if (!redeemOfferId || !shopDomain) return;
+
+    const redemptions = redeemRowsText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [code, redeemedAt] = line.split(',').map((v) => v.trim());
+        return {
+          code,
+          redeemed_at: redeemedAt || new Date().toISOString(),
         };
+      })
+      .filter((row) => row.code);
 
-        const { error } = await supabase.from('rewards').insert([rewardData]);
-
-        if (error) throw error;
-      }
-
-      alert(`Successfully uploaded ${data.length} rewards`);
-      loadRewards();
-    } catch (error: any) {
-      console.error('Error uploading rewards:', error);
-      throw error;
+    if (redemptions.length === 0) {
+      alert('Add redemption rows as CODE or CODE,ISO_TIMESTAMP');
+      return;
     }
-  };
 
-  const filteredRewards = rewards.filter((reward) => {
-    const brandName = reward.brands?.name ?? '';
-    const matchesSearch =
-      reward.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (reward.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      brandName.toLowerCase().includes(searchQuery.toLowerCase());
+    setSaving(redeemOfferId);
+    const { data, error } = await supabase.functions.invoke('upload-redemption-data', {
+      body: {
+        offer_id: redeemOfferId,
+        shop_domain: shopDomain,
+        redemptions,
+      },
+    });
 
-    const matchesFilter = filterStatus === 'all' || reward.status === filterStatus;
+    if (error || !data?.success) {
+      alert(`Upload failed: ${data?.error || error?.message || 'Unknown error'}`);
+      setSaving(null);
+      return;
+    }
 
-    return matchesSearch && matchesFilter;
-  });
+    alert(`Updated ${data.updated} redemptions.`);
+    setRedeemOfferId(null);
+    setRedeemRowsText('');
+    await loadMyOffers();
+    setSaving(null);
+  }
 
-  const statuses = ['draft', 'pending', 'active', 'inactive', 'expired'];
+  async function adoptSelectedOffer() {
+    if (!adoptOffer || !shopDomain) return;
+
+    const points = Number(adoptPointsCost);
+    if ((adoptAccessType === 'points_redemption' || adoptAccessType === 'both') && (!points || points <= 0)) {
+      alert('Points cost must be greater than zero.');
+      return;
+    }
+
+    setSaving(adoptOffer.id);
+    const { data, error } = await supabase.functions.invoke('adopt-marketplace-offer', {
+      body: {
+        offer_id: adoptOffer.id,
+        shop_domain: shopDomain,
+        points_cost: points,
+        access_type: adoptAccessType,
+        max_per_member: 1,
+      },
+    });
+
+    if (error || !data?.success) {
+      alert(`Adoption failed: ${data?.error || error?.message || 'Unknown error'}`);
+      setSaving(null);
+      return;
+    }
+
+    setAdoptOffer(null);
+    await Promise.all([loadMarketplace(), loadMyOffers()]);
+    setSaving(null);
+  }
+
+  const analytics = useMemo(() => {
+    const total = myOffers.length;
+    const listed = myOffers.filter((offer) => offer.is_marketplace_listed).length;
+    const active = myOffers.filter((offer) => offer.is_active).length;
+    const totalUploaded = myOffers.reduce((sum, offer) => sum + Number(offer.total_codes_uploaded || 0), 0);
+    const totalAvailable = myOffers.reduce((sum, offer) => sum + Number(offer.available_codes || 0), 0);
+    const redeemed = Math.max(totalUploaded - totalAvailable, 0);
+
+    return {
+      total,
+      listed,
+      active,
+      totalUploaded,
+      totalAvailable,
+      redeemed,
+    };
+  }, [myOffers]);
 
   return (
-    <DashboardLayout menuItems={clientMenuItems} title="My Rewards">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">My Rewards</h1>
-            <p className="text-gray-600 mt-2">Create and manage your custom rewards</p>
-          </div>
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setShowExcelUpload(true)}>
-              <FileSpreadsheet className="w-4 h-4 mr-2" />
-              Upload Excel
-            </Button>
-            <Button onClick={() => setShowForm(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Custom Reward
-            </Button>
-          </div>
+    <DashboardLayout menuItems={clientMenuItems} title="Client Rewards">
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Client Rewards</h1>
+          <p className="text-sm text-gray-600 mt-1">
+            Manage your offers, adopt marketplace offers, and track code performance.
+          </p>
         </div>
 
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-              <CardTitle>Your Rewards ({filteredRewards.length})</CardTitle>
-              <div className="flex gap-3 w-full sm:w-auto">
-                <div className="relative flex-1 sm:w-64">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input
-                    type="text"
-                    placeholder="Search rewards..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="all">All Status</option>
-                  {statuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="animate-pulse flex items-center gap-4 p-4 border border-gray-200 rounded-lg"
-                  >
-                    <div className="w-20 h-20 bg-gray-200 rounded"></div>
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 bg-gray-200 rounded w-1/3"></div>
-                      <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : filteredRewards.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-gray-600 text-lg">No rewards found</p>
-                <p className="text-gray-500 text-sm mt-2">
-                  Create your first custom reward to get started
-                </p>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 mb-5 flex gap-2">
+          {TABS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setTab(item.id)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                tab === item.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <div className="text-center py-12 text-gray-500">Loading rewards...</div>
+        ) : tab === 'my_offers' ? (
+          <div className="grid gap-3">
+            {myOffers.length === 0 ? (
+              <div className="bg-white border border-dashed border-gray-300 rounded-xl py-12 text-center text-sm text-gray-500">
+                No offers found.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="border-b border-gray-200">
-                    <tr>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                        Reward ID
-                      </th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                        Reward
-                      </th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                        Brand
-                      </th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                        Type
-                      </th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                        Status
-                      </th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRewards.map((reward) => (
-                      <tr key={reward.id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-4 px-4">
-                          <div className="flex items-center gap-2">
-                            <Tag className="w-4 h-4 text-gray-400" />
-                            <span className="font-mono text-sm text-gray-900">
-                              {(reward as any).reward_id || 'N/A'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="flex items-center gap-3">
-                            {reward.image_url && (
-                              <img
-                                src={reward.image_url}
-                                alt={reward.title}
-                                className="w-16 h-16 rounded object-cover"
-                              />
-                            )}
-                            <div>
-                              <p className="font-medium text-gray-900">{reward.title}</p>
-                              <p className="text-sm text-gray-500">{reward.value_description}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4">
-                          <p className="text-sm text-gray-900">{reward.brands?.name || '—'}</p>
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="space-y-1">
-                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-50 text-blue-700 capitalize">
-                              {reward.reward_type?.replace('_', ' ') || 'other'}
-                            </span>
-                            <div className="text-xs text-gray-500">
-                              {reward.coupon_type === 'generic' ? 'Generic Code' : 'Unique Codes'}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4">
-                          <span
-                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium capitalize ${
-                              reward.status === 'active'
-                                ? 'bg-green-50 text-green-700'
-                                : reward.status === 'draft'
-                                ? 'bg-gray-100 text-gray-700'
-                                : reward.status === 'pending'
-                                ? 'bg-yellow-50 text-yellow-700'
-                                : 'bg-red-50 text-red-700'
-                            }`}
-                          >
-                            {reward.status}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleEdit(reward)}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleDelete(reward.id)}
-                            >
-                              <Trash2 className="w-4 h-4 text-red-600" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              myOffers.map((offer) => (
+                <div key={offer.id} className="bg-white border border-gray-200 rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-gray-900">{offer.title}</p>
+                      <div className="flex gap-3 mt-1 text-xs text-gray-600 flex-wrap">
+                        <span>{offer.offer_type}</span>
+                        <span>{offer.coupon_type}</span>
+                        <span>{offer.is_active ? 'Active' : 'Inactive'}</span>
+                        <span>Marketplace: {offer.is_marketplace_listed ? 'Listed' : 'Private'}</span>
+                        <span>
+                          Codes: {offer.available_codes}/{offer.total_codes_uploaded}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {offer.tracking_type === 'manual' && (
+                        <button
+                          onClick={() => setRedeemOfferId(offer.id)}
+                          className="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 text-xs font-medium hover:bg-indigo-100"
+                        >
+                          Upload Redemptions
+                        </button>
+                      )}
+                      <button
+                        onClick={() => toggleMarketplaceListing(offer)}
+                        disabled={saving === offer.id}
+                        className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 bg-gray-50 text-xs font-medium hover:bg-gray-100 disabled:opacity-50"
+                      >
+                        {saving === offer.id
+                          ? 'Saving...'
+                          : offer.is_marketplace_listed
+                          ? 'Unlist Marketplace'
+                          : 'Publish Marketplace'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
             )}
-          </CardContent>
-        </Card>
+          </div>
+        ) : tab === 'marketplace' ? (
+          <div className="grid gap-3">
+            {marketplaceOffers.length === 0 ? (
+              <div className="bg-white border border-dashed border-gray-300 rounded-xl py-12 text-center text-sm text-gray-500">
+                No marketplace offers available.
+              </div>
+            ) : (
+              marketplaceOffers.map((offer) => (
+                <div key={offer.id} className="bg-white border border-gray-200 rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-gray-900">{offer.title}</p>
+                      <p className="text-xs text-gray-500 mt-1">{offer.description || 'No description'}</p>
+                      <div className="flex gap-3 mt-2 text-xs text-gray-600 flex-wrap">
+                        <span>Issuer: {offer.issuer_name || 'Unknown'}</span>
+                        <span>Coupon: {offer.coupon_type}</span>
+                        <span>Codes: {offer.available_codes}</span>
+                        {offer.my_points_cost ? <span>Your Cost: {offer.my_points_cost} pts</span> : null}
+                      </div>
+                    </div>
+                    <button
+                      disabled={offer.already_adopted || saving === offer.id}
+                      onClick={() => {
+                        setAdoptOffer(offer);
+                        setAdoptPointsCost(String(offer.my_points_cost || 500));
+                        setAdoptAccessType('points_redemption');
+                      }}
+                      className="px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-50 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+                    >
+                      {offer.already_adopted ? 'Adopted' : 'Adopt Offer'}
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-sm text-gray-500">Total Offers</p>
+              <p className="text-2xl font-semibold text-gray-900 mt-1">{analytics.total}</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-sm text-gray-500">Marketplace Listed</p>
+              <p className="text-2xl font-semibold text-gray-900 mt-1">{analytics.listed}</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-sm text-gray-500">Active Offers</p>
+              <p className="text-2xl font-semibold text-gray-900 mt-1">{analytics.active}</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-sm text-gray-500">Codes Uploaded</p>
+              <p className="text-2xl font-semibold text-gray-900 mt-1">{analytics.totalUploaded}</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-sm text-gray-500">Codes Available</p>
+              <p className="text-2xl font-semibold text-gray-900 mt-1">{analytics.totalAvailable}</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-sm text-gray-500">Estimated Redeemed</p>
+              <p className="text-2xl font-semibold text-gray-900 mt-1">{analytics.redeemed}</p>
+            </div>
+          </div>
+        )}
+
+        {redeemOfferId && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl w-full max-w-lg p-5">
+              <h2 className="text-lg font-semibold text-gray-900">Upload Redemption Data</h2>
+              <p className="text-xs text-gray-500 mt-1">Format: CODE or CODE,2026-03-15T10:30:00Z (one per line)</p>
+              <textarea
+                value={redeemRowsText}
+                onChange={(e) => setRedeemRowsText(e.target.value)}
+                className="w-full mt-4 border border-gray-300 rounded-lg px-3 py-2 text-sm h-44 font-mono"
+                placeholder={'ABC123\nXYZ999,2026-03-15T10:30:00Z'}
+              />
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setRedeemOfferId(null);
+                    setRedeemRowsText('');
+                  }}
+                  className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitRedemptionUpload}
+                  disabled={saving === redeemOfferId}
+                  className="px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg disabled:opacity-50"
+                >
+                  {saving === redeemOfferId ? 'Uploading...' : 'Upload'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {adoptOffer && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl w-full max-w-md p-5">
+              <h2 className="text-lg font-semibold text-gray-900">Adopt Marketplace Offer</h2>
+              <p className="text-sm text-gray-600 mt-1">{adoptOffer.title}</p>
+
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="text-xs text-gray-600">Access Type</label>
+                  <select
+                    value={adoptAccessType}
+                    onChange={(e) => setAdoptAccessType(e.target.value as typeof adoptAccessType)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1"
+                  >
+                    <option value="points_redemption">Points Redemption</option>
+                    <option value="campaign_reward">Campaign Reward</option>
+                    <option value="both">Both</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-600">Points Cost</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={adoptPointsCost}
+                    onChange={(e) => setAdoptPointsCost(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  onClick={() => setAdoptOffer(null)}
+                  className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={adoptSelectedOffer}
+                  disabled={saving === adoptOffer.id}
+                  className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg disabled:opacity-50"
+                >
+                  {saving === adoptOffer.id ? 'Saving...' : 'Adopt Offer'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-
-      {showForm && (
-        <RewardForm
-          reward={editingReward}
-          brands={brands}
-          onSubmit={handleSubmit}
-          onCancel={() => {
-            setShowForm(false);
-            setEditingReward(null);
-          }}
-        />
-      )}
-
-      {showExcelUpload && (
-        <ExcelUploadModal
-          onClose={() => setShowExcelUpload(false)}
-          onUpload={handleExcelUpload}
-        />
-      )}
     </DashboardLayout>
   );
 }

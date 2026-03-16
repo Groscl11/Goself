@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -88,6 +89,8 @@ import { ReferFriend } from './pages/member/ReferFriend';
 import { StoreInstallations } from './pages/admin/StoreInstallations';
 import { AdminBrandRedemptions } from './pages/admin/AdminBrandRedemptions';
 
+const OffersPage = lazy(() => import('./pages/client/OffersPage'));
+
 function DashboardRouter() {
   const { profile, loading } = useAuth();
 
@@ -176,6 +179,7 @@ function App() {
           <Route path="/client/loyalty-points" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyProgram /></RoleBasedRoute>} />
           <Route path="/client/loyalty-members" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyMembers /></RoleBasedRoute>} />
           <Route path="/client/loyalty-transactions" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyTransactions /></RoleBasedRoute>} />
+          <Route path="/client/offers" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading offers...</div>}><OffersPage /></Suspense></RoleBasedRoute>} />
           <Route path="/client/rewards-catalog" element={<RoleBasedRoute allowedRoles={['client']}><RewardsCatalog /></RoleBasedRoute>} />
           <Route path="/client/brand-redemptions" element={<RoleBasedRoute allowedRoles={['client']}><BrandRedemptions /></RoleBasedRoute>} />
           <Route path="/client/referral-tracking" element={<RoleBasedRoute allowedRoles={['client']}><ReferralTracking /></RoleBasedRoute>} />

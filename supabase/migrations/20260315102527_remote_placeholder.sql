@@ -1,0 +1,2 @@
+-- Remote migration placeholder for alignment.
+-- This file intentionally contains no schema changes.

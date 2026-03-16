@@ -14,14 +14,6 @@ interface RedeemRequest {
   customer_email?: string;
 }
 
-function generateCode(): string {
-  const alpha = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const pick3 = () =>
-    Array.from({ length: 3 }, () => alpha[Math.floor(Math.random() * alpha.length)]).join("");
-  const num4 = () => Math.floor(1000 + Math.random() * 9000).toString();
-  return `${pick3()}${num4()}${pick3()}`;
-}
-
 async function createShopifyDiscount(
   shopDomain: string,
   accessToken: string,
@@ -146,22 +138,60 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── 1. Fetch reward ────────────────────────────────────────────────────
-    const { data: reward } = await supabase
-      .from("rewards")
-      .select("id, title, discount_value, reward_type, points_cost, min_purchase_amount, is_active, client_id")
-      .eq("id", reward_id)
-      .eq("is_active", true)
+    // Step 1: resolve client from shop_domain
+    const { data: installation } = await supabase
+      .from("store_installations")
+      .select("client_id")
+      .eq("shop_domain", shop_domain)
+      .eq("installation_status", "active")
       .maybeSingle();
 
-    if (!reward) {
+    const { data: integration } = !installation?.client_id
+      ? await supabase
+          .from("integration_configs")
+          .select("client_id")
+          .eq("shop_domain", shop_domain)
+          .maybeSingle()
+      : { data: null };
+
+    const clientId = installation?.client_id ?? integration?.client_id ?? null;
+
+    if (!clientId) {
       return new Response(
-        JSON.stringify({ success: false, error: "Reward not found or inactive" }),
+        JSON.stringify({ success: false, error: "Store not found for shop_domain" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const pointsCost = reward.points_cost ?? 500;
+    // Step 2: fetch offer + distribution config
+    const { data: offerRow } = await supabase
+      .from("offer_distributions")
+      .select(
+        "id, offer_id, points_cost, max_per_member, access_type, distributing_client_id, " +
+        "offer:rewards(id, title, discount_value, reward_type, min_purchase_amount, coupon_type, generic_coupon_code, available_codes, offer_type, redeems_at_shop_domain, is_active, status, client_id)"
+      )
+      .eq("offer_id", reward_id)
+      .eq("distributing_client_id", clientId)
+      .eq("is_active", true)
+      .in("access_type", ["points_redemption", "both"])
+      .maybeSingle();
+
+    if (!offerRow || !offerRow.offer || offerRow.offer.is_active !== true || offerRow.offer.status !== "active") {
+      return new Response(
+        JSON.stringify({ success: false, error: "Offer not available for your store" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const reward = offerRow.offer;
+    const pointsCost = Number(offerRow.points_cost ?? 0);
+
+    if (pointsCost <= 0) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Offer points cost is not configured" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     // ── 2. Fetch member loyalty status (member_user_id = member_users.id) ──
     const { data: loyaltyStatus } = await supabase
@@ -187,59 +217,142 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── 3. Check for existing unused code for this reward+member ───────────
+    // Step 5: idempotent return of existing assigned code
     const { data: existing } = await supabase
-      .from("loyalty_discount_codes")
+      .from("offer_codes")
       .select("id, code, expires_at")
-      .eq("reward_id", reward_id)
-      .eq("member_id", member_user_id)
-      .eq("is_used", false)
+      .eq("offer_id", reward_id)
+      .eq("assigned_to_member_id", member_user_id)
+      .eq("distributed_by_client_id", clientId)
+      .eq("status", "assigned")
       .maybeSingle();
 
     if (existing) {
+      const existingCode = reward.coupon_type === "generic"
+        ? reward.generic_coupon_code
+        : existing.code;
+
       return new Response(
         JSON.stringify({
           success: true,
-          discount_code: existing.code,
+          discount_code: existingCode,
           discount_value: reward.discount_value,
           discount_type: reward.reward_type,
           expires_at: existing.expires_at,
           new_points_balance: loyaltyStatus.points_balance,
           already_exists: true,
+          offer_type: reward.offer_type,
+          coupon_type: reward.coupon_type,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // ── 4. Generate unique code ─────────────────────────────────────────────
-    let code = generateCode();
-    for (let i = 0; i < 5; i++) {
-      const { data: col } = await supabase
-        .from("loyalty_discount_codes")
-        .select("id")
-        .eq("code", code)
-        .maybeSingle();
-      if (!col) break;
-      code = generateCode();
+    // Step 4: per-member usage limit (after idempotent assigned lookup)
+    const { count: usageCount, error: usageError } = await supabase
+      .from("offer_codes")
+      .select("id", { count: "exact", head: true })
+      .eq("offer_id", reward_id)
+      .eq("assigned_to_member_id", member_user_id)
+      .eq("distributed_by_client_id", clientId)
+      .in("status", ["assigned", "redeemed"]);
+
+    if (usageError) {
+      return new Response(
+        JSON.stringify({ success: false, error: usageError.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const maxPerMember = Number(offerRow.max_per_member ?? 1);
+    if (usageCount !== null && usageCount >= maxPerMember) {
+      return new Response(
+        JSON.stringify({ success: false, error: "You've already claimed this offer" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    let claimedOfferCodeId: string | null = null;
+    let code: string | null = null;
 
-    // ── 5. Create actual Shopify discount code ──────────────────────────────
+    // Step 6: assign code based on coupon_type
+    if (reward.coupon_type === "generic") {
+      if (!reward.generic_coupon_code) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Generic code not configured for this offer" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const { data: insertedGenericCode, error: insertGenericError } = await supabase
+        .from("offer_codes")
+        .insert({
+          offer_id: reward_id,
+          distribution_id: offerRow.id,
+          code: null,
+          status: "assigned",
+          assigned_to_member_id: member_user_id,
+          assigned_at: new Date().toISOString(),
+          assignment_channel: "points_redemption",
+          distributed_by_client_id: clientId,
+          shopify_synced: false,
+          expires_at: expiresAt,
+        })
+        .select("id")
+        .single();
+
+      if (insertGenericError) {
+        return new Response(
+          JSON.stringify({ success: false, error: insertGenericError.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      claimedOfferCodeId = insertedGenericCode?.id ?? null;
+      code = reward.generic_coupon_code;
+    } else {
+      // Unique code claim with race-safe locking.
+      const { data: claimedCode, error: claimError } = await supabase.rpc("claim_next_offer_code", {
+        p_offer_id: reward_id,
+        p_distribution_id: offerRow.id,
+        p_member_user_id: member_user_id,
+        p_distributed_by_client_id: clientId,
+      });
+
+      if (claimError) {
+        return new Response(
+          JSON.stringify({ success: false, error: claimError.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      if (!claimedCode?.id) {
+        return new Response(
+          JSON.stringify({ success: false, error: "No codes available for this offer" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      claimedOfferCodeId = claimedCode.id;
+      code = claimedCode.code;
+    }
+
+    // Step 6B: optional Shopify sync for unique store discounts
     let shopifyCreated = false;
     let priceRuleId: number | null = null;
     let shopifyDiscountCodeId: number | null = null;
     let shopifyAccessToken: string | null = null;
 
-    const { data: installation } = await supabase
+    const { data: storeInstall } = await supabase
       .from("store_installations")
       .select("access_token")
       .eq("shop_domain", shop_domain)
       .maybeSingle();
 
-    shopifyAccessToken = installation?.access_token ?? null;
+    shopifyAccessToken = storeInstall?.access_token ?? null;
 
-    if (shopifyAccessToken) {
+    if (shopifyAccessToken && reward.coupon_type === "unique" && reward.offer_type === "store_discount" && code) {
       const shopifyResult = await createShopifyDiscount(
         shop_domain,
         shopifyAccessToken,
@@ -262,44 +375,19 @@ Deno.serve(async (req: Request) => {
       console.warn(`No active Shopify installation for ${shop_domain}`);
     }
 
-    // ── 6. Store in loyalty_discount_codes ──────────────────────────────────
-    const discType = reward.reward_type === "percentage_discount" ? "percentage" : "fixed_amount";
-
-    const { error: insertErr } = await supabase
-      .from("loyalty_discount_codes")
-      .insert({
-        client_id: reward.client_id,
-        member_id: member_user_id,           // FK → member_users.id
-        member_email: customer_email ?? null,
-        reward_id,
-        code,
-        discount_type: discType,
-        discount_value: reward.discount_value,
-        points_redeemed: pointsCost,
-        minimum_order_value: reward.min_purchase_amount ?? 0,
-        is_used: false,
-        expires_at: expiresAt,
-        shop_domain,
-        shopify_price_rule_id: priceRuleId,
-        shopify_discount_code_id: shopifyDiscountCodeId,
-        shopify_synced: shopifyCreated,
-      });
-
-    if (insertErr) {
-      console.error("DB insert error:", insertErr);
-      if (shopifyCreated && priceRuleId && shopifyAccessToken) {
-        await fetch(
-          `https://${shop_domain}/admin/api/2024-01/price_rules/${priceRuleId}.json`,
-          { method: "DELETE", headers: { "X-Shopify-Access-Token": shopifyAccessToken } },
-        );
-      }
-      return new Response(
-        JSON.stringify({ success: false, error: "Failed to save discount code" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (claimedOfferCodeId) {
+      await supabase
+        .from("offer_codes")
+        .update({
+          shopify_synced: shopifyCreated,
+          shopify_price_rule_id: priceRuleId,
+          shopify_discount_code_id: shopifyDiscountCodeId,
+          expires_at: expiresAt,
+        })
+        .eq("id", claimedOfferCodeId);
     }
 
-    // ── 7. Record transaction & update balance ─────────────────────────────
+    // Step 7: deduct points + transaction
     const newBalance = loyaltyStatus.points_balance - pointsCost;
 
     await supabase.from("loyalty_points_transactions").insert({
@@ -310,7 +398,7 @@ Deno.serve(async (req: Request) => {
       balance_after: newBalance,
       description: `Redeemed for ${reward.title} (${code})`,
       reference_id: code,
-      metadata: { reward_id, shop_domain, shopify_synced: shopifyCreated },
+      metadata: { reward_id, distribution_id: offerRow.id, shop_domain, shopify_synced: shopifyCreated },
     });
 
     await supabase
@@ -331,6 +419,8 @@ Deno.serve(async (req: Request) => {
         expires_at: expiresAt,
         new_points_balance: newBalance,
         shopify_synced: shopifyCreated,
+        offer_type: reward.offer_type,
+        coupon_type: reward.coupon_type,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
