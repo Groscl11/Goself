@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { RewardPickerModal } from '../../components/RewardPickerModal';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
@@ -12,8 +13,10 @@ type RuleMode = 'membership' | 'standalone';
 interface CampaignRule {
   id: string;
   name: string;
-  description?: string;
-  campaign_id: string;
+  description?: string | null;
+  campaign_id: string | null;
+  client_id: string;
+  program_id?: string | null;
   trigger_type: TriggerType;
   rule_mode: RuleMode;
   is_active: boolean;
@@ -158,14 +161,23 @@ interface DrawerProps {
   defaultMode?: RuleMode;
 }
  
+
 function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode }: DrawerProps) {
   const isEdit = !!initial?.id;
- 
+
   // Step: 1=type, 2=trigger, 3=details, 4=rewards  (step 1 skipped on edit)
   const [step, setStep] = useState(isEdit ? 2 : 1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
- 
+
+  // Advanced reward fields
+  const [rewardPool, setRewardPool] = useState<any[]>(initial?.reward_action?.reward_pool ?? []);
+  const [showRewardPicker, setShowRewardPicker] = useState(false);
+  const [rewardType, setRewardType] = useState(initial?.reward_action?.reward_type ?? 'auto');
+  const [rewardSelectionMode, setRewardSelectionMode] = useState(initial?.reward_action?.reward_selection_mode ?? 'fixed');
+  const [minRewardsChoice, setMinRewardsChoice] = useState(initial?.reward_action?.min_rewards_choice ?? 1);
+  const [maxRewardsChoice, setMaxRewardsChoice] = useState(initial?.reward_action?.max_rewards_choice ?? 1);
+
   // Form fields
   const [mode, setMode]           = useState<RuleMode>(initial?.rule_mode ?? defaultMode ?? 'standalone');
   const [name, setName]           = useState(initial?.name ?? '');
@@ -186,14 +198,39 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
   const [budgetCap, setBudget]    = useState(initial?.guardrails?.budget_cap ?? '');
   const [maxTotal, setMaxTotal]   = useState(initial?.guardrails?.max_rewards_total ?? '');
   const [maxPerCust, setMaxCust]  = useState(initial?.guardrails?.max_rewards_per_customer ?? '');
- 
-  // Reset on open/close
+
+  // Sync all fields with initial when editing
   useEffect(() => {
-    if (open) {
+    if (open && initial) {
+      setMode(initial.rule_mode ?? defaultMode ?? 'standalone');
+      setName(initial.name ?? '');
+      setDesc(initial.description ?? '');
+      setTrigger(initial.trigger_type ?? 'order_value');
+      setConds(Array.isArray(initial.trigger_conditions) ? initial.trigger_conditions : []);
+      setStart(initial.start_date?.slice(0, 10) ?? '');
+      setEnd(initial.end_date?.slice(0, 10) ?? '');
+      setMaxEnroll(String(initial.max_enrollments ?? ''));
+      setLinkExp(String(initial.link_expiry_hours ?? 72));
+      setMinOrder(initial.rule_mode === 'membership' ? String(initial.trigger_conditions?.min_order_value ?? '') : '');
+      setBudget(initial.guardrails?.budget_cap ?? '');
+      setMaxTotal(initial.guardrails?.max_rewards_total ?? '');
+      setMaxCust(initial.guardrails?.max_rewards_per_customer ?? '');
+      setRewardPool(initial.reward_action?.reward_pool ?? []);
+      setRewardType(initial.reward_action?.reward_type ?? 'auto');
+      setRewardSelectionMode(initial.reward_action?.reward_selection_mode ?? 'fixed');
+      setMinRewardsChoice(initial.reward_action?.min_rewards_choice ?? 1);
+      setMaxRewardsChoice(initial.reward_action?.max_rewards_choice ?? 1);
       setStep(isEdit ? 2 : 1);
       setError('');
     }
-  }, [open, isEdit]);
+    if (open && !initial) {
+      setRewardPool([]);
+      setRewardType('auto');
+      setRewardSelectionMode('fixed');
+      setMinRewardsChoice(1);
+      setMaxRewardsChoice(1);
+    }
+  }, [open, initial, defaultMode, isEdit]);
  
   // Lock body scroll
   useEffect(() => {
@@ -216,7 +253,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
         ? conditions
         : { min_order_value: Number(minOrder) || 0, communication: { type: 'email', enabled: true, template: '', link_type: 'one_click', valid_days: 30 } };
  
-      const payload: any = {
+      const payload = {
         client_id: clientId,
         name: name.trim(),
         description: description.trim() || null,
@@ -224,21 +261,35 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
         rule_mode: mode,
         is_active: true,
         priority: 0,
+        current_enrollments: initial?.current_enrollments ?? 0,
+        program_id: mode === 'membership' ? (initial?.program_id ?? null) : null,
         start_date: startDate || null,
         end_date: endDate || null,
         max_enrollments: maxEnroll ? Number(maxEnroll) : null,
         link_expiry_hours: Number(linkExpiry) || 72,
+        reward_selection_mode: rewardSelectionMode,
+        min_rewards_choice: minRewardsChoice,
+        max_rewards_choice: maxRewardsChoice,
         trigger_conditions: finalTriggerConditions,
         eligibility_conditions: mode === 'standalone' ? [] : {},
-        reward_action: initial?.reward_action ?? { expiry_days: 90, reward_type: 'auto', claim_method: 'auto', allocation_timing: 'instant' },
+        reward_action: mode === 'standalone' ? {
+          expiry_days: 90,
+          reward_type: rewardType,
+          claim_method: 'auto',
+          allocation_timing: 'instant',
+          reward_pool: rewardPool,
+          reward_selection_mode: rewardSelectionMode,
+          min_rewards_choice: minRewardsChoice,
+          max_rewards_choice: maxRewardsChoice,
+        } : (initial?.reward_action ?? { expiry_days: 90, reward_type: 'auto', claim_method: 'auto', allocation_timing: 'instant' }),
         guardrails: { budget_cap: budgetCap, max_rewards_total: maxTotal, max_rewards_per_customer: maxPerCust },
       };
- 
       if (isEdit) {
-        const { error: err } = await supabase.from('campaign_rules').update(payload).eq('id', initial!.id);
+        if (!initial?.id) throw new Error('Missing campaign ID');
+        const { error: err } = await (supabase as any).from('campaign_rules').update(payload).eq('id', initial.id);
         if (err) throw err;
       } else {
-        const { error: err } = await supabase.from('campaign_rules').insert(payload);
+        const { error: err } = await (supabase as any).from('campaign_rules').insert(payload);
         if (err) throw err;
       }
       onSaved();
@@ -426,6 +477,66 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                     )}
                   </div>
                   <p className="text-xs text-gray-400">All conditions must be true (AND logic). Leave empty to trigger on every order.</p>
+
+                  {/* Advanced Reward Picker */}
+                  <div className="mt-6">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward Pool</label>
+                    <button
+                      type="button"
+                      className="px-4 py-2 text-sm bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-colors mb-2"
+                      onClick={() => setShowRewardPicker(true)}
+                    >
+                      {rewardPool.length === 0 ? '+ Add Rewards' : `Edit Rewards (${rewardPool.length} selected)`}
+                    </button>
+                    {rewardPool.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {rewardPool.map((r: any) => (
+                          <span key={r.id} className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-700">{r.title}</span>
+                        ))}
+                      </div>
+                    )}
+                    {showRewardPicker && (
+                      <RewardPickerModal
+                        rewards={[]} // TODO: fetch available rewards from API or context
+                        brands={[]} // TODO: fetch available brands from API or context
+                        selected={rewardPool}
+                        onToggle={reward => {
+                          setRewardPool(prev => prev.some((r: any) => r.id === reward.id)
+                            ? prev.filter((r: any) => r.id !== reward.id)
+                            : [...prev, reward]);
+                        }}
+                        onClose={() => setShowRewardPicker(false)}
+                      />
+                    )}
+                    <div className="mt-2 flex gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward Type</label>
+                        <select value={rewardType} onChange={e => setRewardType(e.target.value)} className="border rounded px-2 py-1 text-sm">
+                          <option value="auto">Auto</option>
+                          <option value="manual">Manual</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Selection Mode</label>
+                        <select value={rewardSelectionMode} onChange={e => setRewardSelectionMode(e.target.value)} className="border rounded px-2 py-1 text-sm">
+                          <option value="fixed">Fixed</option>
+                          <option value="choice">Choice</option>
+                        </select>
+                      </div>
+                      {rewardSelectionMode === 'choice' && (
+                        <>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Min Choices</label>
+                            <input type="number" value={minRewardsChoice} onChange={e => setMinRewardsChoice(Number(e.target.value))} className="border rounded px-2 py-1 text-sm w-16" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Max Choices</label>
+                            <input type="number" value={maxRewardsChoice} onChange={e => setMaxRewardsChoice(Number(e.target.value))} className="border rounded px-2 py-1 text-sm w-16" />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -571,7 +682,6 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function CampaignsPage() {
   const { profile } = useAuth();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const clientId = profile?.client_id ?? '';
  
@@ -609,7 +719,7 @@ export default function CampaignsPage() {
   }, [offerIdParam]);
  
   async function toggleActive(c: CampaignRule) {
-    await supabase.from('campaign_rules').update({ is_active: !c.is_active }).eq('id', c.id);
+    await (supabase as any).from('campaign_rules').update({ is_active: !c.is_active }).eq('id', c.id);
     setCampaigns(prev => prev.map(x => x.id === c.id ? { ...x, is_active: !x.is_active } : x));
   }
  
@@ -623,7 +733,7 @@ export default function CampaignsPage() {
  
   async function duplicateCampaign(c: CampaignRule) {
     const { id, campaign_id, created_at, current_enrollments, ...rest } = c;
-    await supabase.from('campaign_rules').insert({ ...rest, name: `${c.name} (copy)`, is_active: false, current_enrollments: 0 });
+    await (supabase as any).from('campaign_rules').insert({ ...rest, name: `${c.name} (copy)`, is_active: false, current_enrollments: 0 });
     fetchCampaigns();
   }
  
