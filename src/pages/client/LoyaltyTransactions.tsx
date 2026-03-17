@@ -143,24 +143,35 @@ export function LoyaltyTransactions() {
 
       setTransactions(formattedTransactions);
 
-      // Calculate stats
-      // Credits = ALL positive points_amount (earned, bonus, adjusted+, custom, etc.)
-      const totalCredits = formattedTransactions
-        .filter(t => t.points_amount > 0)
-        .reduce((sum, t) => sum + t.points_amount, 0);
+      // Helpers — classify by type first (DB stores redeemed as positive points_amount)
+      const DEBIT_TYPES  = ['redeem', 'redeemed'];
+      const EXPIRE_TYPES = ['expire', 'expired'];
+      const isDebit  = (t: Transaction) => DEBIT_TYPES.includes(t.transaction_type)  || (t.points_amount < 0 && !EXPIRE_TYPES.includes(t.transaction_type));
+      const isExpire = (t: Transaction) => EXPIRE_TYPES.includes(t.transaction_type) || (t.points_amount < 0 && EXPIRE_TYPES.includes(t.transaction_type));
+      const isCredit = (t: Transaction) => !isDebit(t) && !isExpire(t);
 
-      // Debits = ALL negative points_amount except expired
+      // Calculate stats
+      const totalCredits = formattedTransactions
+        .filter(isCredit)
+        .reduce((sum, t) => sum + Math.abs(t.points_amount), 0);
+
+      // Debits = redeemed (by type) OR explicit negative adjustments — never expired
       const totalDebits = formattedTransactions
-        .filter(t => t.points_amount < 0 && !['expire', 'expired'].includes(t.transaction_type))
+        .filter(isDebit)
         .reduce((sum, t) => sum + Math.abs(t.points_amount), 0);
 
       const totalExpired = formattedTransactions
-        .filter(t => ['expire', 'expired'].includes(t.transaction_type))
+        .filter(isExpire)
         .reduce((sum, t) => sum + Math.abs(t.points_amount), 0);
 
-      // Net = true sum of every transaction's points_amount
-      const netPoints = formattedTransactions
-        .reduce((sum, t) => sum + t.points_amount, 0);
+      // Net = credits minus debits minus expired (type-aware, not sign-dependent)
+      const netPoints = formattedTransactions.reduce((sum, t) => {
+        const amt = Math.abs(t.points_amount);
+        if (isCredit(t))  return sum + amt;
+        if (isDebit(t))   return sum - amt;
+        if (isExpire(t))  return sum - amt;
+        return sum;
+      }, 0);
 
       setStats({
         totalCredits,
