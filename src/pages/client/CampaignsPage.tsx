@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RewardPickerModal } from '../../components/RewardPickerModal';
+import { RuleBuilder } from '../../components/RuleBuilder';
+import type { RewardPoolItem } from '../../components/RewardPickerModal';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -28,16 +30,15 @@ interface CampaignRule {
   link_expiry_hours?: number;
   trigger_conditions: any;
   eligibility_conditions: any;
+  location_conditions?: any;
+  attribution_conditions?: any;
+  exclusion_rules?: any;
   reward_action: any;
+  reward_selection_mode?: 'fixed' | 'choice';
+  min_rewards_choice?: number;
+  max_rewards_choice?: number;
   guardrails: any;
   created_at: string;
-}
- 
-interface ConditionRow {
-  id: string;
-  type: string;
-  operator: string;
-  value: string;
 }
  
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -50,24 +51,51 @@ const SIMPLE_TRIGGERS: { value: TriggerType; label: string; icon: string; desc: 
   { value: 'custom_event',  label: 'Custom Event',  icon: '⚡', desc: 'Trigger on any custom event' },
 ];
  
-const CONDITION_TYPES = [
-  { value: 'order_value_gte', label: 'Order Value ≥', operator: 'gte', placeholder: '500' },
-  { value: 'order_value_lte', label: 'Order Value ≤', operator: 'lte', placeholder: '5000' },
-  { value: 'order_count_gte', label: 'Order Count ≥', operator: 'gte', placeholder: '3' },
-  { value: 'product_tag',     label: 'Product Tag',   operator: 'eq',  placeholder: 'featured' },
-  { value: 'customer_tag',    label: 'Customer Tag',  operator: 'eq',  placeholder: 'vip' },
-  { value: 'first_order',     label: 'First Order',   operator: 'eq',  placeholder: 'true' },
-];
- 
 const TRIGGER_LABELS: Record<string, string> = {
   order_value: 'Order Value', order_count: 'Order Count', signup: 'New Signup',
   birthday: 'Birthday', referral: 'Referral', custom_event: 'Custom Event', advanced: 'Advanced',
 };
  
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function newCondition(): ConditionRow {
-  return { id: `cond_${Date.now()}`, type: 'order_value_gte', operator: 'gte', value: '' };
+function normalizeConditions(raw: any): any[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((c: any, i: number) => ({
+    id: c.id || `cond_${Date.now()}_${i}`,
+    type: c.type || '',
+    operator: c.operator || '',
+    value: c.value ?? '',
+  }));
 }
+
+const TRIGGER_CONDITION_TYPES = [
+  { value: 'collection_contains', label: 'Collection in Order', operators: [{ value: 'contains', label: 'Contains' }], inputType: 'text' as const, hint: 'Shopify collection ID/handle' },
+  { value: 'order_value_gte', label: 'Order Value >=', operators: [{ value: 'gte', label: '>=' }], inputType: 'number' as const },
+  { value: 'order_value_between', label: 'Order Value Between', operators: [{ value: 'between', label: 'Between' }], inputType: 'text' as const, hint: 'Format: min,max' },
+  { value: 'order_item_count', label: 'Order Item Count', operators: [{ value: 'gte', label: '>=' }, { value: 'eq', label: '=' }, { value: 'lte', label: '<=' }], inputType: 'number' as const },
+  { value: 'specific_product', label: 'Specific Product in Cart', operators: [{ value: 'contains', label: 'Contains' }, { value: 'not_contains', label: 'Does Not Contain' }], inputType: 'text' as const },
+  { value: 'coupon_code', label: 'Coupon Code', operators: [{ value: 'exact', label: 'Exact Match' }, { value: 'starts_with', label: 'Starts With' }, { value: 'contains', label: 'Contains' }], inputType: 'text' as const },
+];
+
+const ELIGIBILITY_CONDITION_TYPES = [
+  { value: 'customer_type', label: 'Customer Type', operators: [{ value: 'eq', label: 'Is' }], inputType: 'select' as const, options: [{ value: 'new', label: 'First-Time Customer' }, { value: 'returning', label: 'Returning Customer' }] },
+  { value: 'order_number', label: 'Order Number (Nth)', operators: [{ value: 'eq', label: 'Exactly' }], inputType: 'number' as const },
+  { value: 'lifetime_orders', label: 'Lifetime Order Count', operators: [{ value: 'gte', label: '>=' }, { value: 'lte', label: '<=' }], inputType: 'number' as const },
+  { value: 'lifetime_spend', label: 'Lifetime Spend', operators: [{ value: 'gte', label: '>=' }, { value: 'lte', label: '<=' }], inputType: 'number' as const },
+  { value: 'customer_tags', label: 'Customer Tags', operators: [{ value: 'has', label: 'Has Tag' }, { value: 'not_has', label: 'Does Not Have Tag' }], inputType: 'text' as const },
+];
+
+const LOCATION_CONDITION_TYPES = [
+  { value: 'shipping_pincode', label: 'Shipping Pincode/ZIP', operators: [{ value: 'exact', label: 'Exact Match' }, { value: 'starts_with', label: 'Starts With' }, { value: 'in_list', label: 'In List' }], inputType: 'text' as const },
+  { value: 'shipping_city', label: 'Shipping City', operators: [{ value: 'exact', label: 'Exact Match' }, { value: 'in_list', label: 'In List' }], inputType: 'text' as const },
+  { value: 'shipping_state', label: 'Shipping State/Province', operators: [{ value: 'exact', label: 'Exact Match' }, { value: 'in_list', label: 'In List' }], inputType: 'text' as const },
+  { value: 'shipping_country', label: 'Shipping Country', operators: [{ value: 'exact', label: 'Exact Match' }, { value: 'in_list', label: 'In List' }], inputType: 'text' as const },
+];
+
+const ATTRIBUTION_CONDITION_TYPES = [
+  { value: 'utm_source', label: 'UTM Source', operators: [{ value: 'exact', label: 'Exact Match' }, { value: 'contains', label: 'Contains' }], inputType: 'text' as const },
+  { value: 'utm_medium', label: 'UTM Medium', operators: [{ value: 'exact', label: 'Exact Match' }, { value: 'contains', label: 'Contains' }], inputType: 'text' as const },
+  { value: 'utm_campaign', label: 'UTM Campaign', operators: [{ value: 'exact', label: 'Exact Match' }, { value: 'contains', label: 'Contains' }], inputType: 'text' as const },
+];
  
 function fmtDate(d?: string) {
   if (!d) return '—';
@@ -103,54 +131,6 @@ function RowSkeleton() {
   );
 }
  
-// ─── Condition builder row ────────────────────────────────────────────────────
-function ConditionBuilder({
-  conditions, onChange,
-}: { conditions: ConditionRow[]; onChange: (c: ConditionRow[]) => void }) {
-  function update(id: string, field: keyof ConditionRow, val: string) {
-    onChange(conditions.map(c => c.id === id ? { ...c, [field]: val } : c));
-  }
-  function remove(id: string) { onChange(conditions.filter(c => c.id !== id)); }
-  function add() { onChange([...conditions, newCondition()]); }
- 
-  return (
-    <div className="space-y-2">
-      {conditions.map((c, i) => {
-        const meta = CONDITION_TYPES.find(t => t.value === c.type);
-        return (
-          <div key={c.id} className="flex items-center gap-2">
-            {i > 0 && (
-              <span className="text-xs font-bold text-gray-400 w-7 text-center">AND</span>
-            )}
-            {i === 0 && <span className="w-7" />}
-            <select
-              value={c.type}
-              onChange={e => update(c.id, 'type', e.target.value)}
-              className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-            >
-              {CONDITION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-            <input
-              type="text"
-              placeholder={meta?.placeholder ?? 'value'}
-              value={c.value}
-              onChange={e => update(c.id, 'value', e.target.value)}
-              className="w-28 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-            />
-            <button onClick={() => remove(c.id)} className="p-1.5 text-gray-300 hover:text-red-400 transition-colors rounded-lg hover:bg-red-50">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
-        );
-      })}
-      <button onClick={add} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 transition-colors px-2 py-1 rounded-lg hover:bg-gray-50 mt-1">
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-        Add condition
-      </button>
-    </div>
-  );
-}
- 
 // ─── Campaign drawer ───────────────────────────────────────────────────────────
 interface DrawerProps {
   open: boolean;
@@ -172,6 +152,8 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
 
   // Advanced reward fields
   const [rewardPool, setRewardPool] = useState<any[]>(initial?.reward_action?.reward_pool ?? []);
+  const [allRewards, setAllRewards] = useState<RewardPoolItem[]>([]);
+  const [allBrands, setAllBrands] = useState<{ id: string; name: string }[]>([]);
   const [showRewardPicker, setShowRewardPicker] = useState(false);
   const [rewardType, setRewardType] = useState(initial?.reward_action?.reward_type ?? 'auto');
   const [rewardSelectionMode, setRewardSelectionMode] = useState(initial?.reward_action?.reward_selection_mode ?? 'fixed');
@@ -183,10 +165,14 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
   const [name, setName]           = useState(initial?.name ?? '');
   const [description, setDesc]    = useState(initial?.description ?? '');
   const [triggerType, setTrigger] = useState<TriggerType>(initial?.trigger_type ?? 'order_value');
-  const [conditions, setConds]    = useState<ConditionRow[]>(() => {
-    const tc = initial?.trigger_conditions;
-    if (Array.isArray(tc)) return tc;
-    return [];
+  const [conditions, setConds]    = useState<any[]>(normalizeConditions(initial?.trigger_conditions));
+  const [eligibilityConditions, setEligibilityConditions] = useState<any[]>(normalizeConditions(initial?.eligibility_conditions));
+  const [locationConditions, setLocationConditions] = useState<any[]>(normalizeConditions(initial?.location_conditions));
+  const [attributionConditions, setAttributionConditions] = useState<any[]>(normalizeConditions(initial?.attribution_conditions));
+  const [exclusionRules, setExclusionRules] = useState<any>(initial?.exclusion_rules || {
+    exclude_refunded: true,
+    exclude_cancelled: true,
+    exclude_test_orders: true,
   });
   const [startDate, setStart]     = useState(initial?.start_date?.slice(0, 10) ?? '');
   const [endDate, setEnd]         = useState(initial?.end_date?.slice(0, 10) ?? '');
@@ -207,6 +193,14 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
       setDesc(initial.description ?? '');
       setTrigger(initial.trigger_type ?? 'order_value');
       setConds(Array.isArray(initial.trigger_conditions) ? initial.trigger_conditions : []);
+      setEligibilityConditions(normalizeConditions(initial.eligibility_conditions));
+      setLocationConditions(normalizeConditions(initial.location_conditions));
+      setAttributionConditions(normalizeConditions(initial.attribution_conditions));
+      setExclusionRules(initial.exclusion_rules || {
+        exclude_refunded: true,
+        exclude_cancelled: true,
+        exclude_test_orders: true,
+      });
       setStart(initial.start_date?.slice(0, 10) ?? '');
       setEnd(initial.end_date?.slice(0, 10) ?? '');
       setMaxEnroll(String(initial.max_enrollments ?? ''));
@@ -229,8 +223,48 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
       setRewardSelectionMode('fixed');
       setMinRewardsChoice(1);
       setMaxRewardsChoice(1);
+      setEligibilityConditions([]);
+      setLocationConditions([]);
+      setAttributionConditions([]);
+      setExclusionRules({ exclude_refunded: true, exclude_cancelled: true, exclude_test_orders: true });
     }
   }, [open, initial, defaultMode, isEdit]);
+
+  useEffect(() => {
+    async function loadAvailableRewards() {
+      if (!open) return;
+      const { data: brandsData } = await supabase.from('brands').select('id, name').eq('status', 'approved').order('name');
+      setAllBrands((brandsData ?? []) as { id: string; name: string }[]);
+
+      const { data: rewardsData } = await supabase
+        .from('rewards')
+        .select(`
+          id, title, description, value_description, image_url, category,
+          coupon_type, status, expiry_date,
+          brands ( id, name, logo_url ),
+          vouchers ( id, status )
+        `)
+        .eq('status', 'active')
+        .or('expiry_date.is.null,expiry_date.gt.' + new Date().toISOString());
+
+      const mapped: RewardPoolItem[] = (rewardsData ?? []).map((r: any) => ({
+        id: r.id,
+        title: r.title,
+        description: r.description,
+        value_description: r.value_description,
+        image_url: r.image_url,
+        category: r.category,
+        coupon_type: r.coupon_type || 'unique',
+        status: r.status,
+        expiry_date: r.expiry_date,
+        available_vouchers: (r.vouchers || []).filter((v: any) => v.status === 'available').length,
+        brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,
+      }));
+      setAllRewards(mapped);
+    }
+
+    loadAvailableRewards();
+  }, [open]);
  
   // Lock body scroll
   useEffect(() => {
@@ -241,7 +275,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
  
   if (!open) return null;
  
-  const STEPS = isEdit ? ['Trigger', 'Details', 'Guardrails'] : ['Type', 'Trigger', 'Details', 'Guardrails'];
+  const STEPS = ['Type', 'Details', 'Rewards', 'Guardrails'];
   const stepIdx = isEdit ? step - 1 : step - 1; // 0-indexed for display
  
   async function save() {
@@ -260,7 +294,8 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
         trigger_type: finalTriggerType,
         rule_mode: mode,
         is_active: true,
-        priority: 0,
+        priority: initial?.priority ?? 0,
+        rule_version: 2,
         current_enrollments: initial?.current_enrollments ?? 0,
         program_id: mode === 'membership' ? (initial?.program_id ?? null) : null,
         start_date: startDate || null,
@@ -271,7 +306,14 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
         min_rewards_choice: minRewardsChoice,
         max_rewards_choice: maxRewardsChoice,
         trigger_conditions: finalTriggerConditions,
-        eligibility_conditions: mode === 'standalone' ? [] : {},
+        eligibility_conditions: mode === 'standalone' ? eligibilityConditions : {},
+        location_conditions: mode === 'standalone' ? locationConditions : {},
+        attribution_conditions: mode === 'standalone' ? attributionConditions : {},
+        exclusion_rules: mode === 'standalone' ? exclusionRules : {
+          exclude_refunded: true,
+          exclude_cancelled: true,
+          exclude_test_orders: true,
+        },
         reward_action: mode === 'standalone' ? {
           expiry_days: 90,
           reward_type: rewardType,
@@ -303,6 +345,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
   const canNext = () => {
     if (step === 1) return true;
     if (step === 2) return !!name.trim();
+    if (step === 3 && mode === 'standalone') return rewardPool.length > 0 && minRewardsChoice > 0 && maxRewardsChoice >= minRewardsChoice;
     return true;
   };
  
@@ -388,7 +431,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
             </div>
           )}
  
-          {/* STEP 2: Trigger + Name */}
+          {/* STEP 2: Details */}
           {step === 2 && (
             <div className="space-y-5">
               <div>
@@ -421,7 +464,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                 />
               </div>
  
-              {/* Trigger — Membership */}
+              {/* Membership trigger (simple) */}
               {mode === 'membership' && (
                 <div className="space-y-3">
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">Trigger type</label>
@@ -457,29 +500,73 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                 </div>
               )}
  
-              {/* Trigger — Standalone / Advanced */}
+              {/* Standalone advanced triggers */}
               {mode === 'standalone' && (
                 <div className="space-y-3">
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">Trigger conditions</label>
-                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-                    {conditions.length === 0 ? (
-                      <div className="text-center py-4">
-                        <p className="text-sm text-gray-400 mb-3">No conditions yet — campaign fires for all orders</p>
-                        <button
-                          onClick={() => setConds([newCondition()])}
-                          className="text-sm text-gray-700 font-medium border border-gray-300 rounded-lg px-4 py-2 hover:bg-white transition-colors"
-                        >
-                          + Add first condition
-                        </button>
-                      </div>
-                    ) : (
-                      <ConditionBuilder conditions={conditions} onChange={setConds} />
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-400">All conditions must be true (AND logic). Leave empty to trigger on every order.</p>
+                  <RuleBuilder
+                    conditions={conditions}
+                    onChange={setConds}
+                    conditionTypes={TRIGGER_CONDITION_TYPES}
+                  />
+                  <p className="text-xs text-gray-400">All trigger conditions must be true (AND logic). Leave empty to trigger on every order.</p>
 
-                  {/* Advanced Reward Picker */}
-                  <div className="mt-6">
+                  <div className="pt-3 border-t border-gray-100">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Audience conditions</label>
+                    <RuleBuilder
+                      conditions={eligibilityConditions}
+                      onChange={setEligibilityConditions}
+                      conditionTypes={ELIGIBILITY_CONDITION_TYPES}
+                    />
+                  </div>
+
+                  <div className="pt-3 border-t border-gray-100">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Location conditions</label>
+                    <RuleBuilder
+                      conditions={locationConditions}
+                      onChange={setLocationConditions}
+                      conditionTypes={LOCATION_CONDITION_TYPES}
+                    />
+                  </div>
+
+                  <div className="pt-3 border-t border-gray-100">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Attribution conditions</label>
+                    <RuleBuilder
+                      conditions={attributionConditions}
+                      onChange={setAttributionConditions}
+                      conditionTypes={ATTRIBUTION_CONDITION_TYPES}
+                    />
+                  </div>
+
+                  <div className="pt-3 border-t border-gray-100">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Exclusions</label>
+                    {[{ key: 'exclude_refunded', label: 'Exclude refunded orders' }, { key: 'exclude_cancelled', label: 'Exclude cancelled orders' }, { key: 'exclude_test_orders', label: 'Exclude test/staff orders' }].map(opt => (
+                      <label key={opt.key} className="flex items-center gap-2 py-1.5 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={!!exclusionRules?.[opt.key]}
+                          onChange={e => setExclusionRules((prev: any) => ({ ...prev, [opt.key]: e.target.checked }))}
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+ 
+          {/* STEP 3: Rewards */}
+          {step === 3 && (
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900 mb-1">Reward setup</h3>
+                <p className="text-sm text-gray-500">Configure reward pool and selection experience.</p>
+              </div>
+
+              {mode === 'standalone' ? (
+                <>
+                  <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward Pool</label>
                     <button
                       type="button"
@@ -495,61 +582,65 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                         ))}
                       </div>
                     )}
-                    {showRewardPicker && (
-                      <RewardPickerModal
-                        rewards={[]} // TODO: fetch available rewards from API or context
-                        brands={[]} // TODO: fetch available brands from API or context
-                        selected={rewardPool}
-                        onToggle={reward => {
-                          setRewardPool(prev => prev.some((r: any) => r.id === reward.id)
-                            ? prev.filter((r: any) => r.id !== reward.id)
-                            : [...prev, reward]);
-                        }}
-                        onClose={() => setShowRewardPicker(false)}
-                      />
-                    )}
-                    <div className="mt-2 flex gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward Type</label>
-                        <select value={rewardType} onChange={e => setRewardType(e.target.value)} className="border rounded px-2 py-1 text-sm">
-                          <option value="auto">Auto</option>
-                          <option value="manual">Manual</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Selection Mode</label>
-                        <select value={rewardSelectionMode} onChange={e => setRewardSelectionMode(e.target.value)} className="border rounded px-2 py-1 text-sm">
-                          <option value="fixed">Fixed</option>
-                          <option value="choice">Choice</option>
-                        </select>
-                      </div>
-                      {rewardSelectionMode === 'choice' && (
-                        <>
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Min Choices</label>
-                            <input type="number" value={minRewardsChoice} onChange={e => setMinRewardsChoice(Number(e.target.value))} className="border rounded px-2 py-1 text-sm w-16" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Max Choices</label>
-                            <input type="number" value={maxRewardsChoice} onChange={e => setMaxRewardsChoice(Number(e.target.value))} className="border rounded px-2 py-1 text-sm w-16" />
-                          </div>
-                        </>
-                      )}
-                    </div>
                   </div>
-                </div>
+
+                  <div className="mt-2 flex gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward Type</label>
+                      <select value={rewardType} onChange={e => setRewardType(e.target.value)} className="border rounded px-2 py-1 text-sm">
+                        <option value="auto">Auto</option>
+                        <option value="manual">Manual</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Selection Mode</label>
+                      <select value={rewardSelectionMode} onChange={e => setRewardSelectionMode(e.target.value as 'fixed' | 'choice')} className="border rounded px-2 py-1 text-sm">
+                        <option value="fixed">Fixed</option>
+                        <option value="choice">Choice</option>
+                      </select>
+                    </div>
+                    {rewardSelectionMode === 'choice' && (
+                      <>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Min Choices</label>
+                          <input type="number" value={minRewardsChoice} onChange={e => setMinRewardsChoice(Number(e.target.value) || 1)} className="border rounded px-2 py-1 text-sm w-16" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Max Choices</label>
+                          <input type="number" value={maxRewardsChoice} onChange={e => setMaxRewardsChoice(Math.max(minRewardsChoice, Number(e.target.value) || 1))} className="border rounded px-2 py-1 text-sm w-16" />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {showRewardPicker && (
+                    <RewardPickerModal
+                      rewards={allRewards}
+                      brands={allBrands}
+                      selected={rewardPool}
+                      onToggle={reward => {
+                        setRewardPool(prev => prev.some((r: any) => r.id === reward.id)
+                          ? prev.filter((r: any) => r.id !== reward.id)
+                          : [...prev, reward]);
+                      }}
+                      onClose={() => setShowRewardPicker(false)}
+                    />
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-gray-500">Membership campaign rewards are configured from your membership program.</p>
               )}
             </div>
           )}
  
-          {/* STEP 3: Dates + limits */}
-          {step === 3 && (
+          {/* STEP 4: Schedule + Guardrails */}
+          {step === 4 && (
             <div className="space-y-5">
               <div>
-                <h3 className="text-base font-semibold text-gray-900 mb-1">Schedule & limits</h3>
-                <p className="text-sm text-gray-500">Set when this campaign runs and how many times it fires.</p>
+                <h3 className="text-base font-semibold text-gray-900 mb-1">Schedule & guardrails</h3>
+                <p className="text-sm text-gray-500">Set campaign dates, limits, and budget controls.</p>
               </div>
- 
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Start date</label>
@@ -562,34 +653,18 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                     className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
                 </div>
               </div>
- 
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Max enrollments <span className="text-gray-300">(optional)</span>
-                  </label>
-                  <input type="number" value={maxEnroll} onChange={e => setMaxEnroll(e.target.value)}
-                    placeholder="Unlimited"
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Max enrollments <span className="text-gray-300">(optional)</span></label>
+                  <input type="number" value={maxEnroll} onChange={e => setMaxEnroll(e.target.value)} placeholder="Unlimited"
                     className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Reward link expiry (hrs)
-                  </label>
-                  <input type="number" value={linkExpiry} onChange={e => setLinkExp(e.target.value)}
-                    placeholder="72"
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward link expiry (hrs)</label>
+                  <input type="number" value={linkExpiry} onChange={e => setLinkExp(e.target.value)} placeholder="72"
                     className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
                 </div>
-              </div>
-            </div>
-          )}
- 
-          {/* STEP 4: Guardrails */}
-          {step === 4 && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="text-base font-semibold text-gray-900 mb-1">Guardrails</h3>
-                <p className="text-sm text-gray-500">Optionally cap how much this campaign spends or gives out.</p>
               </div>
  
               <div className="space-y-4">
