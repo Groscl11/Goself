@@ -40,6 +40,12 @@ interface CampaignRule {
   guardrails: any;
   created_at: string;
 }
+
+interface CampaignMetrics {
+  rewardsSelected: number;
+  triggered: number;
+  executed: number;
+}
  
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SIMPLE_TRIGGERS: { value: TriggerType; label: string; icon: string; desc: string }[] = [
@@ -185,6 +191,34 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
   const [maxTotal, setMaxTotal]   = useState(initial?.guardrails?.max_rewards_total ?? '');
   const [maxPerCust, setMaxCust]  = useState(initial?.guardrails?.max_rewards_per_customer ?? '');
 
+  const resetForCreate = useCallback(() => {
+    const nextMode = defaultMode ?? 'standalone';
+    setMode(nextMode);
+    setName('');
+    setDesc('');
+    setTrigger('order_value');
+    setConds([]);
+    setEligibilityConditions([]);
+    setLocationConditions([]);
+    setAttributionConditions([]);
+    setExclusionRules({ exclude_refunded: true, exclude_cancelled: true, exclude_test_orders: true });
+    setStart('');
+    setEnd('');
+    setMaxEnroll('');
+    setLinkExp('72');
+    setMinOrder('');
+    setBudget('');
+    setMaxTotal('');
+    setMaxCust('');
+    setRewardPool([]);
+    setRewardType('auto');
+    setRewardSelectionMode('fixed');
+    setMinRewardsChoice(1);
+    setMaxRewardsChoice(1);
+    setStep(1);
+    setError('');
+  }, [defaultMode]);
+
   // Sync all fields with initial when editing
   useEffect(() => {
     if (open && initial) {
@@ -218,17 +252,9 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
       setError('');
     }
     if (open && !initial) {
-      setRewardPool([]);
-      setRewardType('auto');
-      setRewardSelectionMode('fixed');
-      setMinRewardsChoice(1);
-      setMaxRewardsChoice(1);
-      setEligibilityConditions([]);
-      setLocationConditions([]);
-      setAttributionConditions([]);
-      setExclusionRules({ exclude_refunded: true, exclude_cancelled: true, exclude_test_orders: true });
+      resetForCreate();
     }
-  }, [open, initial, defaultMode, isEdit]);
+  }, [open, initial, defaultMode, isEdit, resetForCreate]);
 
   useEffect(() => {
     async function loadAvailableRewards() {
@@ -768,6 +794,8 @@ export default function CampaignsPage() {
   const [filter, setFilter] = useState<'all' | 'standalone' | 'membership'>('all');
   const [deleting, setDeleting] = useState<string | null>(null);
   const [triggerLogsOpen, setTriggerLogsOpen] = useState(false);
+  const [copiedCampaignId, setCopiedCampaignId] = useState<string | null>(null);
+  const [campaignMetrics, setCampaignMetrics] = useState<Record<string, CampaignMetrics>>({});
  
   const fetchCampaigns = useCallback(async () => {
     if (!clientId) return;
@@ -777,7 +805,69 @@ export default function CampaignsPage() {
       .select('*')
       .eq('client_id', clientId)
       .order('created_at', { ascending: false });
-    setCampaigns(data ?? []);
+    const rules = (data ?? []) as CampaignRule[];
+    setCampaigns(rules);
+
+    const ruleIds = rules.map(r => r.id);
+    if (ruleIds.length === 0) {
+      setCampaignMetrics({});
+      setLoading(false);
+      return;
+    }
+
+    const [poolRes, logsRes, evalRes] = await Promise.all([
+      supabase.from('campaign_reward_pools').select('campaign_rule_id, reward_id').in('campaign_rule_id', ruleIds),
+      supabase.from('campaign_trigger_logs').select('campaign_rule_id, trigger_result').in('campaign_rule_id', ruleIds),
+      supabase.from('campaign_rule_evaluations').select('campaign_rule_id, evaluation_result, reward_allocated').in('campaign_rule_id', ruleIds),
+    ]);
+
+    const metrics: Record<string, CampaignMetrics> = {};
+    for (const r of rules) {
+      metrics[r.id] = {
+        rewardsSelected: Array.isArray(r.reward_action?.reward_pool) ? r.reward_action.reward_pool.length : 0,
+        triggered: 0,
+        executed: 0,
+      };
+    }
+
+    const poolRows = (poolRes.data ?? []) as any[];
+    if (poolRows.length > 0) {
+      const poolCountByCampaign = new Map<string, Set<string>>();
+      for (const row of poolRows) {
+        if (!poolCountByCampaign.has(row.campaign_rule_id)) poolCountByCampaign.set(row.campaign_rule_id, new Set());
+        poolCountByCampaign.get(row.campaign_rule_id)!.add(row.reward_id);
+      }
+      for (const [id, rewardSet] of poolCountByCampaign.entries()) {
+        if (metrics[id]) metrics[id].rewardsSelected = rewardSet.size;
+      }
+    }
+
+    const logsByCampaign: Record<string, { total: number; success: number }> = {};
+    for (const row of ((logsRes.data ?? []) as any[])) {
+      if (!row.campaign_rule_id) continue;
+      if (!logsByCampaign[row.campaign_rule_id]) logsByCampaign[row.campaign_rule_id] = { total: 0, success: 0 };
+      logsByCampaign[row.campaign_rule_id].total += 1;
+      if (row.trigger_result === 'success') logsByCampaign[row.campaign_rule_id].success += 1;
+    }
+
+    const evalByCampaign: Record<string, { total: number; success: number }> = {};
+    for (const row of ((evalRes.data ?? []) as any[])) {
+      if (!row.campaign_rule_id) continue;
+      if (!evalByCampaign[row.campaign_rule_id]) evalByCampaign[row.campaign_rule_id] = { total: 0, success: 0 };
+      evalByCampaign[row.campaign_rule_id].total += 1;
+      if (row.reward_allocated === true || row.evaluation_result === 'matched') evalByCampaign[row.campaign_rule_id].success += 1;
+    }
+
+    for (const id of ruleIds) {
+      const logStats = logsByCampaign[id];
+      const evalStats = evalByCampaign[id];
+      if (metrics[id]) {
+        metrics[id].triggered = logStats?.total ?? evalStats?.total ?? 0;
+        metrics[id].executed = logStats?.success ?? evalStats?.success ?? 0;
+      }
+    }
+
+    setCampaignMetrics(metrics);
     setLoading(false);
   }, [clientId]);
  
@@ -929,7 +1019,22 @@ export default function CampaignsPage() {
                       {/* Name */}
                       <td className="px-4 py-3">
                         <div className="font-medium text-gray-900">{c.name}</div>
-                        <div className="text-xs text-gray-400 mt-0.5 font-mono">{c.campaign_id}</div>
+                        <div className="text-xs text-gray-400 mt-0.5 font-mono flex items-center gap-2">
+                          <span>{c.campaign_id}</span>
+                          {!!c.campaign_id && (
+                            <button
+                              onClick={async () => {
+                                await navigator.clipboard.writeText(c.campaign_id || '');
+                                setCopiedCampaignId(c.id);
+                                setTimeout(() => setCopiedCampaignId(prev => (prev === c.id ? null : prev)), 1200);
+                              }}
+                              className="text-gray-400 hover:text-gray-700"
+                              title="Copy Campaign ID"
+                            >
+                              {copiedCampaignId === c.id ? 'Copied' : 'Copy'}
+                            </button>
+                          )}
+                        </div>
                       </td>
  
                       {/* Type badge */}
@@ -950,6 +1055,9 @@ export default function CampaignsPage() {
                         {c.max_enrollments && (
                           <span className="text-gray-400 text-xs"> / {c.max_enrollments}</span>
                         )}
+                        <div className="text-[11px] text-gray-400 mt-1">
+                          Rewards: {campaignMetrics[c.id]?.rewardsSelected ?? 0} | Triggered: {campaignMetrics[c.id]?.triggered ?? 0} | Executed: {campaignMetrics[c.id]?.executed ?? 0}
+                        </div>
                       </td>
  
                       {/* Duration */}
@@ -1039,16 +1147,51 @@ function TriggerLogsPanel({ clientId, onClose }: { clientId: string; onClose: ()
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('campaign_trigger_logs')
         .select(`
-          id, triggered_at, trigger_type, status, member_email,
-          campaign_rule:campaign_rules(name, campaign_id)
+          id, created_at, trigger_result, customer_email,
+          campaign_rule:campaign_rules(name, campaign_id, trigger_type)
         `)
         .eq('client_id', clientId)
-        .order('triggered_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(50);
-      setLogs(data ?? []);
+
+      if (error) {
+        console.error('Failed to load campaign_trigger_logs:', error.message);
+      }
+
+      if ((data ?? []).length > 0) {
+        const normalized = (data ?? []).map((row: any) => ({
+          id: row.id,
+          trigger_type: row.campaign_rule?.trigger_type || 'advanced',
+          status: row.trigger_result,
+          member_email: row.customer_email,
+          triggered_at: row.created_at,
+          campaign_rule: row.campaign_rule,
+        }));
+        setLogs(normalized);
+      } else {
+        const { data: evalData } = await supabase
+          .from('campaign_rule_evaluations')
+          .select(`
+            id, created_at, evaluation_result, customer_email, reward_allocated,
+            campaign_rule:campaign_rules(name, campaign_id, trigger_type)
+          `)
+          .eq('client_id', clientId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        const normalizedEval = (evalData ?? []).map((row: any) => ({
+          id: row.id,
+          trigger_type: row.campaign_rule?.trigger_type || 'advanced',
+          status: row.reward_allocated ? 'success' : (row.evaluation_result || 'failed'),
+          member_email: row.customer_email,
+          triggered_at: row.created_at,
+          campaign_rule: row.campaign_rule,
+        }));
+        setLogs(normalizedEval);
+      }
       setLoading(false);
     }
     load();
