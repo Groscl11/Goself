@@ -53,12 +53,13 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const offerId = body.offer_id as string | undefined;
     const shopDomain = (body.shop_domain ?? body.shop) as string | undefined;
+    const clientIdFromBody = body.client_id as string | undefined;
     const rawPointsCost = body.points_cost;
     const accessType = body.access_type as string | undefined;
     const maxPerMemberRaw = body.max_per_member;
 
-    if (!offerId || !shopDomain || !accessType) {
-      return jsonResponse({ success: false, error: "offer_id, shop_domain, access_type are required" }, 400);
+    if (!offerId || !accessType || (!shopDomain && !clientIdFromBody)) {
+      return jsonResponse({ success: false, error: "offer_id, access_type and either shop_domain or client_id are required" }, 400);
     }
 
     const allowedAccess = ["points_redemption", "campaign_reward", "both"];
@@ -66,7 +67,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Invalid access_type" }, 400);
     }
 
-    const clientId = await resolveClientId(supabase, shopDomain);
+    const clientId = clientIdFromBody ?? await resolveClientId(supabase, shopDomain);
     if (!clientId) {
       return jsonResponse({ success: false, error: "Store not found" }, 404);
     }

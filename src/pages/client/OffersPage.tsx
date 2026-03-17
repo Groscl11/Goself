@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { DashboardLayout } from '../../components/layouts/DashboardLayout';
+import { clientMenuItems } from './clientMenuItems';
 import { Offer, OfferDistribution, MarketplaceOffer, AccessType } from '../../types/offers';
 import {
   Badge, Btn, StatusBadge, CodePoolBadge,
@@ -82,6 +84,7 @@ export default function OffersPage() {
   const [codesDrawer, setCodesDrawer] = useState<Offer | null>(null);
   const [adoptTarget, setAdoptTarget] = useState<MarketplaceOffer | null>(null);
   const [adoptLoading, setAdoptLoading] = useState(false);
+  const [adoptError, setAdoptError] = useState<string>('');
   const [newOfferDropdown, setNewOfferDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
  
@@ -243,6 +246,7 @@ export default function OffersPage() {
   async function handleAdopt(config: { access_type: string; points_cost: number; max_per_member: number }) {
     if (!adoptTarget) return;
     setAdoptLoading(true);
+    setAdoptError('');
     try {
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
       const { data: { session } } = await supabase.auth.getSession();
@@ -255,12 +259,17 @@ export default function OffersPage() {
         body: JSON.stringify({
           offer_id: adoptTarget.id,
           shop_domain: shopDomain,
+          client_id: clientId,
           points_cost: config.points_cost,
           access_type: config.access_type,
           max_per_member: config.max_per_member,
         }),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || (!json.success && !json.distribution_id)) {
+        throw new Error(json.error || 'Could not add this offer to your store.');
+      }
+
       if (json.success || json.distribution_id) {
         setMktOffers(prev => prev.map(o =>
           o.id === adoptTarget.id
@@ -269,7 +278,9 @@ export default function OffersPage() {
         ));
         setAdoptTarget(null);
       }
-    } catch {}
+    } catch (err: any) {
+      setAdoptError(err?.message || 'Could not add this offer to your store.');
+    }
     setAdoptLoading(false);
   }
  
@@ -313,8 +324,9 @@ export default function OffersPage() {
  
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 py-8">
+    <>
+      <DashboardLayout menuItems={clientMenuItems} title="Offers & Rewards">
+        <div className="max-w-5xl mx-auto px-4 py-2">
  
         {/* Page header */}
         <div className="flex items-start justify-between mb-6">
@@ -703,7 +715,8 @@ export default function OffersPage() {
             )}
           </div>
         )}
-      </div>
+        </div>
+      </DashboardLayout>
  
       {/* ── Drawers & Modals ─────────────────────────────────────────────────── */}
       <NewOfferDrawer
@@ -730,12 +743,13 @@ export default function OffersPage() {
  
       <AdoptModal
         open={!!adoptTarget}
-        onClose={() => setAdoptTarget(null)}
+        onClose={() => { setAdoptTarget(null); setAdoptError(''); }}
         offer={adoptTarget}
         onConfirm={handleAdopt}
         loading={adoptLoading}
+        error={adoptError}
       />
-    </div>
+    </>
   );
 }
  
@@ -762,7 +776,8 @@ function FilterRow({ filters, active, onChange }: {
  
 // ─── Marketplace card ─────────────────────────────────────────────────────────
 function MktCard({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => void }) {
-  const outOfStock = offer.coupon_type === 'unique' && offer.available_codes === 0;
+  const isGenericReusable = offer.coupon_type === 'generic' || Boolean(offer.generic_coupon_code);
+  const outOfStock = !isGenericReusable && offer.coupon_type === 'unique' && (offer.available_codes ?? 0) <= 0;
  
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors">
@@ -783,7 +798,7 @@ function MktCard({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => v
         </Badge>
       </div>
       <p className="text-xs text-gray-500 mb-3">
-        {offer.coupon_type === 'generic'
+        {isGenericReusable
           ? 'Unlimited (generic code)'
           : outOfStock
             ? 'Out of stock'

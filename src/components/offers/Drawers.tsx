@@ -71,9 +71,10 @@ interface AdoptModalProps {
   offer: { id: string; title: string; issuer_name?: string } | null;
   onConfirm: (config: { access_type: string; points_cost: number; max_per_member: number }) => void;
   loading?: boolean;
+  error?: string;
 }
 
-export function AdoptModal({ open, onClose, offer, onConfirm, loading }: AdoptModalProps) {
+export function AdoptModal({ open, onClose, offer, onConfirm, loading, error }: AdoptModalProps) {
   const [accessType, setAccessType] = React.useState<string>('points_redemption');
   const [pointsCost, setPointsCost] = React.useState<number>(500);
   const [maxPerMember, setMaxPerMember] = React.useState<number>(1);
@@ -174,6 +175,10 @@ export function AdoptModal({ open, onClose, offer, onConfirm, loading }: AdoptMo
             {loading ? 'Adding...' : 'Add to My Store'}
           </button>
         </div>
+
+        {error && (
+          <p className="mt-3 text-xs text-red-600">{error}</p>
+        )}
       </div>
     </div>
   );
