@@ -125,12 +125,12 @@ export default function OffersPage() {
     setPartnerLoading(false);
   }, [clientId]);
  
-  // ── FIXED: fetchMarketplace now queries Supabase directly ──────────────────
+  // ── FIX 1: Direct Supabase query + excludes own submissions ───────────────
   const fetchMarketplace = useCallback(async () => {
     if (!clientId) return;
     setMktLoading(true);
     try {
-      // First get which offers this client has already adopted
+      // Get which offers this client has already adopted (active distributions)
       const { data: adoptedDists } = await supabase
         .from('offer_distributions')
         .select('offer_id, points_cost')
@@ -141,7 +141,7 @@ export default function OffersPage() {
         (adoptedDists ?? []).map(d => [d.offer_id, d.points_cost])
       );
  
-      // Query marketplace offers directly — no edge function, no shopDomain needed
+      // Query marketplace offers — exclude offers owned by this client
       const { data, error } = await supabase
         .from('rewards')
         .select('*')
@@ -149,11 +149,15 @@ export default function OffersPage() {
         .eq('is_marketplace_listed', true)
         .eq('is_active', true)
         .eq('status', 'active')
+        .neq('owner_client_id', clientId)      // hide own submissions from browse
         .order('created_at', { ascending: false });
  
       if (error) throw error;
  
-      const enriched = (data ?? []).map(o => ({
+      // Secondary JS filter: belt-and-suspenders for null owner_client_id edge cases
+      const filtered = (data ?? []).filter(o => o.owner_client_id !== clientId);
+ 
+      const enriched = filtered.map(o => ({
         ...o,
         already_adopted: adoptedMap.has(o.id),
         my_points_cost: adoptedMap.get(o.id) ?? null,
@@ -225,7 +229,6 @@ export default function OffersPage() {
     return true;
   });
  
-  // ── FIXED: category filter maps UI labels → actual DB category values ──────
   const MKT_FILTERS = ['All', 'Fashion', 'Food & Drink', 'Lifestyle', 'Health', 'Electronics'];
  
   const FILTER_CATEGORY_MAP: Record<string, string[]> = {
@@ -242,43 +245,57 @@ export default function OffersPage() {
     return allowed.includes((o.category ?? '').toLowerCase());
   });
  
-  // ── Adopt offer ──────────────────────────────────────────────────────────────
+  // ── FIX 2: Adopt — direct Supabase insert, no broken edge function ─────────
   async function handleAdopt(config: { access_type: string; points_cost: number; max_per_member: number }) {
-    if (!adoptTarget) return;
+    if (!adoptTarget || !clientId) return;
     setAdoptLoading(true);
     setAdoptError('');
     try {
-      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/adopt-marketplace-offer`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({
-          offer_id: adoptTarget.id,
-          shop_domain: shopDomain,
-          client_id: clientId,
-          points_cost: config.points_cost,
-          access_type: config.access_type,
-          max_per_member: config.max_per_member,
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || (!json.success && !json.distribution_id)) {
-        throw new Error(json.error || 'Could not add this offer to your store.');
+      // Check if a distribution already exists (even inactive) — upsert it
+      const { data: existing } = await supabase
+        .from('offer_distributions')
+        .select('id')
+        .eq('offer_id', adoptTarget.id)
+        .eq('distributing_client_id', clientId)
+        .maybeSingle();
+ 
+      if (existing) {
+        // Reactivate + update config
+        const { error } = await supabase
+          .from('offer_distributions')
+          .update({
+            is_active: true,
+            access_type: config.access_type,
+            points_cost: config.access_type === 'campaign_reward' ? null : config.points_cost,
+            max_per_member: config.max_per_member,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        // Fresh insert
+        const { error } = await supabase
+          .from('offer_distributions')
+          .insert({
+            offer_id: adoptTarget.id,
+            distributing_client_id: clientId,
+            access_type: config.access_type,
+            points_cost: config.access_type === 'campaign_reward' ? null : config.points_cost,
+            max_per_member: config.max_per_member,
+            is_active: true,
+          });
+        if (error) throw error;
       }
-
-      if (json.success || json.distribution_id) {
-        setMktOffers(prev => prev.map(o =>
-          o.id === adoptTarget.id
-            ? { ...o, already_adopted: true, my_points_cost: config.points_cost }
-            : o
-        ));
-        setAdoptTarget(null);
-      }
+ 
+      // Optimistically update UI
+      setMktOffers(prev => prev.map(o =>
+        o.id === adoptTarget.id
+          ? { ...o, already_adopted: true, my_points_cost: config.points_cost }
+          : o
+      ));
+      setAdoptTarget(null);
     } catch (err: any) {
+      console.error('Adopt error:', err);
       setAdoptError(err?.message || 'Could not add this offer to your store.');
     }
     setAdoptLoading(false);

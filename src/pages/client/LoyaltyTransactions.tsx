@@ -241,11 +241,11 @@ export function LoyaltyTransactions() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Total Debits</p>
-                  <p className="text-2xl font-bold text-blue-600">-{stats.totalDebits.toLocaleString()}</p>
+                  <p className="text-2xl font-bold text-red-600">-{stats.totalDebits.toLocaleString()}</p>
                   <p className="text-xs text-gray-400 mt-0.5">redeemed + debit adjustments</p>
                 </div>
-                <div className="bg-blue-100 p-3 rounded-lg">
-                  <TrendingDown className="h-6 w-6 text-blue-600" />
+                <div className="bg-red-100 p-3 rounded-lg">
+                  <TrendingDown className="h-6 w-6 text-red-600" />
                 </div>
               </div>
             </CardContent>
@@ -391,9 +391,14 @@ export function LoyaltyTransactions() {
                           </span>
                         </td>
                         <td className={`py-3 px-4 text-right font-medium ${
-                          txn.points_amount >= 0 ? 'text-green-600' : 'text-red-600'
+                          ['redeem','redeemed','expire','expired'].includes(txn.transaction_type) || txn.points_amount < 0
+                            ? 'text-red-600'
+                            : 'text-green-600'
                         }`}>
-                          {txn.points_amount >= 0 ? '+' : ''}{txn.points_amount.toLocaleString()}
+                          {['redeem','redeemed','expire','expired'].includes(txn.transaction_type) || txn.points_amount < 0
+                            ? `-${Math.abs(txn.points_amount).toLocaleString()}`
+                            : `+${txn.points_amount.toLocaleString()}`
+                          }
                         </td>
                         <td className="py-3 px-4 text-right text-sm text-gray-900">
                           {txn.balance_after.toLocaleString()}
