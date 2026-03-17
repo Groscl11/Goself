@@ -57,7 +57,7 @@ export const clientMenuItems = [
     icon: <ShoppingBag className="w-5 h-5" />,
   },
   {
-    label: 'Reward Campaigns',
+    label: 'Campaigns',
     path: '/client/campaigns',
     icon: <Megaphone className="w-5 h-5" />,
   },

@@ -46,10 +46,9 @@ import { Integrations } from './pages/client/Integrations';
 import { Reports } from './pages/client/Reports';
 import { MessageTemplates } from './pages/client/MessageTemplates';
 import CommunicationLogs from './pages/client/CommunicationLogs';
-import { Campaigns } from './pages/client/Campaigns';
-import { CampaignsAdvanced } from './pages/client/CampaignsAdvanced';
-import { CampaignRuleWizard } from './pages/client/CampaignRuleWizard';
-import { CampaignWizard } from './pages/client/CampaignWizard';
+import { Suspense, lazy } from 'react';
+// ...existing code...
+const CampaignsPage = lazy(() => import('./pages/client/CampaignsPage'));
 import CampaignTriggerLogs from './pages/client/CampaignTriggerLogs';
 import { Settings as ClientSettings } from './pages/client/Settings';
 import { Orders } from './pages/client/Orders';
@@ -186,11 +185,7 @@ function App() {
           <Route path="/client/loyalty-config" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyConfiguration /></RoleBasedRoute>} />
           <Route path="/client/my-rewards" element={<RoleBasedRoute allowedRoles={['client']}><ClientRewards /></RoleBasedRoute>} />
           <Route path="/client/rewards" element={<RoleBasedRoute allowedRoles={['client']}><RewardsMarketplace /></RoleBasedRoute>} />
-          <Route path="/client/campaigns" element={<RoleBasedRoute allowedRoles={['client']}><Campaigns /></RoleBasedRoute>} />
-          <Route path="/client/campaigns-advanced" element={<RoleBasedRoute allowedRoles={['client']}><CampaignsAdvanced /></RoleBasedRoute>} />
-          <Route path="/client/campaigns-advanced/create" element={<RoleBasedRoute allowedRoles={['client']}><CampaignRuleWizard /></RoleBasedRoute>} />
-          <Route path="/client/campaigns-advanced/edit/:id" element={<RoleBasedRoute allowedRoles={['client']}><CampaignRuleWizard /></RoleBasedRoute>} />
-          <Route path="/client/campaigns/new" element={<RoleBasedRoute allowedRoles={['client']}><CampaignWizard /></RoleBasedRoute>} />
+          <Route path="/client/campaigns" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading campaigns...</div>}><CampaignsPage /></Suspense></RoleBasedRoute>} />
           <Route path="/client/campaign-logs" element={<RoleBasedRoute allowedRoles={['client']}><CampaignTriggerLogs /></RoleBasedRoute>} />
           <Route path="/client/templates" element={<RoleBasedRoute allowedRoles={['client']}><MessageTemplates /></RoleBasedRoute>} />
           <Route path="/client/communications" element={<RoleBasedRoute allowedRoles={['client']}><CommunicationLogs /></RoleBasedRoute>} />
