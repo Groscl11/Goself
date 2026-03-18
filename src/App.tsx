@@ -89,6 +89,7 @@ import { StoreInstallations } from './pages/admin/StoreInstallations';
 import { AdminBrandRedemptions } from './pages/admin/AdminBrandRedemptions';
 
 const OffersPage = lazy(() => import('./pages/client/OffersPage'));
+const LoyaltyProgramPage = lazy(() => import('./pages/client/LoyaltyProgramPage'));
 
 function DashboardRouter() {
   const { profile, loading } = useAuth();
@@ -182,7 +183,7 @@ function App() {
           <Route path="/client/rewards-catalog" element={<RoleBasedRoute allowedRoles={['client']}><RewardsCatalog /></RoleBasedRoute>} />
           <Route path="/client/brand-redemptions" element={<RoleBasedRoute allowedRoles={['client']}><BrandRedemptions /></RoleBasedRoute>} />
           <Route path="/client/referral-tracking" element={<RoleBasedRoute allowedRoles={['client']}><ReferralTracking /></RoleBasedRoute>} />
-          <Route path="/client/loyalty-config" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyConfiguration /></RoleBasedRoute>} />
+          <Route path="/client/loyalty-config" element={<LoyaltyProgramPage />} />
           <Route path="/client/my-rewards" element={<RoleBasedRoute allowedRoles={['client']}><ClientRewards /></RoleBasedRoute>} />
           <Route path="/client/rewards" element={<RoleBasedRoute allowedRoles={['client']}><RewardsMarketplace /></RoleBasedRoute>} />
           <Route path="/client/campaigns" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading campaigns...</div>}><CampaignsPage /></Suspense></RoleBasedRoute>} />

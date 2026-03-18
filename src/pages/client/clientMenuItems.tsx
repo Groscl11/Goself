@@ -47,7 +47,7 @@ export const clientMenuItems = [
     icon: <UserPlus className="w-5 h-5" />,
   },
   {
-    label: 'Ways to Earn Points',
+    label: 'Ways to Earn',
     path: '/client/loyalty-config',
     icon: <Cog className="w-5 h-5" />,
   },
