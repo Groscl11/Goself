@@ -141,7 +141,7 @@ export default function OffersPage() {
         (adoptedDists ?? []).map(d => [d.offer_id, d.points_cost])
       );
  
-      // Query marketplace offers — exclude offers owned by this client
+      // Query marketplace offers. Keep owner filtering in JS so NULL owner_client_id rows remain visible.
       const { data, error } = await supabase
         .from('rewards')
         .select('*')
@@ -149,7 +149,6 @@ export default function OffersPage() {
         .eq('is_marketplace_listed', true)
         .eq('is_active', true)
         .eq('status', 'active')
-        .neq('owner_client_id', clientId)      // hide own submissions from browse
         .order('created_at', { ascending: false });
  
       if (error) throw error;
