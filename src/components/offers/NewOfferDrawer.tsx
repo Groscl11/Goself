@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Drawer } from './Drawers';
 import { supabase } from '../../lib/supabase';
+import { uploadOfferCodesDirect } from '../../lib/offerCodes';
 import { CodeSource, RewardType } from '../../types/offers';
 
 type Flow = 'shopify_generated' | 'shopify_imported' | 'generic';
@@ -122,16 +123,15 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated 
           }
         }
         if (codes.length > 0) {
-          const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-          const { data: { session } } = await supabase.auth.getSession();
-          await fetch(`${SUPABASE_URL}/functions/v1/upload-offer-codes`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session?.access_token}`,
-            },
-            body: JSON.stringify({ offer_id: offerId, shop_domain: shopDomain, codes }),
+          const uploadResult = await uploadOfferCodesDirect({
+            supabase,
+            offerId,
+            codes,
+            expiresAt: form.valid_until || null,
           });
+          if (!uploadResult.success) {
+            throw new Error(uploadResult.error || 'Failed to upload codes');
+          }
         }
       }
 

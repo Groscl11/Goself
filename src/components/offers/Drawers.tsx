@@ -186,6 +186,7 @@ export function AdoptModal({ open, onClose, offer, onConfirm, loading, error }: 
 
 // ─── Manage Codes Drawer ──────────────────────────────────────────────────────
 import { supabase } from '../../lib/supabase';
+import { uploadOfferCodesDirect } from '../../lib/offerCodes';
 import { OfferCode } from '../../types/offers';
 
 interface ManageCodesDrawerProps {
@@ -198,6 +199,7 @@ interface ManageCodesDrawerProps {
 
 export function ManageCodesDrawer({ open, onClose, offer, clientId, shopDomain }: ManageCodesDrawerProps) {
   const [codes, setCodes] = React.useState<OfferCode[]>([]);
+  const [stats, setStats] = React.useState({ total: 0, available: 0, assigned: 0, redeemed: 0 });
   const [loading, setLoading] = React.useState(false);
   const [filter, setFilter] = React.useState<string>('all');
   const [uploading, setUploading] = React.useState(false);
@@ -250,6 +252,20 @@ export function ManageCodesDrawer({ open, onClose, offer, clientId, shopDomain }
     if (filter !== 'all') q = q.eq('status', filter);
     const { data } = await q;
     setCodes(data ?? []);
+
+    const [totalRes, availableRes, assignedRes, redeemedRes] = await Promise.all([
+      supabase.from('offer_codes').select('id', { count: 'exact', head: true }).eq('offer_id', offer.id),
+      supabase.from('offer_codes').select('id', { count: 'exact', head: true }).eq('offer_id', offer.id).eq('status', 'available'),
+      supabase.from('offer_codes').select('id', { count: 'exact', head: true }).eq('offer_id', offer.id).eq('status', 'assigned'),
+      supabase.from('offer_codes').select('id', { count: 'exact', head: true }).eq('offer_id', offer.id).eq('status', 'redeemed'),
+    ]);
+
+    setStats({
+      total: totalRes.count ?? 0,
+      available: availableRes.count ?? 0,
+      assigned: assignedRes.count ?? 0,
+      redeemed: redeemedRes.count ?? 0,
+    });
     setLoading(false);
   }
 
@@ -264,33 +280,18 @@ export function ManageCodesDrawer({ open, onClose, offer, clientId, shopDomain }
     if (codes.length > 1000) { setUploadResult('Max 1000 codes per upload'); setUploading(false); return; }
 
     try {
-      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-      const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/upload-offer-codes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token ?? ANON_KEY}`,
-        },
-        body: JSON.stringify({ offer_id: offer.id, shop_domain: shopDomain, codes }),
+      const result = await uploadOfferCodesDirect({
+        supabase,
+        offerId: offer.id,
+        codes,
       });
-      const raw = await res.text();
-      let result: any = {};
-      try {
-        result = JSON.parse(raw);
-      } catch {
-        throw new Error(`Upload endpoint returned non-JSON response (status ${res.status})`);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Upload failed');
       }
 
-      if (!res.ok || !result?.success) {
-        throw new Error(result?.error || `Upload failed (status ${res.status})`);
-      }
-
-      if (result.success) {
-        setUploadResult(`✓ ${result.inserted} codes uploaded. ${result.skipped_duplicates} duplicates skipped.`);
-        fetchCodes();
-      }
+      setUploadResult(`✓ ${result.inserted} codes uploaded. ${result.skipped_duplicates} duplicates skipped.`);
+      fetchCodes();
     } catch (err: any) {
       setUploadResult(`Error: ${err.message}`);
     }
@@ -313,7 +314,7 @@ export function ManageCodesDrawer({ open, onClose, offer, clientId, shopDomain }
       open={open}
       onClose={onClose}
       title={`Code pool — ${offer.title}`}
-      subtitle={`${offer.available_codes} available · ${offer.total_codes_uploaded} total`}
+      subtitle={`${stats.available} available · ${stats.total} total`}
       width="max-w-2xl"
       footer={
         <div className="flex items-center gap-3">
@@ -351,10 +352,10 @@ export function ManageCodesDrawer({ open, onClose, offer, clientId, shopDomain }
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3 mb-4">
         {[
-          { label: 'Total',     value: offer.total_codes_uploaded },
-          { label: 'Available', value: offer.available_codes },
-          { label: 'Assigned',  value: codes.filter(c => c.status === 'assigned').length },
-          { label: 'Redeemed',  value: codes.filter(c => c.status === 'redeemed').length },
+          { label: 'Total',     value: stats.total },
+          { label: 'Available', value: stats.available },
+          { label: 'Assigned',  value: stats.assigned },
+          { label: 'Redeemed',  value: stats.redeemed },
         ].map(s => (
           <div key={s.label} className="bg-gray-50 rounded-lg p-3 text-center">
             <div className="text-lg font-semibold text-gray-900">{s.value}</div>

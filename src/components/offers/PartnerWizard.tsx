@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Drawer } from './Drawers';
 import { supabase } from '../../lib/supabase';
+import { uploadOfferCodesDirect } from '../../lib/offerCodes';
 import { AccessType, PARTNER_CATEGORIES } from '../../types/offers';
 
 interface PartnerWizardProps {
@@ -189,19 +190,14 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
 
       // 2. Upload unique codes
       if (offerId && form.coupon_type === 'unique' && parsedCodes.length > 0) {
-        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-        const { data: { session } } = await supabase.auth.getSession();
-        const uploadRes = await fetch(`${SUPABASE_URL}/functions/v1/upload-offer-codes`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({ offer_id: offerId, shop_domain: shopDomain, codes: parsedCodes }),
+        const uploadResult = await uploadOfferCodesDirect({
+          supabase,
+          offerId,
+          codes: parsedCodes,
+          expiresAt: form.valid_until || null,
         });
-        const uploadJson = await uploadRes.json().catch(() => ({}));
-        if (!uploadRes.ok || uploadJson?.success === false) {
-          throw new Error(uploadJson?.error || 'Failed to upload codes');
+        if (!uploadResult.success) {
+          throw new Error(uploadResult.error || 'Failed to upload codes');
         }
       }
 
