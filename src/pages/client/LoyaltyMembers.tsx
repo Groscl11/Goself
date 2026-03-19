@@ -139,6 +139,14 @@ export function LoyaltyMembers() {
       const membersWithExpiry = await Promise.all(
         statusData.map(async (member: any) => {
           const mu = memberUsersMap.get(member.member_user_id);
+          const { data: latestTxn } = await supabase
+            .from('loyalty_points_transactions')
+            .select('balance_after')
+            .eq('member_loyalty_status_id', member.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
           const { data: expiryData } = await supabase
             .from('points_expiry_schedule')
             .select('points_amount')
@@ -147,6 +155,7 @@ export function LoyaltyMembers() {
             .lte('expires_at', new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
 
           const expiringSoon = expiryData?.reduce((sum: number, item: any) => sum + item.points_amount, 0) || 0;
+          const reconciledBalance = latestTxn?.balance_after ?? member.points_balance ?? 0;
 
           return {
             id: member.id,
@@ -156,7 +165,7 @@ export function LoyaltyMembers() {
             phone: mu?.phone || '',
             tier_name: (member.loyalty_tiers as any)?.tier_name || 'No Tier',
             tier_level: (member.loyalty_tiers as any)?.tier_level || 0,
-            points_balance: member.points_balance ?? 0,
+            points_balance: reconciledBalance,
             lifetime_points_earned: member.lifetime_points_earned ?? 0,
             lifetime_points_redeemed: member.lifetime_points_redeemed ?? 0,
             total_orders: member.total_orders ?? 0,
@@ -228,7 +237,11 @@ export function LoyaltyMembers() {
         .limit(50);
 
       if (error) throw error;
-      setLedgerTransactions(data || []);
+      const txns = data || [];
+      setLedgerTransactions(txns);
+      if (selectedMember && txns.length > 0 && typeof txns[0].balance_after === 'number') {
+        setSelectedMember({ ...selectedMember, points_balance: txns[0].balance_after });
+      }
     } catch (error) {
       console.error('Error loading ledger:', error);
     }
@@ -601,7 +614,12 @@ export function LoyaltyMembers() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {ledgerTransactions.map((txn) => (
+                        {ledgerTransactions.map((txn) => {
+                          const txnType = String(txn.transaction_type || '').toLowerCase();
+                          const isDebitType = ['redeem', 'redeemed', 'expire', 'expired'].includes(txnType);
+                          const absPoints = Math.abs(Number(txn.points_amount || 0));
+
+                          return (
                           <tr key={txn.id}>
                             <td className="px-4 py-3 text-sm text-gray-600">
                               {new Date(txn.created_at).toLocaleDateString()}
@@ -620,9 +638,9 @@ export function LoyaltyMembers() {
                               </span>
                             </td>
                             <td className={`px-4 py-3 text-right font-medium ${
-                              txn.points_amount >= 0 ? 'text-green-600' : 'text-red-600'
+                              isDebitType ? 'text-red-600' : 'text-green-600'
                             }`}>
-                              {txn.points_amount >= 0 ? '+' : ''}{txn.points_amount}
+                              {isDebitType ? '-' : '+'}{absPoints}
                             </td>
                             <td className="px-4 py-3 text-right text-sm text-gray-900">
                               {txn.balance_after}
@@ -631,7 +649,8 @@ export function LoyaltyMembers() {
                               {txn.description || '-'}
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
