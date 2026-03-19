@@ -105,7 +105,7 @@ export default function OffersPage() {
     setStoreLoading(true);
     const { data } = await supabase
       .from('rewards')
-      .select('*, offer_distributions(id, points_cost, access_type, is_active, current_issuances, max_per_member)')
+      .select('*, offer_distributions(id, distributing_client_id, points_cost, access_type, is_active, current_issuances, max_per_member, created_at, updated_at)')
       .eq('owner_client_id', clientId)
       .eq('offer_type', 'store_discount')
       .order('created_at', { ascending: false });
@@ -118,7 +118,7 @@ export default function OffersPage() {
     setPartnerLoading(true);
     const { data } = await supabase
       .from('rewards')
-      .select('*, offer_distributions(id, points_cost, access_type, is_active, current_issuances, max_per_member), offer_codes(status)')
+      .select('*, offer_distributions(id, distributing_client_id, points_cost, access_type, is_active, current_issuances, max_per_member, created_at, updated_at), offer_codes(status)')
       .eq('owner_client_id', clientId)
       .eq('offer_type', 'partner_voucher')
       .order('created_at', { ascending: false });
@@ -229,7 +229,16 @@ export default function OffersPage() {
   // ── Helpers ─────────────────────────────────────────────────────────────────
   function getDistForOffer(offer: Offer): OfferDistribution | null {
     const dists = offer.offer_distributions as OfferDistribution[] | undefined;
-    return dists?.find(d => d.distributing_client_id === clientId && d.is_active) ?? null;
+    if (!dists?.length) return null;
+    const activeClientDists = dists
+      .filter(d => d.distributing_client_id === clientId && d.is_active)
+      .sort((left, right) => {
+        const leftTs = new Date(left.updated_at ?? left.created_at).getTime();
+        const rightTs = new Date(right.updated_at ?? right.created_at).getTime();
+        return rightTs - leftTs;
+      });
+
+    return activeClientDists[0] ?? null;
   }
  
   const storeFiltered = storeOffers.filter(o => {

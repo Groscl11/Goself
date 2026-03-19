@@ -37,7 +37,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     generic_coupon_code: '',
     valid_until: '',
     // Step 3
-    points_cost: '500',
+    points_cost: '',
     max_per_member: '1',
     access_type: 'points_redemption' as AccessType,
   });
@@ -80,7 +80,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       partner_name: '', category: 'Food & Drink', terms_conditions: '',
       steps_to_redeem: '', redemption_link: '',
       coupon_type: 'unique', generic_coupon_code: '', valid_until: '',
-      points_cost: '500', max_per_member: '1', access_type: 'points_redemption',
+      points_cost: '', max_per_member: '1', access_type: 'points_redemption',
     });
   }
 
@@ -98,7 +98,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       coupon_type: offer.coupon_type ?? 'unique',
       generic_coupon_code: offer.generic_coupon_code ?? '',
       valid_until: offer.valid_until ? String(offer.valid_until).slice(0, 10) : '',
-      points_cost: dist?.points_cost != null ? String(dist.points_cost) : '500',
+      points_cost: dist?.points_cost != null ? String(dist.points_cost) : '',
       max_per_member: dist?.max_per_member != null ? String(dist.max_per_member) : '1',
       access_type: dist?.access_type ?? 'points_redemption',
     });
@@ -203,27 +203,50 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
 
       // 3. Insert offer_distributions
       if (offerId) {
-        if (isEdit) {
+        const distributionPayload = {
+          access_type: form.access_type,
+          points_cost: showPoints ? Number(form.points_cost) : null,
+          max_per_member: Number(form.max_per_member) || 1,
+          is_active: true,
+        };
+
+        const { data: existingDistributions, error: existingDistErr } = await (supabase as any)
+          .from('offer_distributions')
+          .select('id, is_active, created_at, updated_at')
+          .eq('offer_id', offerId)
+          .eq('distributing_client_id', clientId)
+          .order('updated_at', { ascending: false })
+          .order('created_at', { ascending: false });
+
+        if (existingDistErr) throw existingDistErr;
+
+        const latestDistribution = existingDistributions?.[0] ?? null;
+
+        if (latestDistribution) {
           const { error: distUpdateErr } = await (supabase as any)
             .from('offer_distributions')
-            .update({
-              access_type: form.access_type,
-              points_cost: showPoints ? Number(form.points_cost) : null,
-              max_per_member: Number(form.max_per_member) || 1,
-            })
-            .eq('offer_id', offerId)
-            .eq('distributing_client_id', clientId)
-            .eq('is_active', true);
+            .update(distributionPayload)
+            .eq('id', latestDistribution.id);
           if (distUpdateErr) throw distUpdateErr;
+
+          const duplicateActiveIds = (existingDistributions ?? [])
+            .filter((distribution: { id: string; is_active: boolean }) => distribution.id !== latestDistribution.id && distribution.is_active)
+            .map((distribution: { id: string }) => distribution.id);
+
+          if (duplicateActiveIds.length > 0) {
+            const { error: deactivateDupesErr } = await (supabase as any)
+              .from('offer_distributions')
+              .update({ is_active: false })
+              .in('id', duplicateActiveIds);
+            if (deactivateDupesErr) throw deactivateDupesErr;
+          }
         } else {
-          await (supabase as any).from('offer_distributions').insert({
+          const { error: distInsertErr } = await (supabase as any).from('offer_distributions').insert({
             offer_id: offerId,
             distributing_client_id: clientId,
-            access_type: form.access_type,
-            points_cost: showPoints ? Number(form.points_cost) : null,
-            max_per_member: Number(form.max_per_member) || 1,
-            is_active: true,
+            ...distributionPayload,
           });
+          if (distInsertErr) throw distInsertErr;
         }
       }
 
@@ -427,9 +450,9 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
                   : `${parsedCodes.length} unique codes`}
               </div>
               <div><span className="text-gray-500">Access:</span>{' '}
-                {form.access_type === 'points_redemption' ? `${form.points_cost} pts to redeem`
+                {form.access_type === 'points_redemption' ? `${form.points_cost || 'Not set'} pts to redeem`
                   : form.access_type === 'campaign_reward' ? 'Campaign only (free)'
-                  : `${form.points_cost} pts or free via campaign`}
+                  : `${form.points_cost || 'Not set'} pts or free via campaign`}
               </div>
             </div>
           </div>
