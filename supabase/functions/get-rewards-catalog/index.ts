@@ -41,22 +41,6 @@ async function fetchDistributions(supabase: any, clientId: string) {
   return result;
 }
 
-async function fetchLegacyRewards(supabase: any, clientId: string) {
-  let result = await supabase
-    .from("rewards")
-    .select("*")
-    .or(`owner_client_id.eq.${clientId},client_id.eq.${clientId}`);
-
-  if (result.error?.message?.includes("owner_client_id")) {
-    result = await supabase
-      .from("rewards")
-      .select("*")
-      .eq("client_id", clientId);
-  }
-
-  return result;
-}
-
 async function resolveClientId(supabase: any, shopDomain?: string | null, requestedClientId?: string | null) {
   if (requestedClientId) return requestedClientId;
   if (!shopDomain) return null;
@@ -124,43 +108,7 @@ Deno.serve(async (req: Request) => {
     const { data: distributionRows, error: distributionError } = await fetchDistributions(supabase, clientId);
 
     if (distributionError) {
-      const { data: legacyRewards, error: legacyError } = await fetchLegacyRewards(supabase, clientId);
-      if (legacyError) {
-        return softFail(legacyError.message);
-      }
-
-      const normalizedLegacy = (legacyRewards || []).map((offer: any) => ({
-        offer_id: offer.id,
-        distribution_id: offer.id,
-        title: offer.title,
-        description: offer.description,
-        value_description: offer.value_description,
-        image_url: offer.image_url,
-        terms_conditions: offer.terms_conditions,
-        offer_type: offer.offer_type || (offer.is_marketplace_listed ? "marketplace_offer" : "store_discount"),
-        reward_type: offer.reward_type,
-        discount_value: offer.discount_value,
-        max_discount_value: offer.max_discount_value,
-        min_order_value: offer.min_purchase_amount ?? offer.min_order_value ?? 0,
-        coupon_type: offer.coupon_type,
-        generic_code: offer.generic_coupon_code,
-        points_cost: Number(offer.points_cost ?? 0),
-        access_type: offer.access_type ?? "points_redemption",
-        max_per_member: offer.max_per_member ?? null,
-        available_codes: Number(offer.available_codes ?? 0),
-        total_codes_uploaded: Number(offer.total_codes_uploaded ?? 0),
-        tracking_type: offer.tracking_type,
-        issuer_name: null,
-        redeems_at_shop_domain: offer.redeems_at_shop_domain,
-      }));
-
-      return jsonResponse({
-        success: true,
-        store_discounts: normalizedLegacy.filter((offer: any) => offer.offer_type === "store_discount"),
-        partner_vouchers: normalizedLegacy.filter((offer: any) => offer.offer_type === "partner_voucher"),
-        marketplace_offers: normalizedLegacy.filter((offer: any) => offer.offer_type === "marketplace_offer"),
-        existing_codes: {},
-      });
+      return softFail(`Distribution data unavailable: ${distributionError.message}`);
     }
 
     const distributionList = distributionRows || [];
