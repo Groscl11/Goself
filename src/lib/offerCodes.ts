@@ -136,6 +136,7 @@ export async function uploadOfferCodesDirect({
     .update({
       total_codes_uploaded: totalUploaded ?? 0,
       available_codes: totalAvailable ?? 0,
+      voucher_count: totalUploaded ?? 0,
     })
     .eq('id', offerId);
 

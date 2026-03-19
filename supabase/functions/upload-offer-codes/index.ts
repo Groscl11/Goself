@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { syncOfferCounters } from "../_shared/offer-counters.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -129,21 +130,14 @@ Deno.serve(async (req: Request) => {
       inserted = codesToInsert.length;
     }
 
-    const { count: totalAvailable, error: countError } = await supabase
-      .from("offer_codes")
-      .select("id", { count: "exact", head: true })
-      .eq("offer_id", offerId)
-      .eq("status", "available");
-
-    if (countError) {
-      return jsonResponse({ success: false, error: countError.message }, 500);
-    }
+    const { totalAvailable, totalUploaded } = await syncOfferCounters(supabase, offerId);
 
     return jsonResponse({
       success: true,
       inserted,
       skipped_duplicates: normalizedCodes.length - inserted,
-      total_available: totalAvailable ?? 0,
+      total_available: totalAvailable,
+      total_uploaded: totalUploaded,
     });
   } catch (error: any) {
     console.error("upload-offer-codes error:", error);

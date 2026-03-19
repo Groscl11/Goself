@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { syncOfferCounters } from "../_shared/offer-counters.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,6 +116,8 @@ Deno.serve(async (req: Request) => {
         notFound.push(code);
       }
     }
+
+    await syncOfferCounters(supabase, offerId);
 
     return jsonResponse({ success: true, updated, not_found: notFound });
   } catch (error: any) {

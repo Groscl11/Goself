@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { syncOfferCounters } from "../_shared/offer-counters.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -409,6 +410,10 @@ Deno.serve(async (req: Request) => {
         updated_at: new Date().toISOString(),
       })
       .eq("id", loyaltyStatus.id);
+
+    if (reward.coupon_type === "unique") {
+      await syncOfferCounters(supabase, reward_id);
+    }
 
     return new Response(
       JSON.stringify({
