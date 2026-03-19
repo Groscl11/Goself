@@ -273,6 +273,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // ── Step 5B: Fetch member data (global_user_id, email) ───────────────────
+    const { data: memberData } = await supabase
+      .from("member_users")
+      .select("global_user_id, email")
+      .eq("id", member_user_id)
+      .maybeSingle();
+
+    // ── Step 5C: Determine receiving_client_id (marketplace offers only) ──────
+    const receivingClientId =
+      reward.offer_type === "marketplace_offer"
+        ? reward.client_id ?? null
+        : null;
+
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     let claimedOfferCodeId: string | null = null;
     let code: string | null = null;
@@ -297,6 +310,10 @@ Deno.serve(async (req: Request) => {
           assigned_at: new Date().toISOString(),
           assignment_channel: "points_redemption",
           distributed_by_client_id: clientId,
+          global_user_id: memberData?.global_user_id ?? null,
+          member_email: memberData?.email ?? null,
+          receiving_client_id: receivingClientId,
+          code_source: "generic",
           shopify_synced: false,
           expires_at: expiresAt,
         })
@@ -369,6 +386,25 @@ Deno.serve(async (req: Request) => {
         priceRuleId = shopifyResult.price_rule_id;
         shopifyDiscountCodeId = shopifyResult.discount_code_id;
         console.log(`Shopify discount created: pr=${priceRuleId}, dc=${shopifyDiscountCodeId}`);
+
+        // INSERT into offer_codes to track Shopify-generated code
+        await supabase.from("offer_codes").insert({
+          offer_id: reward_id,
+          distribution_id: offerRow.id,
+          code: code,
+          status: "assigned",
+          assigned_to_member_id: member_user_id,
+          assigned_at: new Date().toISOString(),
+          distributed_by_client_id: clientId,
+          global_user_id: memberData?.global_user_id ?? null,
+          member_email: memberData?.email ?? null,
+          receiving_client_id: receivingClientId,
+          code_source: "shopify_generated",
+          shopify_price_rule_id: priceRuleId,
+          shopify_discount_code_id: shopifyDiscountCodeId,
+          shopify_synced: true,
+          expires_at: expiresAt,
+        }).catch((err) => console.error("offer_codes insert for Shopify failed:", err));
       } else {
         console.warn("Shopify discount creation failed — DB only");
       }
@@ -380,6 +416,12 @@ Deno.serve(async (req: Request) => {
       await supabase
         .from("offer_codes")
         .update({
+          status: "assigned",
+          distributed_by_client_id: clientId,
+          global_user_id: memberData?.global_user_id ?? null,
+          member_email: memberData?.email ?? null,
+          receiving_client_id: receivingClientId,
+          code_source: "uploaded_pool",
           shopify_synced: shopifyCreated,
           shopify_price_rule_id: priceRuleId,
           shopify_discount_code_id: shopifyDiscountCodeId,

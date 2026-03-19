@@ -233,6 +233,15 @@ Deno.serve(async (req: Request) => {
       ? rewards.map((r: any) => r.id)
       : reward_ids.filter((id: string) => rewards.some((r: any) => r.id === id));
 
+    // ── Fetch member data for offer_codes tracking ──────────────────────────
+    const { data: memberDataForTracking } = memberId
+      ? await supabase
+          .from("member_users")
+          .select("global_user_id, email")
+          .eq("id", memberId)
+          .maybeSingle()
+      : { data: null };
+
     const allocations: Array<{
       reward_id: string; reward_title: string;
       voucher_code: string | null; redemption_url: string | null;
@@ -254,6 +263,23 @@ Deno.serve(async (req: Request) => {
           .update({ status: "redeemed", redeemed_at: new Date().toISOString(), member_id: memberId })
           .eq("id", voucher.id).eq("status", "available");
         if (!upErr) voucherCode = voucher.code;
+
+        // ── INSERT into offer_codes to track campaign allocation ──────────────
+        if (memberId && voucherCode) {
+          await supabase.from("offer_codes").insert({
+            offer_id: rewardId,
+            code: voucherCode,
+            status: "assigned",
+            assigned_to_member_id: memberId,
+            assigned_at: new Date().toISOString(),
+            distributed_by_client_id: campaign.client_id,
+            global_user_id: memberDataForTracking?.global_user_id ?? null,
+            member_email: memberDataForTracking?.email ?? null,
+            receiving_client_id: null,
+            code_source: "campaign",
+            source_rule_id: campaign.id,
+          }).catch((err) => console.error("offer_codes insert for campaign failed:", err));
+        }
       }
 
       if (memberId) {
