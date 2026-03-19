@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Drawer } from './Drawers';
 import { supabase } from '../../lib/supabase';
 import { AccessType, PARTNER_CATEGORIES } from '../../types/offers';
