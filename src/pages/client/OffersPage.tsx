@@ -62,6 +62,7 @@ export default function OffersPage() {
   // Partner vouchers state
   const [partnerOffers, setPartnerOffers] = useState<Offer[]>([]);
   const [partnerLoading, setPartnerLoading] = useState(false);
+  const [partnerEditTarget, setPartnerEditTarget] = useState<{ offer: Offer; distribution: OfferDistribution | null } | null>(null);
  
   // Marketplace state
   const [mktOffers, setMktOffers] = useState<MarketplaceOffer[]>([]);
@@ -117,11 +118,22 @@ export default function OffersPage() {
     setPartnerLoading(true);
     const { data } = await supabase
       .from('rewards')
-      .select('*, offer_distributions(id, points_cost, access_type, is_active, current_issuances, max_per_member)')
+      .select('*, offer_distributions(id, points_cost, access_type, is_active, current_issuances, max_per_member), offer_codes(status)')
       .eq('owner_client_id', clientId)
       .eq('offer_type', 'partner_voucher')
       .order('created_at', { ascending: false });
-    setPartnerOffers(data ?? []);
+    const normalized = (data ?? []).map((offer: any) => {
+      const codes = (offer.offer_codes ?? []) as Array<{ status: string }>;
+      if (!codes.length) return offer;
+      const total = codes.length;
+      const available = codes.filter(c => c.status === 'available').length;
+      return {
+        ...offer,
+        total_codes_uploaded: total,
+        available_codes: available,
+      };
+    });
+    setPartnerOffers(normalized);
     setPartnerLoading(false);
   }, [clientId]);
  
@@ -479,6 +491,7 @@ export default function OffersPage() {
                               <Btn variant="default" className="border-amber-300 text-amber-700 hover:bg-amber-50">
                                 Update Redemptions
                               </Btn>
+                              <Btn onClick={() => setPartnerEditTarget({ offer, distribution: dist })}>Edit Offer</Btn>
                               <Btn onClick={() => setTab('distribution')}>Edit Points</Btn>
                               <Btn onClick={() => window.location.href = `/client/campaigns/new?offer_id=${offer.id}`}>
                                 Use in Campaign
@@ -744,9 +757,11 @@ export default function OffersPage() {
       />
  
       <PartnerWizard
-        open={partnerWizardOpen}
-        onClose={() => setPartnerWizardOpen(false)}
+        open={partnerWizardOpen || !!partnerEditTarget}
+        onClose={() => { setPartnerWizardOpen(false); setPartnerEditTarget(null); }}
         clientId={clientId}
+        shopDomain={shopDomain}
+        editTarget={partnerEditTarget}
         onCreated={() => { fetchPartnerOffers(); fetchDistributions(); }}
       />
  
@@ -755,6 +770,7 @@ export default function OffersPage() {
         onClose={() => setCodesDrawer(null)}
         offer={codesDrawer}
         clientId={clientId}
+        shopDomain={shopDomain}
       />
  
       <AdoptModal

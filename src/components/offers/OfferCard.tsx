@@ -158,6 +158,22 @@ export function OfferCard({ offer, distribution, actions, showSource, sourceLabe
           />
         </div>
 
+        {(offer.offer_type === 'partner_voucher') && (
+          <div className="mb-3 space-y-1 text-xs text-gray-500">
+            {(offer.steps_to_redeem || offer.description) && (
+              <p><span className="font-medium text-gray-600">Steps to redeem:</span> {offer.steps_to_redeem || offer.description}</p>
+            )}
+            {offer.redemption_link && (
+              <p>
+                <span className="font-medium text-gray-600">Redemption URL:</span>{' '}
+                <a href={offer.redemption_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 underline">
+                  {offer.redemption_link}
+                </a>
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Action buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           {actions}

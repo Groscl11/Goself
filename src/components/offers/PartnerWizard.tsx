@@ -7,6 +7,8 @@ interface PartnerWizardProps {
   open: boolean;
   onClose: () => void;
   clientId: string;
+  shopDomain: string;
+  editTarget?: { offer: any; distribution: any } | null;
   onCreated: () => void;
 }
 
@@ -14,7 +16,7 @@ type Step = 1 | 2 | 3;
 
 const STEP_LABELS = ['Partner details', 'Upload codes', 'Distribution config'];
 
-export function PartnerWizard({ open, onClose, clientId, onCreated }: PartnerWizardProps) {
+export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget, onCreated }: PartnerWizardProps) {
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -26,6 +28,8 @@ export function PartnerWizard({ open, onClose, clientId, onCreated }: PartnerWiz
     // Step 1
     partner_name: '',
     category: 'Food & Drink',
+    steps_to_redeem: '',
+    redemption_link: '',
     terms_conditions: '',
     // Step 2
     coupon_type: 'unique',
@@ -44,10 +48,31 @@ export function PartnerWizard({ open, onClose, clientId, onCreated }: PartnerWiz
     setParsedCodes([]);
     setForm({
       partner_name: '', category: 'Food & Drink', terms_conditions: '',
+      steps_to_redeem: '', redemption_link: '',
       coupon_type: 'unique', generic_coupon_code: '', valid_until: '',
       points_cost: '500', max_per_member: '1', access_type: 'points_redemption',
     });
   }
+
+  useEffect(() => {
+    if (!open) return;
+    if (!editTarget?.offer) return;
+    const offer = editTarget.offer;
+    const dist = editTarget.distribution;
+    setForm({
+      partner_name: (offer.title ?? '').split(' — ')[0] || '',
+      category: offer.tags?.[0] || 'Food & Drink',
+      steps_to_redeem: offer.steps_to_redeem ?? offer.description ?? '',
+      redemption_link: offer.redemption_link ?? '',
+      terms_conditions: offer.terms_conditions ?? '',
+      coupon_type: offer.coupon_type ?? 'unique',
+      generic_coupon_code: offer.generic_coupon_code ?? '',
+      valid_until: offer.valid_until ? String(offer.valid_until).slice(0, 10) : '',
+      points_cost: dist?.points_cost != null ? String(dist.points_cost) : '500',
+      max_per_member: dist?.max_per_member != null ? String(dist.max_per_member) : '1',
+      access_type: dist?.access_type ?? 'points_redemption',
+    });
+  }, [open, editTarget]);
 
   function handleClose() { reset(); onClose(); }
 
@@ -71,7 +96,7 @@ export function PartnerWizard({ open, onClose, clientId, onCreated }: PartnerWiz
       if (!form.partner_name.trim()) { setError('Partner name is required'); return false; }
     }
     if (step === 2) {
-      if (form.coupon_type === 'unique' && parsedCodes.length === 0) {
+      if (!editTarget && form.coupon_type === 'unique' && parsedCodes.length === 0) {
         setError('Please upload or paste at least one code'); return false;
       }
       if (form.coupon_type === 'generic' && !form.generic_coupon_code.trim()) {
@@ -94,11 +119,15 @@ export function PartnerWizard({ open, onClose, clientId, onCreated }: PartnerWiz
     setLoading(true);
     try {
       const showPoints = form.access_type !== 'campaign_reward';
+      const isEdit = Boolean(editTarget?.offer?.id);
+      let offerId = editTarget?.offer?.id as string | undefined;
 
-      // 1. Insert reward
-      const { data: reward, error: rwErr } = await supabase.from('rewards').insert({
+      const rewardPayload = {
         title: `${form.partner_name} — ${form.category}`,
-        description: form.terms_conditions || null,
+        description: form.steps_to_redeem || null,
+        steps_to_redeem: form.steps_to_redeem || null,
+        redemption_link: form.redemption_link || null,
+        terms_conditions: form.terms_conditions || null,
         offer_type: 'partner_voucher',
         code_source: 'csv_uploaded',
         coupon_type: form.coupon_type,
@@ -113,36 +142,69 @@ export function PartnerWizard({ open, onClose, clientId, onCreated }: PartnerWiz
         client_id: clientId,
         valid_until: form.valid_until || null,
         tags: [form.category],
-      }).select('id').single();
+      };
 
-      if (rwErr) throw rwErr;
-      const offerId = reward.id;
+      if (isEdit && offerId) {
+        const { error: updateErr } = await (supabase as any)
+          .from('rewards')
+          .update(rewardPayload)
+          .eq('id', offerId);
+        if (updateErr) throw updateErr;
+      } else {
+        const { data: reward, error: rwErr } = await (supabase as any)
+          .from('rewards')
+          .insert(rewardPayload)
+          .select('id')
+          .single();
+        if (rwErr) throw rwErr;
+        offerId = reward.id;
+      }
 
       // 2. Upload unique codes
-      if (form.coupon_type === 'unique' && parsedCodes.length > 0) {
+      if (offerId && form.coupon_type === 'unique' && parsedCodes.length > 0) {
         const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
         const { data: { session } } = await supabase.auth.getSession();
-        await fetch(`${SUPABASE_URL}/functions/v1/upload-offer-codes`, {
+        const uploadRes = await fetch(`${SUPABASE_URL}/functions/v1/upload-offer-codes`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token}`,
           },
-          body: JSON.stringify({ offer_id: offerId, shop_domain: '', codes: parsedCodes }),
+          body: JSON.stringify({ offer_id: offerId, shop_domain: shopDomain, codes: parsedCodes }),
         });
+        const uploadJson = await uploadRes.json().catch(() => ({}));
+        if (!uploadRes.ok || uploadJson?.success === false) {
+          throw new Error(uploadJson?.error || 'Failed to upload codes');
+        }
       }
 
       // 3. Insert offer_distributions
-      await supabase.from('offer_distributions').insert({
-        offer_id: offerId,
-        distributing_client_id: clientId,
-        access_type: form.access_type,
-        points_cost: showPoints ? Number(form.points_cost) : null,
-        max_per_member: Number(form.max_per_member) || 1,
-        is_active: true,
-      });
+      if (offerId) {
+        if (isEdit) {
+          const { error: distUpdateErr } = await (supabase as any)
+            .from('offer_distributions')
+            .update({
+              access_type: form.access_type,
+              points_cost: showPoints ? Number(form.points_cost) : null,
+              max_per_member: Number(form.max_per_member) || 1,
+            })
+            .eq('offer_id', offerId)
+            .eq('distributing_client_id', clientId)
+            .eq('is_active', true);
+          if (distUpdateErr) throw distUpdateErr;
+        } else {
+          await (supabase as any).from('offer_distributions').insert({
+            offer_id: offerId,
+            distributing_client_id: clientId,
+            access_type: form.access_type,
+            points_cost: showPoints ? Number(form.points_cost) : null,
+            max_per_member: Number(form.max_per_member) || 1,
+            is_active: true,
+          });
+        }
+      }
 
-      setSuccess('Partner voucher added successfully!');
+      setSuccess(isEdit ? 'Partner voucher updated successfully!' : 'Partner voucher added successfully!');
       setTimeout(() => { onCreated(); handleClose(); }, 1500);
     } catch (e: any) {
       setError(e.message ?? 'Something went wrong');
@@ -196,6 +258,16 @@ export function PartnerWizard({ open, onClose, clientId, onCreated }: PartnerWiz
             <select value={form.category} onChange={e => set('category', e.target.value)} className="input-base">
               {PARTNER_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
+          </Field>
+          <Field label="Steps to Redeem">
+            <textarea value={form.steps_to_redeem} onChange={e => set('steps_to_redeem', e.target.value)}
+              rows={3} placeholder="1) Visit store 2) Add item 3) Apply voucher..."
+              className="input-base resize-none" />
+          </Field>
+          <Field label="Redemption URL">
+            <input value={form.redemption_link} onChange={e => set('redemption_link', e.target.value)}
+              placeholder="https://partner.example.com/redeem"
+              className="input-base" />
           </Field>
           <Field label="Terms & conditions">
             <textarea value={form.terms_conditions} onChange={e => set('terms_conditions', e.target.value)}
@@ -319,6 +391,7 @@ export function PartnerWizard({ open, onClose, clientId, onCreated }: PartnerWiz
             <div className="text-sm text-gray-700 space-y-1">
               <div><span className="text-gray-500">Partner:</span> {form.partner_name}</div>
               <div><span className="text-gray-500">Category:</span> {form.category}</div>
+              {form.redemption_link && <div><span className="text-gray-500">Redemption URL:</span> {form.redemption_link}</div>}
               <div><span className="text-gray-500">Codes:</span>{' '}
                 {form.coupon_type === 'generic'
                   ? `Generic (${form.generic_coupon_code || '—'})`

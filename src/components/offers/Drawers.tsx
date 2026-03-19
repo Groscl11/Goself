@@ -193,9 +193,10 @@ interface ManageCodesDrawerProps {
   onClose: () => void;
   offer: { id: string; title: string; coupon_type: string; available_codes: number; total_codes_uploaded: number } | null;
   clientId: string;
+  shopDomain: string;
 }
 
-export function ManageCodesDrawer({ open, onClose, offer, clientId }: ManageCodesDrawerProps) {
+export function ManageCodesDrawer({ open, onClose, offer, clientId, shopDomain }: ManageCodesDrawerProps) {
   const [codes, setCodes] = React.useState<OfferCode[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [filter, setFilter] = React.useState<string>('all');
@@ -245,7 +246,7 @@ export function ManageCodesDrawer({ open, onClose, offer, clientId }: ManageCode
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token ?? ANON_KEY}`,
         },
-        body: JSON.stringify({ offer_id: offer.id, shop_domain: '', codes }),
+        body: JSON.stringify({ offer_id: offer.id, shop_domain: shopDomain, codes }),
       });
       const result = await res.json();
       if (result.success) {

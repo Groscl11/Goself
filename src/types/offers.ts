@@ -16,8 +16,10 @@ export interface Offer {
   id: string;
   title: string;
   description?: string;
+  steps_to_redeem?: string;
   image_url?: string;
   terms_conditions?: string;
+  redemption_link?: string;
   offer_type: OfferType;
   code_source?: CodeSource;
   coupon_type: CouponType;
@@ -43,6 +45,7 @@ export interface Offer {
   updated_at?: string;
   // joined
   offer_distributions?: OfferDistribution[];
+  offer_codes?: { status: CodeStatus }[];
   owner_client?: { name: string };
 }
 
