@@ -204,6 +204,35 @@ export function ManageCodesDrawer({ open, onClose, offer, clientId, shopDomain }
   const [uploadResult, setUploadResult] = React.useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  function parseCodesFromCsvText(text: string): string[] {
+    const rows = text
+      .split(/\r?\n/)
+      .map(r => r.trim())
+      .filter(Boolean);
+    if (!rows.length) return [];
+
+    const firstRowCols = rows[0].split(',').map(c => c.trim().toLowerCase());
+    const hasHeader = firstRowCols.includes('code') || firstRowCols.includes('coupon_code');
+    const dataRows = hasHeader ? rows.slice(1) : rows;
+
+    return dataRows
+      .map(r => r.split(',')[0]?.trim())
+      .filter((v): v is string => Boolean(v));
+  }
+
+  function downloadSampleCsv() {
+    const csv = ['code', 'SAVE100A', 'SAVE100B', 'SAVE100C'].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'offer-codes-sample.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   useEffect(() => {
     if (!open || !offer) return;
     fetchCodes();
@@ -230,9 +259,7 @@ export function ManageCodesDrawer({ open, onClose, offer, clientId, shopDomain }
     setUploading(true);
     setUploadResult(null);
     const text = await file.text();
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-    // Skip header if first line looks like a header
-    const codes = lines[0]?.toLowerCase().includes('code') ? lines.slice(1) : lines;
+    const codes = parseCodesFromCsvText(text);
     if (codes.length === 0) { setUploadResult('No codes found in file'); setUploading(false); return; }
     if (codes.length > 1000) { setUploadResult('Max 1000 codes per upload'); setUploading(false); return; }
 
@@ -248,12 +275,21 @@ export function ManageCodesDrawer({ open, onClose, offer, clientId, shopDomain }
         },
         body: JSON.stringify({ offer_id: offer.id, shop_domain: shopDomain, codes }),
       });
-      const result = await res.json();
+      const raw = await res.text();
+      let result: any = {};
+      try {
+        result = JSON.parse(raw);
+      } catch {
+        throw new Error(`Upload endpoint returned non-JSON response (status ${res.status})`);
+      }
+
+      if (!res.ok || !result?.success) {
+        throw new Error(result?.error || `Upload failed (status ${res.status})`);
+      }
+
       if (result.success) {
         setUploadResult(`✓ ${result.inserted} codes uploaded. ${result.skipped_duplicates} duplicates skipped.`);
         fetchCodes();
-      } else {
-        setUploadResult(`Error: ${result.error}`);
       }
     } catch (err: any) {
       setUploadResult(`Error: ${err.message}`);
@@ -295,6 +331,12 @@ export function ManageCodesDrawer({ open, onClose, offer, clientId, shopDomain }
           >
             {uploading ? 'Uploading...' : 'Upload More Codes'}
           </button>
+          <button
+            onClick={downloadSampleCsv}
+            className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Download sample CSV
+          </button>
           {uploadResult && (
             <span className={`text-xs ${uploadResult.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
               {uploadResult}
@@ -303,6 +345,9 @@ export function ManageCodesDrawer({ open, onClose, offer, clientId, shopDomain }
         </div>
       }
     >
+      <div className="mb-3 text-xs text-gray-500">
+        Accepted file formats: <code>.csv</code>, <code>.txt</code>. One code per line or first CSV column. Headers supported: <code>code</code>, <code>coupon_code</code>.
+      </div>
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3 mb-4">
         {[

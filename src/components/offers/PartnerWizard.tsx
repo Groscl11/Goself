@@ -43,6 +43,35 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
+  function parseCodesFromCsvText(text: string): string[] {
+    const rows = text
+      .split(/\r?\n/)
+      .map(r => r.trim())
+      .filter(Boolean);
+    if (!rows.length) return [];
+
+    const firstRowCols = rows[0].split(',').map(c => c.trim().toLowerCase());
+    const hasHeader = firstRowCols.includes('code') || firstRowCols.includes('coupon_code');
+    const dataRows = hasHeader ? rows.slice(1) : rows;
+
+    return dataRows
+      .map(r => r.split(',')[0]?.trim())
+      .filter((v): v is string => Boolean(v));
+  }
+
+  function downloadSampleCsv() {
+    const csv = ['code', 'SAVE100A', 'SAVE100B', 'SAVE100C'].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'partner-voucher-codes-sample.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   function reset() {
     setStep(1); setLoading(false); setError(''); setSuccess('');
     setParsedCodes([]);
@@ -82,8 +111,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     const reader = new FileReader();
     reader.onload = ev => {
       const text = ev.target?.result as string;
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      const codes = lines[0]?.toLowerCase().includes('code') ? lines.slice(1) : lines;
+      const codes = parseCodesFromCsvText(text);
       setParsedCodes(codes.slice(0, 1000));
     };
     reader.readAsText(file);
@@ -125,7 +153,6 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       const rewardPayload = {
         title: `${form.partner_name} — ${form.category}`,
         description: form.steps_to_redeem || null,
-        steps_to_redeem: form.steps_to_redeem || null,
         redemption_link: form.redemption_link || null,
         terms_conditions: form.terms_conditions || null,
         offer_type: 'partner_voucher',
@@ -318,12 +345,18 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
                   <div>
                     <div className="text-2xl mb-2">📄</div>
                     <p className="text-sm text-gray-500 mb-3">
-                      One code per line. Header row optional.
+                      One code per line or CSV first column. Accepted headers: <code>code</code>, <code>coupon_code</code>.
                     </p>
-                    <button onClick={() => fileRef.current?.click()}
-                      className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                      Upload CSV or TXT
-                    </button>
+                    <div className="flex items-center justify-center gap-2">
+                      <button onClick={() => fileRef.current?.click()}
+                        className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                        Upload CSV or TXT
+                      </button>
+                      <button onClick={downloadSampleCsv}
+                        className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                        Download sample CSV
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
