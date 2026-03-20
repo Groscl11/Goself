@@ -135,20 +135,16 @@ Deno.serve(async (req: Request) => {
       if (existingInstallation) {
         clientId = existingInstallation.client_id;
       } else {
-        // Create new client
+        // Create new client with correct column names
         const { data: newClient, error: clientError } = await supabase
           .from('clients')
           .insert({
             name: shopDetails.name || shop.replace('.myshopify.com', ''),
-            email: shopDetails.email || `${shop.split('.')[0]}@shopify.com`,
-            phone: shopDetails.phone || null,
-            company_name: shopDetails.name,
-            status: 'active',
-            metadata: {
-              source: 'shopify_auto_install',
-              shop_domain: shop,
-              shop_id: shopDetails.id
-            }
+            description: `Shopify store: ${shop}`,
+            contact_email: shopDetails.email || `${shop.split('.')[0]}@shopify.com`,
+            contact_phone: shopDetails.phone || null,
+            primary_color: '#3b82f6',
+            is_active: true
           })
           .select('id')
           .single();
@@ -357,8 +353,9 @@ Deno.serve(async (req: Request) => {
 
   } catch (error) {
     console.error('OAuth callback error:', error);
-    const fallbackUrl = getAppUrl(req);
-    const errorUrl = `${fallbackUrl}/client/integrations?error=oauth_failed&message=${encodeURIComponent(error.message)}`;
+    // Use DASHBOARD_URL for error redirect (not Supabase URL)
+    const dashboardUrl = Deno.env.get('DASHBOARD_URL') || 'https://goself.netlify.app';
+    const errorUrl = `${dashboardUrl}/client/integrations?error=oauth_failed&message=${encodeURIComponent(error.message)}`;
     return new Response(null, {
       status: 302,
       headers: { 'Location': errorUrl }
