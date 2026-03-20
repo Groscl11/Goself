@@ -128,25 +128,40 @@ Deno.serve(async (req: Request) => {
         clientId = existingInstallation.client_id;
         console.log(`Reusing existing client: ${clientId}`);
       } else {
-        // Create client with minimal data (no Shopify API needed)
+        // Upsert client — idempotent even if previous install attempt left a partial record
         const { data: newClient, error: clientError } = await supabase
           .from('clients')
-          .insert({
+          .upsert({
             name: storeName,
             description: `Shopify store: ${shop}`,
             contact_email: fallbackEmail,
             primary_color: '#3b82f6',
             is_active: true
+          }, {
+            onConflict: 'contact_email',
+            ignoreDuplicates: false
           })
           .select('id')
           .single();
 
         if (clientError) {
-          console.error('Error creating client:', clientError);
-          throw clientError;
+          console.error('Error upserting client:', clientError);
+          // Last resort: try to find existing client by email
+          const { data: existingClient } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('contact_email', fallbackEmail)
+            .maybeSingle();
+          if (existingClient) {
+            clientId = existingClient.id;
+            console.log(`Found existing client by email: ${clientId}`);
+          } else {
+            throw clientError;
+          }
+        } else {
+          clientId = newClient.id;
+          console.log(`Client upserted: ${clientId}`);
         }
-        clientId = newClient.id;
-        console.log(`New client created: ${clientId}`);
       }
     }
 

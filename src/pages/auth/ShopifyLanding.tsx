@@ -108,8 +108,28 @@ export default function ShopifyLanding() {
       // Installation not found or error occurred — trigger OAuth install flow
     }
 
-    // Not installed yet — trigger OAuth install flow
-    console.log(`ShopifyLanding: Installation not found or error. Triggering OAuth install for ${shop}`);
+    // Installation not found yet — may be a race condition right after OAuth
+    // Wait up to 5 seconds with retries before triggering OAuth (avoids Shopify misconfigured error)
+    console.log(`ShopifyLanding: Installation not found for ${shop}. Retrying...`);
+    for (let i = 0; i < 5; i++) {
+      setStatus(`Connecting to ${shop}... (${i + 1}/5)`);
+      await new Promise(r => setTimeout(r, 1000));
+      try {
+        const { data: retryInstallation } = await supabase
+          .from('store_installations')
+          .select('client_id, shop_email, shop_name, shop_owner, installation_status')
+          .eq('shop_domain', shop)
+          .maybeSingle();
+        if (retryInstallation?.shop_email) {
+          console.log(`ShopifyLanding: Found installation on retry ${i + 1}`);
+          window.location.reload();
+          return;
+        }
+      } catch (_) {}
+    }
+
+    // Still not found — trigger OAuth install flow (last resort)
+    console.log(`ShopifyLanding: No installation after retries. Triggering OAuth for ${shop}`);
     setStatus('Starting Shopify installation...');
     await new Promise(r => setTimeout(r, 500));
 
