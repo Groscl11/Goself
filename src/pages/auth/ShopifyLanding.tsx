@@ -18,6 +18,7 @@ export default function ShopifyLanding() {
 
   const shop = searchParams.get('shop');
   const handled = searchParams.get('_handled');
+  const oauthError = searchParams.get('error');
 
   useEffect(() => {
     handleShopifyLanding();
@@ -27,6 +28,12 @@ export default function ShopifyLanding() {
     if (!shop) {
       navigate('/login');
       return;
+    }
+
+    // If OAuth returned an error param, show it but still try to find the installation
+    if (oauthError) {
+      console.warn(`OAuth error param received: ${oauthError}`);
+      setStatus('Verifying installation...');
     }
 
     // Step 1: Sign out and hard reload to clear session completely

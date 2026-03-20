@@ -37,18 +37,6 @@ const DEFAULT_PLUGINS = [
 function getAppUrl(req: Request): string {
   const envUrl = Deno.env.get('APP_URL');
   if (envUrl) return envUrl;
-
-  const referer = req.headers.get('referer');
-  if (referer) {
-    try {
-      const refererUrl = new URL(referer);
-      return refererUrl.origin;
-    } catch (e) {
-      // Invalid referer
-    }
-  }
-
-  // Default to Supabase URL for production
   return Deno.env.get('SUPABASE_URL') || 'http://localhost:5173';
 }
 
@@ -57,18 +45,19 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  const url = new URL(req.url);
+  const code = url.searchParams.get('code');
+  const shop = url.searchParams.get('shop');
+  const state = url.searchParams.get('state');
+  const dashboardUrl = Deno.env.get('DASHBOARD_URL') || 'https://goself.netlify.app';
+
+  if (!code || !shop) {
+    return new Response('Missing required parameters', { status: 400 });
+  }
+
+  console.log(`OAuth callback received from ${shop}`);
+
   try {
-    const url = new URL(req.url);
-    const code = url.searchParams.get('code');
-    const shop = url.searchParams.get('shop');
-    const state = url.searchParams.get('state');
-
-    if (!code || !shop) {
-      return new Response('Missing required parameters', { status: 400 });
-    }
-
-    console.log(`OAuth callback received from ${shop}`);
-
     // Decode state (optional - may contain client_id if re-installing)
     let stateData: any = {};
     if (state) {
@@ -79,12 +68,10 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const APP_URL = stateData.app_url || getAppUrl(req);
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get API credentials from environment (for now - later can be per-install)
     const SHOPIFY_API_KEY = Deno.env.get('SHOPIFY_API_KEY');
     const SHOPIFY_API_SECRET = Deno.env.get('SHOPIFY_API_SECRET');
 
@@ -92,57 +79,62 @@ Deno.serve(async (req: Request) => {
       console.error('Missing Shopify API credentials');
       return new Response(null, {
         status: 302,
-        headers: { 'Location': `${APP_URL}/client/integrations?error=missing_credentials` }
+        headers: { 'Location': `${dashboardUrl}/?shop=${shop}&error=missing_credentials` }
       });
     }
 
-    // Exchange code for access token
-    const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: SHOPIFY_API_KEY,
-        client_secret: SHOPIFY_API_SECRET,
-        code
-      })
-    });
+    // ── STEP 1: Exchange code for access token (with 8s timeout) ──
+    const tokenController = new AbortController();
+    const tokenTimeout = setTimeout(() => tokenController.abort(), 8000);
+    let accessToken: string;
+    let scopes: string[];
+    try {
+      const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: SHOPIFY_API_KEY, client_secret: SHOPIFY_API_SECRET, code }),
+        signal: tokenController.signal,
+      });
+      clearTimeout(tokenTimeout);
 
-    if (!tokenResponse.ok) {
-      throw new Error('Failed to exchange code for access token');
+      if (!tokenResponse.ok) {
+        const errText = await tokenResponse.text();
+        throw new Error(`Token exchange failed: ${tokenResponse.status} ${errText}`);
+      }
+
+      const tokenData = await tokenResponse.json();
+      accessToken = tokenData.access_token;
+      scopes = tokenData.scope ? tokenData.scope.split(',').map((s: string) => s.trim()) : [];
+      console.log(`Token exchange successful for ${shop}`);
+    } catch (err) {
+      clearTimeout(tokenTimeout);
+      throw err;
     }
 
-    const tokenData = await tokenResponse.json();
-    const accessToken = tokenData.access_token;
-    const scopes = tokenData.scope ? tokenData.scope.split(',').map((s: string) => s.trim()) : [];
-
-    console.log(`Token exchange successful for ${shop}`);
-
-    // Fetch shop details from Shopify
-    const shopDetails = await fetchShopDetails(shop, accessToken);
-    console.log(`Shop details fetched:`, shopDetails);
-
-    // Auto-create or get client
+    // ── STEP 2: Get or create client (DB only — no Shopify API call) ──
+    const storeName = shop.replace('.myshopify.com', '');
+    const fallbackEmail = `${storeName}@shopify.com`;
     let clientId = stateData.client_id;
 
     if (!clientId) {
-      // Check if client exists for this shop
+      // Check if installation already exists
       const { data: existingInstallation } = await supabase
         .from('store_installations')
-        .select('client_id')
+        .select('client_id, shop_email')
         .eq('shop_domain', shop)
         .maybeSingle();
 
       if (existingInstallation) {
         clientId = existingInstallation.client_id;
+        console.log(`Reusing existing client: ${clientId}`);
       } else {
-        // Create new client with correct column names
+        // Create client with minimal data (no Shopify API needed)
         const { data: newClient, error: clientError } = await supabase
           .from('clients')
           .insert({
-            name: shopDetails.name || shop.replace('.myshopify.com', ''),
+            name: storeName,
             description: `Shopify store: ${shop}`,
-            contact_email: shopDetails.email || `${shop.split('.')[0]}@shopify.com`,
-            contact_phone: shopDetails.phone || null,
+            contact_email: fallbackEmail,
             primary_color: '#3b82f6',
             is_active: true
           })
@@ -153,26 +145,20 @@ Deno.serve(async (req: Request) => {
           console.error('Error creating client:', clientError);
           throw clientError;
         }
-
         clientId = newClient.id;
         console.log(`New client created: ${clientId}`);
       }
     }
 
-    // Create or update store installation
+    // ── STEP 3: Upsert store_installation IMMEDIATELY (minimal data) ──
+    // Critical: do this before any more Shopify API calls so record exists even if later calls fail
     const { data: storeInstallation, error: installError } = await supabase
       .from('store_installations')
       .upsert({
         client_id: clientId,
         shop_domain: shop,
-        shop_id: shopDetails.id?.toString(),
-        shop_name: shopDetails.name,
-        shop_email: shopDetails.email,
-        shop_owner: shopDetails.shop_owner,
-        shop_phone: shopDetails.phone,
-        shop_country: shopDetails.country_code || shopDetails.country_name,
-        shop_currency: shopDetails.currency,
-        shop_plan: shopDetails.plan_name || shopDetails.plan_display_name,
+        shop_name: storeName,
+        shop_email: fallbackEmail,
 
         installation_status: 'active',
         installed_at: new Date().toISOString(),
@@ -183,17 +169,8 @@ Deno.serve(async (req: Request) => {
         scopes: scopes,
 
         webhooks_registered: false,
-
         billing_plan: 'free',
         billing_status: 'active',
-
-        installation_metadata: {
-          shopify_plus: shopDetails.shopify_plus || false,
-          domain: shopDetails.domain,
-          myshopify_domain: shopDetails.myshopify_domain,
-          timezone: shopDetails.timezone,
-          iana_timezone: shopDetails.iana_timezone
-        },
 
         app_settings: {
           auto_create_members: true,
@@ -213,66 +190,100 @@ Deno.serve(async (req: Request) => {
     }
 
     const storeInstallationId = storeInstallation.id;
-    console.log(`Store installation created/updated: ${storeInstallationId}`);
+    console.log(`Store installation saved: ${storeInstallationId}`);
 
-    // Create/update integration_configs for backward compatibility
-    await supabase
-      .from('integration_configs')
-      .upsert({
-        client_id: clientId,
-        platform: 'shopify',
-        platform_name: shop,
-        shop_domain: shop,
-        shopify_access_token: accessToken,
-        access_token: accessToken,
-        scopes: scopes,
-        status: 'connected',
-        is_active: true,
-        installed_at: new Date().toISOString(),
-        webhooks_registered: false,
-        webhook_url: `${supabaseUrl}/functions/v1/shopify-webhook`,
-        sync_frequency_minutes: 0,
-        credentials: {}
-      }, {
-        onConflict: 'client_id,platform,shop_domain',
-        ignoreDuplicates: false
-      });
-
-    // Register webhooks and track them
-    await registerAndTrackWebhooks(shop, accessToken, storeInstallationId, clientId, supabase);
-
-    // Install default plugins
-    await installDefaultPlugins(storeInstallationId, clientId, supabase);
-
-    // Create master admin user (if email is available)
-    if (shopDetails.email) {
-      await createMasterAdmin(storeInstallationId, clientId, shopDetails, supabase);
-    }
-
-    console.log(`Auto-registration complete for ${shop}`);
-
-    // ── Redirect back to ShopifyLanding for SSO flow ──
-    // ShopifyLanding already handles:
-    // 1. Finding the store_installation we just created
-    // 2. Looking up the shop_email from the installation
-    // 3. Generating magic link via signInWithOtp
-    // 4. Redirecting through magic link to auto-login
-    
-    const dashboardUrl = Deno.env.get('DASHBOARD_URL') || 'https://goself.netlify.app';
+    // ── STEP 4: Redirect to ShopifyLanding immediately ──
+    // Background tasks (shop details, webhooks, plugins) run after redirect via EdgeRuntime.waitUntil
     const redirectUrl = `${dashboardUrl}/?shop=${shop}`;
-    
-    console.log(`OAuth complete, redirecting to ShopifyLanding: ${redirectUrl}`);
-    
-    return new Response(null, {
+    const redirectResponse = new Response(null, {
       status: 302,
       headers: { 'Location': redirectUrl }
     });
 
-  } catch (error) {
+    // ── STEP 5: Background enrichment (non-blocking) ──
+    const backgroundWork = (async () => {
+      try {
+        console.log(`Background: fetching shop details for ${shop}`);
+        const shopDetails = await fetchShopDetailsWithTimeout(shop, accessToken, 5000);
+
+        if (shopDetails) {
+          // Update installation with full shop details
+          await supabase
+            .from('store_installations')
+            .update({
+              shop_id: shopDetails.id?.toString(),
+              shop_name: shopDetails.name || storeName,
+              shop_email: shopDetails.email || fallbackEmail,
+              shop_owner: shopDetails.shop_owner,
+              shop_phone: shopDetails.phone,
+              shop_country: shopDetails.country_code || shopDetails.country_name,
+              shop_currency: shopDetails.currency,
+              shop_plan: shopDetails.plan_name || shopDetails.plan_display_name,
+              installation_metadata: {
+                shopify_plus: shopDetails.shopify_plus || false,
+                domain: shopDetails.domain,
+                myshopify_domain: shopDetails.myshopify_domain,
+                timezone: shopDetails.timezone,
+                iana_timezone: shopDetails.iana_timezone
+              }
+            })
+            .eq('id', storeInstallationId);
+
+          console.log(`Background: store_installation enriched for ${shop}`);
+
+          // Create master admin if we have a real email
+          if (shopDetails.email && shopDetails.email !== fallbackEmail) {
+            await createMasterAdmin(storeInstallationId, clientId, shopDetails, supabase);
+          }
+        }
+
+        // integration_configs backward compat
+        await supabase
+          .from('integration_configs')
+          .upsert({
+            client_id: clientId,
+            platform: 'shopify',
+            platform_name: shop,
+            shop_domain: shop,
+            shopify_access_token: accessToken,
+            access_token: accessToken,
+            scopes: scopes,
+            status: 'connected',
+            is_active: true,
+            installed_at: new Date().toISOString(),
+            webhooks_registered: false,
+            webhook_url: `${supabaseUrl}/functions/v1/shopify-webhook`,
+            sync_frequency_minutes: 0,
+            credentials: {}
+          }, {
+            onConflict: 'client_id,platform,shop_domain',
+            ignoreDuplicates: false
+          });
+
+        // Register webhooks and install plugins
+        await registerAndTrackWebhooks(shop, accessToken, storeInstallationId, clientId, supabase);
+        await installDefaultPlugins(storeInstallationId, clientId, supabase);
+
+        console.log(`Background: setup complete for ${shop}`);
+      } catch (bgErr) {
+        console.error(`Background setup error for ${shop}:`, bgErr);
+      }
+    })();
+
+    // Use EdgeRuntime.waitUntil if available, otherwise just let it run
+    try {
+      (globalThis as any).EdgeRuntime?.waitUntil(backgroundWork);
+    } catch (_) {
+      // Not available — background promise runs but may be cut short when response completes
+    }
+
+    console.log(`OAuth complete, redirecting to: ${redirectUrl}`);
+    return redirectResponse;
+
+  } catch (error: any) {
     console.error('OAuth callback error:', error);
-    // Use DASHBOARD_URL for error redirect (not Supabase URL)
-    const dashboardUrl = Deno.env.get('DASHBOARD_URL') || 'https://goself.netlify.app';
-    const errorUrl = `${dashboardUrl}/client/integrations?error=oauth_failed&message=${encodeURIComponent(error.message)}`;
+    // Redirect to ShopifyLanding with error — NOT to a ProtectedRoute page
+    const errorUrl = `${dashboardUrl}/?shop=${shop}&error=oauth_failed&message=${encodeURIComponent(error?.message || 'Unknown error')}`;
     return new Response(null, {
       status: 302,
       headers: { 'Location': errorUrl }
@@ -280,38 +291,31 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-async function fetchShopDetails(shop: string, accessToken: string) {
+async function fetchShopDetailsWithTimeout(shop: string, accessToken: string, timeoutMs = 5000) {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
     const response = await fetch(`https://${shop}/admin/api/2024-01/shop.json`, {
       headers: {
         'X-Shopify-Access-Token': accessToken,
         'Content-Type': 'application/json'
-      }
+      },
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
 
     if (response.ok) {
       const data = await response.json();
-      const shopData = data.shop || {};
-      console.log(`Shop details fetched for ${shop}:`, { email: shopData.email, name: shopData.name });
-      return shopData;
+      return data.shop || {};
     } else {
       console.warn(`Failed to fetch shop details: ${response.status}`);
+      return null;
     }
   } catch (error) {
     console.error('Error fetching shop details:', error);
+    return null;
   }
-
-  // Fallback: provide a default shop email so ShopifyLanding can find the installation
-  const storeName = shop.replace('.myshopify.com', '');
-  const fallbackEmail = `${storeName}@shopify.com`;
-  console.log(`Using fallback shop details for ${shop}, email: ${fallbackEmail}`);
-  
-  return {
-    name: storeName,
-    domain: shop,
-    email: fallbackEmail, // Important: provide email so ShopifyLanding can find the installation
-    myshopify_domain: shop
-  };
 }
 
 async function registerAndTrackWebhooks(
