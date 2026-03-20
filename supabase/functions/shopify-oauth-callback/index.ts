@@ -251,49 +251,21 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Auto-registration complete for ${shop}`);
 
-    // ── Generate magic link and redirect to auto-login ──
-    // Call shopify-merchant-login to:
-    // 1. Create auth user if needed
-    // 2. Generate magic link
-    // 3. Return the magic link URL for immediate redirect
+    // ── Redirect back to ShopifyLanding for SSO flow ──
+    // ShopifyLanding already handles:
+    // 1. Finding the store_installation we just created
+    // 2. Looking up the shop_email from the installation
+    // 3. Generating magic link via signInWithOtp
+    // 4. Redirecting through magic link to auto-login
     
     const dashboardUrl = Deno.env.get('DASHBOARD_URL') || 'https://goself.netlify.app';
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const redirectUrl = `${dashboardUrl}/?shop=${shop}`;
     
-    try {
-      const merchantLoginRes = await fetch(`${supabaseUrl}/functions/v1/shopify-merchant-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          shop_domain: shop,
-          email: shopDetails.email,
-          client_id: clientId,
-          shop_name: shopDetails.name,
-          shop_owner: shopDetails.shop_owner,
-          redirect_to: `${dashboardUrl}/auth/shopify-callback?shop=${shop}&client_id=${clientId}`,
-        })
-      });
-
-      const merchantLoginData = await merchantLoginRes.json();
-      
-      if (merchantLoginData.magic_link) {
-        console.log(`Magic link generated, redirecting to auto-login`);
-        return new Response(null, {
-          status: 302,
-          headers: { 'Location': merchantLoginData.magic_link }
-        });
-      }
-    } catch (e) {
-      console.error('Error generating magic link:', e);
-    }
-
-    // Fallback: redirect to landing page with shop param
-    const landinUrl = `${dashboardUrl}/?shop=${shop}&client_id=${clientId}`;
-    console.log(`Fallback: redirecting to SSO landing: ${landinUrl}`);
+    console.log(`OAuth complete, redirecting to ShopifyLanding: ${redirectUrl}`);
     
     return new Response(null, {
       status: 302,
-      headers: { 'Location': landinUrl }
+      headers: { 'Location': redirectUrl }
     });
 
   } catch (error) {
