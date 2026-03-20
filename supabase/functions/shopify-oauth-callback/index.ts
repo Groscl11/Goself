@@ -255,7 +255,24 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Auto-registration complete for ${shop}`);
 
-    const DASHBOARD_URL = Deno.env.get('DASHBOARD_URL') || 'https://goself.netlify.app';
+    // ── Determine dashboard URL (for SSO magic link) ──
+    // Priority:
+    // 1. DASHBOARD_URL environment variable (set in Supabase)
+    // 2. Auto-detect from request state (contains app_url from OAuth initiation)
+    // 3. Production default
+    let DASHBOARD_URL = Deno.env.get('DASHBOARD_URL');
+    
+    if (!DASHBOARD_URL && stateData.app_url) {
+      DASHBOARD_URL = stateData.app_url;
+      console.log(`Auto-detected DASHBOARD_URL from state: ${DASHBOARD_URL}`);
+    }
+    
+    if (!DASHBOARD_URL) {
+      DASHBOARD_URL = 'https://goself.netlify.app';
+      console.warn(`DASHBOARD_URL not configured, using default: ${DASHBOARD_URL}`);
+    } else {
+      console.log(`Using DASHBOARD_URL: ${DASHBOARD_URL}`);
+    }
 
     // ── SSO: Generate magic link so merchant is auto-logged into Goself ──
     if (shopDetails.email) {
@@ -297,26 +314,37 @@ Deno.serve(async (req: Request) => {
         }
 
         // Generate magic link pointing to Goself dashboard SSO callback
+        const redirectToUrl = `${DASHBOARD_URL}/auth/shopify-callback?shop=${shop}&client_id=${clientId}`;
+        console.log(`Generating magic link with redirectTo: ${redirectToUrl}`);
+        
         const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
           type: 'magiclink',
           email: shopDetails.email,
           options: {
-            redirectTo: `${DASHBOARD_URL}/auth/shopify-callback?shop=${shop}&client_id=${clientId}`,
+            redirectTo: redirectToUrl,
           }
         });
 
         if (!linkError && linkData?.properties?.action_link) {
-          console.log(`Magic link generated for ${shopDetails.email}`);
+          console.log(`Magic link generated successfully for ${shopDetails.email}`);
           // Redirect merchant through the magic link → they land in Goself logged in
           return new Response(null, {
             status: 302,
             headers: { 'Location': linkData.properties.action_link }
           });
         } else {
-          console.warn('Magic link generation failed, falling back to direct redirect:', linkError);
+          console.warn(`Magic link generation failed:`, {
+            error: linkError,
+            message: linkError?.message || 'Unknown error',
+            hint: 'This usually means the DASHBOARD_URL is not whitelisted in Supabase Auth → URL Configuration → Redirect URLs'
+          });
+          // Fall through to direct redirect fallback
         }
       } catch (ssoError) {
-        console.error('SSO error, falling back to direct redirect:', ssoError);
+        console.error('SSO error, falling back to direct redirect:', {
+          error: ssoError,
+          message: ssoError instanceof Error ? ssoError.message : String(ssoError)
+        });
       }
     }
 
