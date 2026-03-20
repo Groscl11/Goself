@@ -251,104 +251,22 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Auto-registration complete for ${shop}`);
 
-    // ── Determine dashboard URL (for SSO magic link) ──
-    // Priority:
-    // 1. DASHBOARD_URL environment variable (set in Supabase)
-    // 2. Auto-detect from request state (contains app_url from OAuth initiation)
-    // 3. Production default
-    let DASHBOARD_URL = Deno.env.get('DASHBOARD_URL');
+    // ── Redirect to ShopifyLanding for proper SSO flow ──
+    // ShopifyLanding handles:
+    // 1. Clearing existing session (logout if different user)
+    // 2. Looking up store installation
+    // 3. Generating magic link via shopify-merchant-login
+    // 4. Redirecting through magic link to auto-login
+    // 5. Landing on /client/integrations already logged in
     
-    if (!DASHBOARD_URL && stateData.app_url) {
-      DASHBOARD_URL = stateData.app_url;
-      console.log(`Auto-detected DASHBOARD_URL from state: ${DASHBOARD_URL}`);
-    }
+    const dashboardUrl = Deno.env.get('DASHBOARD_URL') || 'https://goself.netlify.app';
+    const landinUrl = `${dashboardUrl}/?shop=${shop}`;
     
-    if (!DASHBOARD_URL) {
-      DASHBOARD_URL = 'https://goself.netlify.app';
-      console.warn(`DASHBOARD_URL not configured, using default: ${DASHBOARD_URL}`);
-    } else {
-      console.log(`Using DASHBOARD_URL: ${DASHBOARD_URL}`);
-    }
-
-    // ── SSO: Generate magic link so merchant is auto-logged into Goself ──
-    if (shopDetails.email) {
-      try {
-        // Ensure the merchant has a Supabase auth account
-        // Try to create one; if already exists, generateLink still works
-        const { data: adminUserList } = await supabase.auth.admin.listUsers();
-        const existingUser = adminUserList?.users?.find(
-          (u: any) => u.email === shopDetails.email
-        );
-
-        let resolvedUserId: string | undefined = existingUser?.id;
-
-        if (!existingUser) {
-          // Create auth user for this merchant
-          const { data: createdUser } = await supabase.auth.admin.createUser({
-            email: shopDetails.email,
-            email_confirm: true,
-            user_metadata: {
-              full_name: shopDetails.shop_owner || shopDetails.name,
-              shop_domain: shop,
-              client_id: clientId,
-              role: 'client',
-            }
-          });
-          resolvedUserId = createdUser?.user?.id;
-        }
-
-        // Always ensure profile has the correct client_id for this store,
-        // regardless of whether the auth user is new or pre-existing.
-        if (resolvedUserId) {
-          await supabase.from('profiles').upsert({
-            id: resolvedUserId,
-            email: shopDetails.email,
-            full_name: shopDetails.shop_owner || shopDetails.name,
-            role: 'client',
-            client_id: clientId,
-          }, { onConflict: 'id', ignoreDuplicates: false });
-        }
-
-        // Generate magic link pointing to Goself dashboard SSO callback
-        const redirectToUrl = `${DASHBOARD_URL}/auth/shopify-callback?shop=${shop}&client_id=${clientId}`;
-        console.log(`Generating magic link with redirectTo: ${redirectToUrl}`);
-        
-        const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-          type: 'magiclink',
-          email: shopDetails.email,
-          options: {
-            redirectTo: redirectToUrl,
-          }
-        });
-
-        if (!linkError && linkData?.properties?.action_link) {
-          console.log(`Magic link generated successfully for ${shopDetails.email}`);
-          // Redirect merchant through the magic link → they land in Goself logged in
-          return new Response(null, {
-            status: 302,
-            headers: { 'Location': linkData.properties.action_link }
-          });
-        } else {
-          console.warn(`Magic link generation failed:`, {
-            error: linkError,
-            message: linkError?.message || 'Unknown error',
-            hint: 'This usually means the DASHBOARD_URL is not whitelisted in Supabase Auth → URL Configuration → Redirect URLs'
-          });
-          // Fall through to direct redirect fallback
-        }
-      } catch (ssoError) {
-        console.error('SSO error, falling back to direct redirect:', {
-          error: ssoError,
-          message: ssoError instanceof Error ? ssoError.message : String(ssoError)
-        });
-      }
-    }
-
-    // Fallback: direct redirect to dashboard (merchant will need to log in manually)
-    const fallbackUrl = `${DASHBOARD_URL}/login?shop=${shop}&client_id=${clientId}&status=installed`;
+    console.log(`OAuth complete, redirecting to SSO landing: ${landinUrl}`);
+    
     return new Response(null, {
       status: 302,
-      headers: { 'Location': fallbackUrl }
+      headers: { 'Location': landinUrl }
     });
 
   } catch (error) {
