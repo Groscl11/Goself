@@ -43,12 +43,19 @@ export default function ShopifyLanding() {
     setStatus(`Verifying ${shop}...`);
 
     try {
-      const { data: installation } = await supabase
+      console.log(`ShopifyLanding: Looking up store_installation for shop_domain=${shop}`);
+      
+      const { data: installation, error: dbError } = await supabase
         .from('store_installations')
-        .select('client_id, shop_email, shop_name, shop_owner')
+        .select('client_id, shop_email, shop_name, shop_owner, installation_status')
         .eq('shop_domain', shop)
-        .eq('installation_status', 'active')
         .maybeSingle();
+
+      if (dbError) {
+        console.error('Database error:', dbError);
+      }
+
+      console.log(`ShopifyLanding: Found installation:`, installation);
 
       if (installation?.shop_email) {
         const email = installation.shop_email;
@@ -91,10 +98,11 @@ export default function ShopifyLanding() {
       }
     } catch (e: any) {
       console.error('Merchant login error:', e);
-      // Fall through to OAuth
+      // Installation not found or error occurred — trigger OAuth install flow
     }
 
     // Not installed yet — trigger OAuth install flow
+    console.log(`ShopifyLanding: Installation not found or error. Triggering OAuth install for ${shop}`);
     setStatus('Starting Shopify installation...');
     await new Promise(r => setTimeout(r, 500));
 

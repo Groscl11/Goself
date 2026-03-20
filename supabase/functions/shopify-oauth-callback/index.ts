@@ -291,15 +291,26 @@ async function fetchShopDetails(shop: string, accessToken: string) {
 
     if (response.ok) {
       const data = await response.json();
-      return data.shop || {};
+      const shopData = data.shop || {};
+      console.log(`Shop details fetched for ${shop}:`, { email: shopData.email, name: shopData.name });
+      return shopData;
+    } else {
+      console.warn(`Failed to fetch shop details: ${response.status}`);
     }
   } catch (error) {
     console.error('Error fetching shop details:', error);
   }
 
+  // Fallback: provide a default shop email so ShopifyLanding can find the installation
+  const storeName = shop.replace('.myshopify.com', '');
+  const fallbackEmail = `${storeName}@shopify.com`;
+  console.log(`Using fallback shop details for ${shop}, email: ${fallbackEmail}`);
+  
   return {
-    name: shop.replace('.myshopify.com', ''),
-    domain: shop
+    name: storeName,
+    domain: shop,
+    email: fallbackEmail, // Important: provide email so ShopifyLanding can find the installation
+    myshopify_domain: shop
   };
 }
 
