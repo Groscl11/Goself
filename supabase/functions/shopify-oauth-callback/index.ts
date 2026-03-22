@@ -128,39 +128,46 @@ Deno.serve(async (req: Request) => {
         clientId = existingInstallation.client_id;
         console.log(`Reusing existing client: ${clientId}`);
       } else {
-        // Upsert client — idempotent even if previous install attempt left a partial record
-        const { data: newClient, error: clientError } = await supabase
+        // SELECT first — avoids ON CONFLICT requiring a unique constraint to pre-exist
+        const { data: existingByEmail } = await supabase
           .from('clients')
-          .upsert({
-            name: storeName,
-            description: `Shopify store: ${shop}`,
-            contact_email: fallbackEmail,
-            primary_color: '#3b82f6',
-            is_active: true
-          }, {
-            onConflict: 'contact_email',
-            ignoreDuplicates: false
-          })
           .select('id')
-          .single();
+          .eq('contact_email', fallbackEmail)
+          .maybeSingle();
 
-        if (clientError) {
-          console.error('Error upserting client:', clientError);
-          // Last resort: try to find existing client by email
-          const { data: existingClient } = await supabase
-            .from('clients')
-            .select('id')
-            .eq('contact_email', fallbackEmail)
-            .maybeSingle();
-          if (existingClient) {
-            clientId = existingClient.id;
-            console.log(`Found existing client by email: ${clientId}`);
-          } else {
-            throw clientError;
-          }
+        if (existingByEmail) {
+          clientId = existingByEmail.id;
+          console.log(`Found existing client by email: ${clientId}`);
         } else {
-          clientId = newClient.id;
-          console.log(`Client upserted: ${clientId}`);
+          const { data: newClient, error: insertError } = await supabase
+            .from('clients')
+            .insert({
+              name: storeName,
+              description: `Shopify store: ${shop}`,
+              contact_email: fallbackEmail,
+              primary_color: '#3b82f6',
+              is_active: true
+            })
+            .select('id')
+            .single();
+
+          if (insertError) {
+            // Race condition: a concurrent install inserted first — retry SELECT
+            const { data: raceClient } = await supabase
+              .from('clients')
+              .select('id')
+              .eq('contact_email', fallbackEmail)
+              .maybeSingle();
+            if (raceClient) {
+              clientId = raceClient.id;
+              console.log(`Client found after race: ${clientId}`);
+            } else {
+              throw insertError;
+            }
+          } else {
+            clientId = newClient.id;
+            console.log(`Client created: ${clientId}`);
+          }
         }
       }
     }
@@ -172,6 +179,7 @@ Deno.serve(async (req: Request) => {
       .upsert({
         client_id: clientId,
         shop_domain: shop,
+        myshopify_domain: shop,
         shop_name: storeName,
         shop_email: fallbackEmail,
 
@@ -180,6 +188,8 @@ Deno.serve(async (req: Request) => {
         last_active_at: new Date().toISOString(),
 
         access_token: accessToken,
+        shopify_access_token: accessToken,
+        shopify_api_secret: Deno.env.get('SHOPIFY_API_SECRET'),
         api_version: '2024-01',
         scopes: scopes,
 
