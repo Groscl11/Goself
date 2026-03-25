@@ -64,7 +64,7 @@ export default function ShopifyLanding() {
 
       console.log(`ShopifyLanding: Found installation:`, installation);
 
-      if (installation?.shop_email) {
+      if (installation?.shop_email && !installation.shop_email.endsWith('@shopify.com')) {
         const email = installation.shop_email;
         const clientId = installation.client_id;
 
@@ -120,7 +120,7 @@ export default function ShopifyLanding() {
           .select('client_id, shop_email, shop_name, shop_owner, installation_status')
           .eq('shop_domain', shop)
           .maybeSingle();
-        if (retryInstallation?.shop_email) {
+        if (retryInstallation?.shop_email && !retryInstallation.shop_email.endsWith('@shopify.com')) {
           console.log(`ShopifyLanding: Found installation on retry ${i + 1}`);
           window.location.reload();
           return;

@@ -232,13 +232,33 @@ Deno.serve(async (req: Request) => {
         const shopDetails = await fetchShopDetailsWithTimeout(shop, accessToken, 5000);
 
         if (shopDetails) {
-          // Update installation with full shop details
+          const realEmail = shopDetails.email || fallbackEmail;
+
+          // If we got a real email, check whether an existing client already has it.
+          // This handles the case where a client was created manually (e.g. "MediBuddy"
+          // with groscl.ltd@gmail.com) before the Shopify install — we want the
+          // store_installation to point to that real client, not a fake-email orphan.
+          let resolvedClientId = clientId;
+          if (realEmail !== fallbackEmail) {
+            const { data: realClient } = await supabase
+              .from('clients')
+              .select('id')
+              .eq('contact_email', realEmail)
+              .maybeSingle();
+            if (realClient && realClient.id !== clientId) {
+              resolvedClientId = realClient.id;
+              console.log(`Background: re-linking store_installation to real client ${resolvedClientId} (email: ${realEmail})`);
+            }
+          }
+
+          // Update installation with full shop details + correct client_id + real email
           await supabase
             .from('store_installations')
             .update({
+              client_id: resolvedClientId,
               shop_id: shopDetails.id?.toString(),
               shop_name: shopDetails.name || storeName,
-              shop_email: shopDetails.email || fallbackEmail,
+              shop_email: realEmail,
               shop_owner: shopDetails.shop_owner,
               shop_phone: shopDetails.phone,
               shop_country: shopDetails.country_code || shopDetails.country_name,
@@ -254,11 +274,12 @@ Deno.serve(async (req: Request) => {
             })
             .eq('id', storeInstallationId);
 
-          console.log(`Background: store_installation enriched for ${shop}`);
+          clientId = resolvedClientId; // use resolved id for subsequent steps
+          console.log(`Background: store_installation enriched for ${shop}, email=${realEmail}`);
 
           // Create master admin if we have a real email
-          if (shopDetails.email && shopDetails.email !== fallbackEmail) {
-            await createMasterAdmin(storeInstallationId, clientId, shopDetails, supabase);
+          if (realEmail !== fallbackEmail) {
+            await createMasterAdmin(storeInstallationId, resolvedClientId, shopDetails, supabase);
           }
         }
 
