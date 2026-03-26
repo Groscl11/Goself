@@ -282,9 +282,10 @@ export default function LoyaltyProgram() {
 
       setShowProgramForm(false);
       loadProgram();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving program:', error);
-      alert('Failed to save program');
+      const msg = error?.message || error?.details || error?.hint || JSON.stringify(error);
+      alert('Failed to save program: ' + msg);
     }
   };
 
@@ -333,9 +334,10 @@ export default function LoyaltyProgram() {
       setEditingTier(null);
       loadTiers(program.id);
       resetTierForm();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving tier:', error);
-      alert(error instanceof Error ? error.message : 'Failed to save tier');
+      const msg = error?.message || error?.details || error?.hint || JSON.stringify(error);
+      alert('Failed to save tier: ' + msg);
     }
   };
 
