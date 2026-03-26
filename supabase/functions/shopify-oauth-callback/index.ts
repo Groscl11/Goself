@@ -151,10 +151,16 @@ Deno.serve(async (req: Request) => {
           clientId = existingByEmail.id;
           console.log(`Found existing client by email: ${clientId}`);
         } else {
+          // Build a URL-safe slug from the store name; append a timestamp suffix
+          // to avoid conflicts with existing slugs when the same store re-installs.
+          const baseSlug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          const slug = `${baseSlug}-${Date.now().toString(36)}`;
+
           const { data: newClient, error: insertError } = await supabase
             .from('clients')
             .insert({
               name: storeName,
+              slug,
               description: `Shopify store: ${shop}`,
               contact_email: fallbackEmail,
               primary_color: '#3b82f6',
