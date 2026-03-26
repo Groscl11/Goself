@@ -44,64 +44,48 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Generating magic link for ${email} (shop: ${shop_domain})`);
 
-    // Step 1: Check if user exists by email (direct lookup, avoids listUsers() 50-user cap)
-    let userId: string | null = null;
-    let userExists = false;
+    // Generate a real magic link. If user doesn't exist yet, create them first.
+    // This avoids getUserByEmail which doesn't exist in the Supabase JS SDK.
+    let linkData: any;
 
-    try {
-      const { data: { user: existingUser } } = await supabase.auth.admin.getUserByEmail(email);
-      if (existingUser) {
-        userId = existingUser.id;
-        userExists = true;
-        console.log(`User exists: ${userId}`);
-      }
-    } catch (e) {
-      console.warn('Warning: Could not look up user by email:', e);
-    }
+    const tryGenerateLink = () =>
+      supabase.auth.admin.generateLink({
+        type: 'magiclink',
+        email,
+        options: { redirectTo: redirect_to },
+      });
 
-    // Step 2: Create user if not found
-    if (!userExists) {
+    let { data, error: linkError } = await tryGenerateLink();
+
+    if (linkError) {
+      // User likely doesn't exist — create them then retry
       const { data: { user }, error: createError } = await supabase.auth.admin.createUser({
         email,
         email_confirm: true,
         user_metadata: { shop_domain, shop_name, shop_owner, client_id },
       });
-
-      if (createError) {
-        console.error("Error creating user:", createError);
+      if (createError && createError.message !== 'User already registered') {
         throw createError;
       }
-
-      userId = user!.id;
-      console.log(`New user created: ${userId}`);
+      const retry = await tryGenerateLink();
+      if (retry.error) throw retry.error;
+      data = retry.data;
     }
 
-    if (!userId) {
-      throw new Error('Failed to get or create user');
+    linkData = data;
+    const userId = linkData?.user?.id;
+    const magicLink = linkData?.properties?.action_link;
+
+    if (!magicLink) {
+      throw new Error('Failed to generate magic link');
     }
 
-    // Step 3: Generate a real Supabase magic link (contains a one-time token)
-    // generateLink returns action_link which includes #access_token — Supabase JS SDK
-    // processes this automatically when the browser navigates to it.
-    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-      type: 'magiclink',
-      email,
-      options: { redirectTo: redirect_to },
-    });
-
-    if (linkError) {
-      console.error('Error generating magic link:', linkError);
-      throw linkError;
-    }
-
-    const magicLink = linkData.properties.action_link;
     console.log(`Magic link generated for ${email}`);
 
     return new Response(
       JSON.stringify({
         magic_link: magicLink,
         user_id: userId,
-        created: !userExists,
         email_sent: false,
       }),
       {
