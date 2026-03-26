@@ -55,6 +55,18 @@ Deno.serve(async (req: Request) => {
     return new Response('Missing required parameters', { status: 400 });
   }
 
+  // Verify Shopify HMAC signature to ensure the request is authentic
+  const shopifySecret = Deno.env.get('SHOPIFY_API_SECRET');
+  if (shopifySecret) {
+    const hmacValid = await verifyShopifyHmac(url, shopifySecret);
+    if (!hmacValid) {
+      console.error('HMAC verification failed — rejecting request from', shop);
+      return new Response('Unauthorized', { status: 401 });
+    }
+  } else {
+    console.warn('SHOPIFY_API_SECRET not set — skipping HMAC verification');
+  }
+
   console.log(`OAuth callback received from ${shop}`);
 
   try {
@@ -190,7 +202,7 @@ Deno.serve(async (req: Request) => {
         access_token: accessToken,
         shopify_access_token: accessToken,
         shopify_api_secret: Deno.env.get('SHOPIFY_API_SECRET'),
-        api_version: '2024-01',
+        api_version: '2025-01',
         scopes: scopes,
 
         webhooks_registered: false,
@@ -342,7 +354,7 @@ async function fetchShopDetailsWithTimeout(shop: string, accessToken: string, ti
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    const response = await fetch(`https://${shop}/admin/api/2024-01/shop.json`, {
+    const response = await fetch(`https://${shop}/admin/api/2025-01/shop.json`, {
       headers: {
         'X-Shopify-Access-Token': accessToken,
         'Content-Type': 'application/json'
@@ -378,7 +390,7 @@ async function registerAndTrackWebhooks(
 
   for (const topic of WEBHOOK_TOPICS) {
     try {
-      const response = await fetch(`https://${shop}/admin/api/2024-01/webhooks.json`, {
+      const response = await fetch(`https://${shop}/admin/api/2025-01/webhooks.json`, {
         method: 'POST',
         headers: {
           'X-Shopify-Access-Token': accessToken,
@@ -492,6 +504,32 @@ async function installDefaultPlugins(
   } else {
     console.log(`Installed ${pluginInserts.length} default plugins`);
   }
+}
+
+async function verifyShopifyHmac(url: URL, secret: string): Promise<boolean> {
+  const hmac = url.searchParams.get('hmac');
+  if (!hmac) return false;
+
+  const sortedParams = Array.from(url.searchParams.entries())
+    .filter(([key]) => key !== 'hmac')
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('&');
+
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(sortedParams));
+  const computed = Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  return computed === hmac;
 }
 
 async function createMasterAdmin(

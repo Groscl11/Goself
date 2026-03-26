@@ -133,13 +133,16 @@ export default function ShopifyLanding() {
     setStatus('Starting Shopify installation...');
     await new Promise(r => setTimeout(r, 500));
 
-    // Only request core scopes — extended/protected scopes (pixels, analytics, themes)
-    // cause "misconfigured" if not individually approved in the Shopify Partner Dashboard.
+    // Must match app.toml exactly — any mismatch triggers Shopify "misconfigured" error
     const scopes = [
-      'read_orders', 'write_orders',
+      'write_checkouts', 'read_checkouts',
       'read_customers', 'write_customers',
-      'read_products', 'write_products',
+      'read_price_rules', 'write_price_rules',
       'read_discounts', 'write_discounts',
+      'read_orders', 'write_orders',
+      'read_products', 'write_products',
+      'read_script_tags', 'write_script_tags',
+      'read_themes', 'write_themes',
     ].join(',');
 
     const redirectUri = `${SUPABASE_URL}/functions/v1/shopify-oauth-callback`;
