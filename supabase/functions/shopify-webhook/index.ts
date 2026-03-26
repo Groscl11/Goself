@@ -89,6 +89,27 @@ Deno.serve(async (req: Request) => {
       .update({ last_event_at: new Date().toISOString() })
       .eq("id", integration.id);
 
+    if (shopifyTopic === 'app/uninstalled') {
+      console.log(`App uninstalled from ${shopDomain} — marking installation inactive`);
+      await supabase
+        .from('store_installations')
+        .update({ installation_status: 'uninstalled' })
+        .eq('shop_domain', shopDomain);
+
+      await supabase
+        .from('shopify_webhook_events')
+        .update({ processed: true, processed_at: new Date().toISOString() })
+        .eq('shop_domain', shopDomain)
+        .eq('topic', shopifyTopic)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      return new Response(
+        JSON.stringify({ success: true, message: 'Store marked as uninstalled' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (shopifyTopic === "orders/create" || shopifyTopic === "orders/updated" || shopifyTopic === "orders/paid") {
 
       const customerEmail = orderData.customer?.email || orderData.email || null;
