@@ -306,11 +306,15 @@ export default function LoyaltyProgram() {
       };
 
       if (nextTier.is_default) {
-        const { error: clearDefaultsError } = await supabase
+        // When editing, exclude the current tier from the reset; when creating, reset all.
+        const clearQuery = supabase
           .from('loyalty_tiers')
           .update({ is_default: false })
-          .eq('loyalty_program_id', program.id)
-          .neq('id', editingTier?.id || '');
+          .eq('loyalty_program_id', program.id);
+
+        const { error: clearDefaultsError } = editingTier?.id
+          ? await clearQuery.neq('id', editingTier.id)
+          : await clearQuery;
 
         if (clearDefaultsError) throw clearDefaultsError;
       }
