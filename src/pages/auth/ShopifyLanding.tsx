@@ -109,10 +109,11 @@ export default function ShopifyLanding() {
     }
 
     // Installation not found yet — may be a race condition right after OAuth
-    // Wait up to 5 seconds with retries before triggering OAuth (avoids Shopify misconfigured error)
+    // Wait up to 12 seconds with retries to give background enrichment time to complete.
     console.log(`ShopifyLanding: Installation not found for ${shop}. Retrying...`);
-    for (let i = 0; i < 5; i++) {
-      setStatus(`Connecting to ${shop}... (${i + 1}/5)`);
+    let foundInstallation: any = null;
+    for (let i = 0; i < 12; i++) {
+      setStatus(`Connecting to ${shop}... (${i + 1}/12)`);
       await new Promise(r => setTimeout(r, 1000));
       try {
         const { data: retryInstallation } = await supabase
@@ -120,15 +121,28 @@ export default function ShopifyLanding() {
           .select('client_id, shop_email, shop_name, shop_owner, installation_status')
           .eq('shop_domain', shop)
           .maybeSingle();
-        if (retryInstallation?.shop_email && !retryInstallation.shop_email.endsWith('@shopify.com')) {
-          console.log(`ShopifyLanding: Found installation on retry ${i + 1}`);
-          window.location.reload();
-          return;
+        if (retryInstallation) {
+          foundInstallation = retryInstallation;
+          if (!retryInstallation.shop_email.endsWith('@shopify.com')) {
+            console.log(`ShopifyLanding: Found installation with real email on retry ${i + 1}`);
+            window.location.reload();
+            return;
+          }
         }
       } catch (_) {}
     }
 
-    // Still not found — trigger OAuth install flow (last resort)
+    // After 12s:
+    // - If we found an installation record (even with fake email), the store IS installed.
+    //   Don't re-trigger OAuth (causes infinite loop). Go to login instead.
+    // - If there is truly no record, trigger OAuth to install for the first time.
+    if (foundInstallation) {
+      console.log(`ShopifyLanding: Store installed but enrichment pending. Sending to login.`);
+      navigate(`/login?shop=${shop}&from=shopify&pending=true`);
+      return;
+    }
+
+    // Truly no installation — trigger OAuth install flow
     console.log(`ShopifyLanding: No installation after retries. Triggering OAuth for ${shop}`);
     setStatus('Starting Shopify installation...');
     await new Promise(r => setTimeout(r, 500));
