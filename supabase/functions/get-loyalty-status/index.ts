@@ -85,29 +85,11 @@ Deno.serve(async (req: Request) => {
         query = query.eq('client_id', resolvedClientId);
       }
 
-      let { data: memberData } = await query.maybeSingle();
+      const { data: memberData } = await query.maybeSingle();
 
-      // If not found with client filter (or no client resolved), try email-only fallback
-      if (!memberData) {
-        const { data: fallbackMembers } = await supabase
-          .from('member_users')
-          .select('*')
-          .eq('email', email)
-          .limit(10);
-        if (fallbackMembers && fallbackMembers.length === 1) {
-          memberData = fallbackMembers[0];
-        } else if (fallbackMembers && fallbackMembers.length > 1) {
-          // Multiple members with same email across clients — pick the one with an active loyalty status
-          for (const candidate of fallbackMembers) {
-            const { data: hasStatus } = await supabase
-              .from('member_loyalty_status')
-              .select('id')
-              .eq('member_user_id', candidate.id)
-              .maybeSingle();
-            if (hasStatus) { memberData = candidate; break; }
-          }
-        }
-      }
+      // No email-only fallback — a client_id scope must always be resolved from
+      // shop_domain before lookup. Falling back cross-client leaks another
+      // merchant's member data to this store's widget.
 
       if (!memberData) {
         return new Response(
@@ -127,12 +109,33 @@ Deno.serve(async (req: Request) => {
       // Don't set referral_code here — member_loyalty_status.referral_code is the source of truth
     }
 
-    const { data: statusRows, error: statusError } = await supabase
+    let statusQuery = supabase
       .from('member_loyalty_status')
       .select('*, current_tier:loyalty_tiers(*), loyalty_program:loyalty_programs(*)')
       .eq('member_user_id', memberUserIdToUse)
       .order('points_balance', { ascending: false })
       .limit(1);
+
+    // Always scope to the resolved client's loyalty program to prevent
+    // cross-client points leaking into another store's widget.
+    if (resolvedClientId) {
+      const { data: clientPrograms } = await supabase
+        .from('loyalty_programs')
+        .select('id')
+        .eq('client_id', resolvedClientId);
+      const programIds = (clientPrograms || []).map((p: any) => p.id);
+      if (programIds.length > 0) {
+        statusQuery = statusQuery.in('loyalty_program_id', programIds);
+      } else {
+        // Client has no loyalty program — return 404 rather than leaking other client data
+        return new Response(
+          JSON.stringify({ error: 'No loyalty program found for this store' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    const { data: statusRows, error: statusError } = await statusQuery;
 
     const statusData = statusRows?.[0] || null;
 
