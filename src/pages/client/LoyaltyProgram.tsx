@@ -276,8 +276,19 @@ export default function LoyaltyProgram() {
           .select()
           .single();
 
-        if (error) throw error;
-        if (data) setProgram(data);
+        // If a program already exists for this client (duplicate key), fetch and use it.
+        if (error?.code === '23505') {
+          const { data: existing, error: fetchError } = await supabase
+            .from('loyalty_programs')
+            .select('*')
+            .eq('client_id', profile.client_id)
+            .single();
+          if (fetchError) throw fetchError;
+          if (existing) setProgram(existing);
+        } else {
+          if (error) throw error;
+          if (data) setProgram(data);
+        }
       }
 
       setShowProgramForm(false);
