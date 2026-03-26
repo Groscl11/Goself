@@ -269,13 +269,15 @@ Deno.serve(async (req: Request) => {
             }
           }
 
+          const realShopName = shopDetails.name || storeName;
+
           // Update installation with full shop details + correct client_id + real email
           await supabase
             .from('store_installations')
             .update({
               client_id: resolvedClientId,
               shop_id: shopDetails.id?.toString(),
-              shop_name: shopDetails.name || storeName,
+              shop_name: realShopName,
               shop_email: realEmail,
               shop_owner: shopDetails.shop_owner,
               shop_phone: shopDetails.phone,
@@ -291,6 +293,15 @@ Deno.serve(async (req: Request) => {
               }
             })
             .eq('id', storeInstallationId);
+
+          // Also update the client record with the real shop name and email,
+          // but only if this is the placeholder client we created (not a pre-existing one).
+          if (resolvedClientId === clientId) {
+            const clientUpdate: Record<string, string> = { name: realShopName };
+            if (realEmail !== fallbackEmail) clientUpdate.contact_email = realEmail;
+            await supabase.from('clients').update(clientUpdate).eq('id', resolvedClientId);
+            console.log(`Background: client name updated to "${realShopName}"`);
+          }
 
           clientId = resolvedClientId; // use resolved id for subsequent steps
           console.log(`Background: store_installation enriched for ${shop}, email=${realEmail}`);
