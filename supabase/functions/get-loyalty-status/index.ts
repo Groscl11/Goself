@@ -35,13 +35,82 @@ Deno.serve(async (req: Request) => {
       clientId = body.client_id || null;
     }
 
+    // If no member identifier but shop_domain is provided, return program/tier config for guests
     if (!memberUserId && !email) {
-      return new Response(
-        JSON.stringify({ error: 'Either member_user_id or email (or customer_email) is required' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      if (!shopDomain) {
+        return new Response(
+          JSON.stringify({ error: 'Either member_user_id or email (or customer_email) is required' }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+
+      // Guest / program-config mode — resolve client from shop_domain, return tier thresholds only
+      let guestClientId: string | null = null;
+      const { data: guestIntegration } = await supabase
+        .from('integration_configs')
+        .select('client_id')
+        .eq('shop_domain', shopDomain)
+        .maybeSingle();
+      if (guestIntegration) {
+        guestClientId = guestIntegration.client_id;
+      } else {
+        const { data: guestStore } = await supabase
+          .from('store_installations')
+          .select('client_id')
+          .eq('shop_domain', shopDomain)
+          .maybeSingle();
+        if (guestStore) guestClientId = guestStore.client_id;
+      }
+
+      if (!guestClientId) {
+        return new Response(
+          JSON.stringify({ error: 'Store not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const { data: guestProgram } = await supabase
+        .from('loyalty_programs')
+        .select('id, program_name, points_name, points_name_singular, currency')
+        .eq('client_id', guestClientId)
+        .maybeSingle();
+
+      const TIER_KEYS_GUEST = ['bronze', 'silver', 'gold', 'platinum'];
+      let guestTierThresholds: Record<string, number> & { names?: Record<string, string> } | null = null;
+      if (guestProgram?.id) {
+        const { data: guestTiers } = await supabase
+          .from('loyalty_tiers')
+          .select('tier_name, tier_level, min_lifetime_points')
+          .eq('loyalty_program_id', guestProgram.id)
+          .order('tier_level', { ascending: true });
+
+        if (guestTiers && guestTiers.length > 0) {
+          const thresholds: Record<string, number> = {};
+          const names: Record<string, string> = {};
+          guestTiers.forEach((t: any, idx: number) => {
+            const key = TIER_KEYS_GUEST[idx] || `tier${idx + 1}`;
+            thresholds[key] = t.min_lifetime_points ?? 0;
+            names[key] = t.tier_name;
+          });
+          guestTierThresholds = { ...thresholds, names };
         }
+      }
+
+      return new Response(
+        JSON.stringify({
+          guest: true,
+          tier_thresholds: guestTierThresholds,
+          program: guestProgram ? {
+            name: guestProgram.program_name,
+            points_name: guestProgram.points_name,
+            points_name_singular: guestProgram.points_name_singular,
+            currency: guestProgram.currency,
+          } : null,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
