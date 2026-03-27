@@ -163,6 +163,33 @@ Deno.serve(async (req: Request) => {
       .order('created_at', { ascending: false })
       .limit(10);
 
+    // Fetch all tiers for this program to build tier_thresholds map for the widget
+    const TIER_KEYS = ['bronze', 'silver', 'gold', 'platinum'];
+    let tierThresholds: Record<string, number> & { names?: Record<string, string> } | null = null;
+    let currentTierKey = 'bronze'; // fallback
+    if (program?.id) {
+      const { data: allTiers } = await supabase
+        .from('loyalty_tiers')
+        .select('tier_name, tier_level, min_lifetime_points')
+        .eq('loyalty_program_id', program.id)
+        .order('tier_level', { ascending: true });
+
+      if (allTiers && allTiers.length > 0) {
+        const thresholds: Record<string, number> = {};
+        const names: Record<string, string> = {};
+        allTiers.forEach((t: any, idx: number) => {
+          const key = TIER_KEYS[idx] || `tier${idx + 1}`;
+          thresholds[key] = t.min_lifetime_points ?? 0;
+          names[key] = t.tier_name;
+          // Map current tier's DB name → normalized widget key
+          if (tier && t.tier_name === tier.tier_name) {
+            currentTierKey = key;
+          }
+        });
+        tierThresholds = { ...thresholds, names };
+      }
+    }
+
     return new Response(
       JSON.stringify({
         member_user_id: memberUserIdToUse,
@@ -174,7 +201,8 @@ Deno.serve(async (req: Request) => {
         total_orders: status.total_orders,
         total_spend: status.total_spend,
         tier: {
-          name: tier?.tier_name || 'None',
+          name: currentTierKey,
+          display_name: tier?.tier_name || 'None',
           level: tier?.tier_level || 0,
           color: tier?.color_code || '#3B82F6',
           benefits: tier?.benefits_description || '',
@@ -189,6 +217,7 @@ Deno.serve(async (req: Request) => {
           currency: program.currency,
           allow_redemption: program.allow_redemption,
         },
+        tier_thresholds: tierThresholds,
         recent_transactions: recentTransactions || [],
       }),
       {

@@ -29,6 +29,7 @@ interface LoyaltyTier {
   tier_level: number;
   min_orders: number;
   min_spend: number;
+  min_lifetime_points: number;
   points_earn_rate: number;
   points_earn_divisor: number;
   max_redemption_percent: number;
@@ -81,6 +82,7 @@ export default function LoyaltyProgram() {
     tier_level: 1,
     min_orders: 0,
     min_spend: 0,
+    min_lifetime_points: 0,
     points_earn_rate: 1,
     points_earn_divisor: 1,
     max_redemption_percent: 100,
@@ -438,6 +440,7 @@ export default function LoyaltyProgram() {
       tier_level: tier.tier_level,
       min_orders: tier.min_orders,
       min_spend: tier.min_spend,
+      min_lifetime_points: tier.min_lifetime_points ?? 0,
       points_earn_rate: tier.points_earn_rate,
       points_earn_divisor: tier.points_earn_divisor,
       max_redemption_percent: tier.max_redemption_percent,
@@ -457,6 +460,7 @@ export default function LoyaltyProgram() {
       tier_level: tiers.length + 1,
       min_orders: 0,
       min_spend: 0,
+      min_lifetime_points: 0,
       points_earn_rate: 1,
       points_earn_divisor: 1,
       max_redemption_percent: 100,
@@ -726,6 +730,10 @@ export default function LoyaltyProgram() {
                             <p className="font-semibold">{program.currency} {tier.min_spend}</p>
                           </div>
                           <div>
+                            <p className="text-gray-600">Min Points to Unlock</p>
+                            <p className="font-semibold">{(tier.min_lifetime_points ?? 0).toLocaleString()} pts</p>
+                          </div>
+                          <div>
                             <p className="text-gray-600">Earn Rate</p>
                             <p className="font-semibold">
                               {tier.points_earn_rate} {program.points_name_singular} / {program.currency} {tier.points_earn_divisor}
@@ -825,6 +833,20 @@ export default function LoyaltyProgram() {
                       min="0"
                       step="0.01"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Min Points to Unlock Tier
+                    </label>
+                    <input
+                      type="number"
+                      value={tierForm.min_lifetime_points}
+                      onChange={(e) => setTierForm({ ...tierForm, min_lifetime_points: parseInt(e.target.value) || 0 })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      min="0"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Points a member needs to reach this tier (shown in widget progress bar).</p>
                   </div>
 
                   <div>
