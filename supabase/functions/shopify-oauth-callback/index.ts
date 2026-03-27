@@ -235,15 +235,46 @@ Deno.serve(async (req: Request) => {
     const storeInstallationId = storeInstallation.id;
     console.log(`Store installation saved: ${storeInstallationId}`);
 
-    // ── STEP 4: Redirect to ShopifyLanding immediately ──
-    // Background tasks (shop details, webhooks, plugins) run after redirect via EdgeRuntime.waitUntil
+    // ── STEP 4: Upsert integration_configs NOW (before redirect) ──
+    // Critical: webhook handler looks up integration_configs to authenticate events.
+    // Must exist before any order webhooks can be received.
+    await supabase
+      .from('integration_configs')
+      .upsert({
+        client_id: clientId,
+        platform: 'shopify',
+        platform_name: shop,
+        shop_domain: shop,
+        shopify_access_token: accessToken,
+        access_token: accessToken,
+        shopify_api_secret: Deno.env.get('SHOPIFY_API_SECRET'),
+        scopes: scopes,
+        status: 'connected',
+        is_active: true,
+        installed_at: new Date().toISOString(),
+        webhooks_registered: false,
+        webhook_url: `${supabaseUrl}/functions/v1/shopify-webhook`,
+        sync_frequency_minutes: 0,
+        credentials: {}
+      }, {
+        onConflict: 'client_id,platform,shop_domain',
+        ignoreDuplicates: false
+      });
+    console.log(`integration_configs upserted for ${shop}`);
+
+    // ── STEP 5: Register Shopify webhooks NOW (before redirect) ──
+    // Critical: without webhooks registered, orders are never received.
+    // This is a short Shopify API call (< 2s) — acceptable to block on.
+    await registerAndTrackWebhooks(shop, accessToken, storeInstallationId, clientId, supabase);
+
+    // ── STEP 6: Redirect to ShopifyLanding ──
     const redirectUrl = `${dashboardUrl}/?shop=${shop}`;
     const redirectResponse = new Response(null, {
       status: 302,
       headers: { 'Location': redirectUrl }
     });
 
-    // ── STEP 5: Background enrichment (non-blocking) ──
+    // ── STEP 7: Non-critical enrichment in background (shop details, admin user, plugins) ──
     const backgroundWork = (async () => {
       try {
         console.log(`Background: fetching shop details for ${shop}`);
@@ -312,36 +343,12 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        // integration_configs backward compat
-        await supabase
-          .from('integration_configs')
-          .upsert({
-            client_id: clientId,
-            platform: 'shopify',
-            platform_name: shop,
-            shop_domain: shop,
-            shopify_access_token: accessToken,
-            access_token: accessToken,
-            scopes: scopes,
-            status: 'connected',
-            is_active: true,
-            installed_at: new Date().toISOString(),
-            webhooks_registered: false,
-            webhook_url: `${supabaseUrl}/functions/v1/shopify-webhook`,
-            sync_frequency_minutes: 0,
-            credentials: {}
-          }, {
-            onConflict: 'client_id,platform,shop_domain',
-            ignoreDuplicates: false
-          });
-
-        // Register webhooks and install plugins
-        await registerAndTrackWebhooks(shop, accessToken, storeInstallationId, clientId, supabase);
+        // Install default plugins in background
         await installDefaultPlugins(storeInstallationId, clientId, supabase);
 
-        console.log(`Background: setup complete for ${shop}`);
+        console.log(`Background: enrichment complete for ${shop}`);
       } catch (bgErr) {
-        console.error(`Background setup error for ${shop}:`, bgErr);
+        console.error(`Background enrichment error for ${shop}:`, bgErr);
       }
     })();
 

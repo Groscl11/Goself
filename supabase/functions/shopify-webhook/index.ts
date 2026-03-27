@@ -40,13 +40,34 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { data: integration } = await supabase
+    // Primary lookup: integration_configs (populated after OAuth setup)
+    const { data: integrationFromConfig } = await supabase
       .from("integration_configs")
       .select("id, client_id, shopify_api_secret")
       .eq("platform", "shopify")
       .eq("shop_domain", shopDomain)
       .eq("status", "connected")
       .maybeSingle();
+
+    // Fallback: store_installations — populated immediately at OAuth time even if
+    // integration_configs upsert hasn't run yet (e.g. first install race condition).
+    let integration: { id: string; client_id: string; shopify_api_secret: string | null } | null = integrationFromConfig;
+    if (!integration) {
+      const { data: storeInstall } = await supabase
+        .from("store_installations")
+        .select("id, client_id, shopify_api_secret")
+        .eq("shop_domain", shopDomain)
+        .eq("installation_status", "active")
+        .maybeSingle();
+      if (storeInstall) {
+        console.log(`integration_configs not found for ${shopDomain} — falling back to store_installations`);
+        integration = {
+          id: storeInstall.id,
+          client_id: storeInstall.client_id,
+          shopify_api_secret: storeInstall.shopify_api_secret ?? null,
+        };
+      }
+    }
 
     if (!integration) {
       console.error(`No connected integration found for ${shopDomain}`);
