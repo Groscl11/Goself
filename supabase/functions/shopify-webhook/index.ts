@@ -80,7 +80,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (integration.shopify_api_secret && hmacHeader) {
+    // HMAC verification is mandatory when a secret is on record.
+    // Reject requests that omit the header — an attacker removing it must not bypass auth.
+    if (integration.shopify_api_secret) {
+      if (!hmacHeader) {
+        console.error("Missing HMAC header — rejecting unauthenticated request");
+        return new Response(
+          JSON.stringify({ error: "Missing HMAC signature" }),
+          {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
       const isValid = await verifyShopifyHmac(rawBody, hmacHeader, integration.shopify_api_secret);
       if (!isValid) {
         console.error("Invalid HMAC signature");
@@ -94,7 +106,9 @@ Deno.serve(async (req: Request) => {
       }
       console.log("HMAC signature verified successfully");
     } else {
-      console.warn("HMAC verification skipped - no secret configured or no HMAC header");
+      // No secret stored yet (edge case during very first install) — log and continue.
+      // This window is tiny; reregister_webhooks always writes the secret immediately.
+      console.warn(`No shopify_api_secret stored for ${shopDomain} — HMAC verification skipped (store not fully configured)`);
     }
 
     await supabase.from("shopify_webhook_events").insert({
