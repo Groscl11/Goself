@@ -253,7 +253,8 @@ Deno.serve(async (req: Request) => {
         is_active: true,
         installed_at: new Date().toISOString(),
         webhooks_registered: false,
-        webhook_url: `${supabaseUrl}/functions/v1/shopify-webhook`,
+        webhook_url: `${supabaseUrl}/functions/v1/shopify-webhook?apikey=${Deno.env.get('SUPABASE_ANON_KEY')}`,
+
         sync_frequency_minutes: 0,
         credentials: {}
       }, {
@@ -407,7 +408,7 @@ async function registerAndTrackWebhooks(
   clientId: string,
   supabase: any
 ) {
-  const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/shopify-webhook`;
+  const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/shopify-webhook?apikey=${Deno.env.get('SUPABASE_ANON_KEY')}`;
   console.log(`Registering webhooks for ${shop}`);
 
   let successCount = 0;

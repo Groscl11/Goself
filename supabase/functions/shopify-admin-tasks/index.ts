@@ -58,7 +58,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
-    const webhookUrl = `${supabaseUrl}/functions/v1/shopify-webhook`;
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const webhookUrl = `${supabaseUrl}/functions/v1/shopify-webhook?apikey=${anonKey}`;
 
     // Fetch active stores (optionally filtered by shop_domain)
     let query = supabase

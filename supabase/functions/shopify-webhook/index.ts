@@ -373,9 +373,40 @@ async function awardLoyaltyPoints(supabase: any, clientId: string, orderRecord: 
       .eq("loyalty_program_id", program.id)
       .maybeSingle();
 
-    if (!memberStatus) {
-      console.log(`No loyalty status for member ${member.id}, skipping loyalty points`);
-      return;
+    let resolvedMemberStatus = memberStatus;
+    if (!resolvedMemberStatus) {
+      console.log(`No loyalty status for member ${member.id} — auto-enrolling in program ${program.id}`);
+      // Find the default (lowest) tier for this program
+      const { data: defaultTier } = await supabase
+        .from("loyalty_tiers")
+        .select("id, tier_level")
+        .eq("loyalty_program_id", program.id)
+        .order("tier_level", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      const { data: newStatus, error: enrollError } = await supabase
+        .from("member_loyalty_status")
+        .insert({
+          member_user_id: member.id,
+          loyalty_program_id: program.id,
+          current_tier_id: defaultTier?.id ?? null,
+          points_balance: 0,
+          lifetime_points_earned: 0,
+          lifetime_points_redeemed: 0,
+          total_orders: 0,
+          total_spend: 0,
+          tier_achieved_at: new Date().toISOString(),
+        })
+        .select("*, current_tier:loyalty_tiers(*)")
+        .single();
+
+      if (enrollError || !newStatus) {
+        console.error("Failed to auto-enroll member:", enrollError);
+        return;
+      }
+      resolvedMemberStatus = newStatus;
+      console.log(`Auto-enrolled member ${member.id} with tier ${defaultTier?.id}`);
     }
 
     const { data: isDuplicate } = await supabase.rpc("check_duplicate_order_points", {
@@ -389,7 +420,7 @@ async function awardLoyaltyPoints(supabase: any, clientId: string, orderRecord: 
       return;
     }
 
-    const tierData = memberStatus.current_tier;
+    const tierData = resolvedMemberStatus.current_tier;
     const earnRate = tierData?.points_earn_rate || 1;
     const earnDivisor = tierData?.points_earn_divisor || 1;
     const points = Math.floor((orderAmount * earnRate) / earnDivisor);
@@ -399,18 +430,18 @@ async function awardLoyaltyPoints(supabase: any, clientId: string, orderRecord: 
       return;
     }
 
-    const newBalance = (memberStatus.points_balance || 0) + points;
+    const newBalance = (resolvedMemberStatus.points_balance || 0) + points;
 
     const { error: updateError } = await supabase
       .from("member_loyalty_status")
       .update({
         points_balance: newBalance,
-        lifetime_points_earned: (memberStatus.lifetime_points_earned || 0) + points,
-        total_orders: (memberStatus.total_orders || 0) + 1,
-        total_spend: parseFloat(memberStatus.total_spend || "0") + orderAmount,
+        lifetime_points_earned: (resolvedMemberStatus.lifetime_points_earned || 0) + points,
+        total_orders: (resolvedMemberStatus.total_orders || 0) + 1,
+        total_spend: parseFloat(resolvedMemberStatus.total_spend || "0") + orderAmount,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", memberStatus.id);
+      .eq("id", resolvedMemberStatus.id);
 
     if (updateError) {
       console.error("Error updating loyalty status:", updateError);
@@ -418,7 +449,7 @@ async function awardLoyaltyPoints(supabase: any, clientId: string, orderRecord: 
     }
 
     await supabase.from("loyalty_points_transactions").insert({
-      member_loyalty_status_id: memberStatus.id,
+      member_loyalty_status_id: resolvedMemberStatus.id,
       member_user_id: member.id,
       transaction_type: "earned",
       points_amount: points,
