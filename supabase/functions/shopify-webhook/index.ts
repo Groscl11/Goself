@@ -680,7 +680,10 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
 
             let resolvedToken: string | null = null;
 
-            // Look up an existing unexpired unclaimed token created by get-order-token
+            // Look up an existing unexpired unclaimed token created by get-order-token.
+            // Use limit(1) + order instead of maybeSingle() — multiple tokens can exist
+            // per (campaign_rule_id, email) from prior runs, causing maybeSingle() to
+            // silently return null and trigger a duplicate token creation.
             if (orderRecord.customer_email) {
               const { data: existing } = await supabase
                 .from("campaign_tokens")
@@ -689,8 +692,9 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
                 .eq("is_claimed", false)
                 .gt("expires_at", new Date().toISOString())
                 .eq("email", orderRecord.customer_email)
-                .maybeSingle();
-              if (existing) resolvedToken = existing.token;
+                .order("created_at", { ascending: false })
+                .limit(1);
+              if (existing?.[0]) resolvedToken = existing[0].token;
             }
             if (!resolvedToken && orderRecord.customer_phone) {
               const { data: existing } = await supabase
@@ -700,8 +704,9 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
                 .eq("is_claimed", false)
                 .gt("expires_at", new Date().toISOString())
                 .eq("phone", orderRecord.customer_phone)
-                .maybeSingle();
-              if (existing) resolvedToken = existing.token;
+                .order("created_at", { ascending: false })
+                .limit(1);
+              if (existing?.[0]) resolvedToken = existing[0].token;
             }
 
             // No existing token (webhook arrived before thank-you page) — create one now

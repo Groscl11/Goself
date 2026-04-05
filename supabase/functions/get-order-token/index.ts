@@ -159,18 +159,22 @@ Deno.serve(async (req: Request) => {
     const identifier = customerEmail || customerPhone;
 
     if (identifier) {
-      // Reuse an existing unexpired token for the same campaign + customer identity
+      // Reuse an existing unexpired token for the same campaign + customer identity.
+      // Use limit(1) + order instead of maybeSingle() — multiple tokens can exist per
+      // (campaign_rule_id, email) from prior runs, causing maybeSingle() to return null.
       let existingTokenData: { token: string } | null = null;
       if (customerEmail) {
         const { data } = await supabase.from("campaign_tokens").select("token")
           .eq("campaign_rule_id", selectedCampaign.id).eq("is_claimed", false)
-          .gt("expires_at", new Date().toISOString()).eq("email", customerEmail).maybeSingle();
-        existingTokenData = data;
+          .gt("expires_at", new Date().toISOString()).eq("email", customerEmail)
+          .order("created_at", { ascending: false }).limit(1);
+        existingTokenData = data?.[0] ?? null;
       } else if (customerPhone) {
         const { data } = await supabase.from("campaign_tokens").select("token")
           .eq("campaign_rule_id", selectedCampaign.id).eq("is_claimed", false)
-          .gt("expires_at", new Date().toISOString()).eq("phone", customerPhone).maybeSingle();
-        existingTokenData = data;
+          .gt("expires_at", new Date().toISOString()).eq("phone", customerPhone)
+          .order("created_at", { ascending: false }).limit(1);
+        existingTokenData = data?.[0] ?? null;
       }
       if (existingTokenData) {
         const claimUrl = `${APP_URL}/claim-rewards?token=${existingTokenData.token}`;
