@@ -258,39 +258,71 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
 
   useEffect(() => {
     async function loadAvailableRewards() {
-      if (!open) return;
+      if (!open || !clientId) return;
       const { data: brandsData } = await supabase.from('brands').select('id, name').eq('status', 'approved').order('name');
       setAllBrands((brandsData ?? []) as { id: string; name: string }[]);
 
-      const { data: rewardsData } = await supabase
+      // Two separate simple queries avoids complex PostgREST OR syntax that causes 400s
+      // Query 1: own rewards (all offer_types belonging to this client)
+      const { data: ownRewards, error: e1 } = await supabase
         .from('rewards')
         .select(`
           id, title, description, value_description, image_url, category,
-          coupon_type, status, expiry_date,
-          brands ( id, name, logo_url ),
-          vouchers ( id, status )
+          coupon_type, status, expiry_date, owner_client_id, available_codes,
+          offer_type,
+          brands ( id, name, logo_url )
         `)
-        .eq('status', 'active')
+        .eq('owner_client_id', clientId)
         .or('expiry_date.is.null,expiry_date.gt.' + new Date().toISOString());
 
-      const mapped: RewardPoolItem[] = (rewardsData ?? []).map((r: any) => ({
-        id: r.id,
-        title: r.title,
-        description: r.description,
-        value_description: r.value_description,
-        image_url: r.image_url,
-        category: r.category,
-        coupon_type: r.coupon_type || 'unique',
-        status: r.status,
-        expiry_date: r.expiry_date,
-        available_vouchers: (r.vouchers || []).filter((v: any) => v.status === 'available').length,
-        brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,
-      }));
+      if (e1) console.error('[loadAvailableRewards] own rewards:', e1);
+
+      // Query 2: marketplace offers from all clients
+      const { data: mktRewards, error: e2 } = await supabase
+        .from('rewards')
+        .select(`
+          id, title, description, value_description, image_url, category,
+          coupon_type, status, expiry_date, owner_client_id, available_codes,
+          offer_type,
+          brands ( id, name, logo_url )
+        `)
+        .eq('offer_type', 'marketplace_offer')
+        .or('expiry_date.is.null,expiry_date.gt.' + new Date().toISOString());
+
+      if (e2) console.error('[loadAvailableRewards] marketplace rewards:', e2);
+
+      // Merge: own store_discount + partner_voucher + marketplace_offer from others only
+      const combined = [
+        ...(ownRewards ?? []).filter((r: any) => r.offer_type !== 'marketplace_offer'),
+        ...(mktRewards ?? []).filter((r: any) => r.owner_client_id !== clientId),
+      ];
+      // Deduplicate by id
+      const seen = new Set<string>();
+      const rewardsData = combined.filter((r: any) => { if (seen.has(r.id)) return false; seen.add(r.id); return true; });
+
+      const mapped: RewardPoolItem[] = rewardsData
+        // Exclude expired/exhausted
+        .filter((r: any) => r.status !== 'expired' && r.status !== 'exhausted')
+        // unique coupon_type → must have available_codes > 0; generic → always include
+        .filter((r: any) => r.coupon_type !== 'unique' || (r.available_codes ?? 0) > 0)
+        .map((r: any) => ({
+          id: r.id,
+          title: r.title,
+          description: r.description,
+          value_description: r.value_description,
+          image_url: r.image_url,
+          category: r.category,
+          coupon_type: r.coupon_type || 'unique',
+          status: r.status,
+          expiry_date: r.expiry_date,
+          available_vouchers: r.available_codes ?? 0,
+          brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,
+        }));
       setAllRewards(mapped);
     }
 
     loadAvailableRewards();
-  }, [open]);
+  }, [open, clientId]);
  
   // Lock body scroll
   useEffect(() => {
@@ -352,13 +384,29 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
         } : (initial?.reward_action ?? { expiry_days: 90, reward_type: 'auto', claim_method: 'auto', allocation_timing: 'instant' }),
         guardrails: { budget_cap: budgetCap, max_rewards_total: maxTotal, max_rewards_per_customer: maxPerCust },
       };
+      let campaignId: string;
       if (isEdit) {
         if (!initial?.id) throw new Error('Missing campaign ID');
         const { error: err } = await (supabase as any).from('campaign_rules').update(payload).eq('id', initial.id);
         if (err) throw err;
+        campaignId = initial.id;
       } else {
-        const { error: err } = await (supabase as any).from('campaign_rules').insert(payload);
+        const { data: newRule, error: err } = await (supabase as any).from('campaign_rules').insert(payload).select('id').single();
         if (err) throw err;
+        campaignId = newRule.id;
+      }
+      // Sync reward pool to campaign_reward_pools table (used by validate-campaign-token)
+      if (mode === 'standalone') {
+        await (supabase as any).from('campaign_reward_pools').delete().eq('campaign_rule_id', campaignId);
+        if (rewardPool.length > 0) {
+          const poolInserts = rewardPool.map((r: any, i: number) => ({
+            campaign_rule_id: campaignId,
+            reward_id: r.id,
+            sort_order: i,
+          }));
+          const { error: poolErr } = await (supabase as any).from('campaign_reward_pools').insert(poolInserts);
+          if (poolErr) console.error('Pool sync error:', poolErr);
+        }
       }
       onSaved();
       onClose();
@@ -1147,50 +1195,43 @@ function TriggerLogsPanel({ clientId, onClose }: { clientId: string; onClose: ()
   useEffect(() => {
     async function load() {
       setLoading(true);
+
+      // Step 1: fetch raw logs without embedded join (join can silently fail due to RLS on campaign_rules)
       const { data, error } = await supabase
         .from('campaign_trigger_logs')
-        .select(`
-          id, created_at, trigger_result, customer_email,
-          campaign_rule:campaign_rules(name, campaign_id, trigger_type)
-        `)
+        .select('id, created_at, trigger_result, customer_email, campaign_rule_id')
         .eq('client_id', clientId)
         .order('created_at', { ascending: false })
         .limit(50);
 
       if (error) {
-        console.error('Failed to load campaign_trigger_logs:', error.message);
+        console.error('Failed to load campaign_trigger_logs:', error.message, error);
       }
 
-      if ((data ?? []).length > 0) {
-        const normalized = (data ?? []).map((row: any) => ({
+      const rows = data ?? [];
+
+      // Step 2: enrich with campaign names via a separate query
+      let campaignMap: Record<string, { name: string; campaign_id: string; trigger_type: string }> = {};
+      if (rows.length > 0) {
+        const ruleIds = [...new Set(rows.map((r: any) => r.campaign_rule_id).filter(Boolean))];
+        if (ruleIds.length > 0) {
+          const { data: rules } = await supabase
+            .from('campaign_rules')
+            .select('id, name, campaign_id, trigger_type')
+            .in('id', ruleIds);
+          for (const r of (rules ?? [])) {
+            campaignMap[r.id] = { name: r.name, campaign_id: r.campaign_id, trigger_type: r.trigger_type };
+          }
+        }
+        const normalized = rows.map((row: any) => ({
           id: row.id,
-          trigger_type: row.campaign_rule?.trigger_type || 'advanced',
+          trigger_type: campaignMap[row.campaign_rule_id]?.trigger_type || 'advanced',
           status: row.trigger_result,
           member_email: row.customer_email,
           triggered_at: row.created_at,
-          campaign_rule: row.campaign_rule,
+          campaign_rule: campaignMap[row.campaign_rule_id] ?? null,
         }));
         setLogs(normalized);
-      } else {
-        const { data: evalData } = await supabase
-          .from('campaign_rule_evaluations')
-          .select(`
-            id, created_at, evaluation_result, customer_email, reward_allocated,
-            campaign_rule:campaign_rules(name, campaign_id, trigger_type)
-          `)
-          .eq('client_id', clientId)
-          .order('created_at', { ascending: false })
-          .limit(50);
-
-        const normalizedEval = (evalData ?? []).map((row: any) => ({
-          id: row.id,
-          trigger_type: row.campaign_rule?.trigger_type || 'advanced',
-          status: row.reward_allocated ? 'success' : (row.evaluation_result || 'failed'),
-          member_email: row.customer_email,
-          triggered_at: row.created_at,
-          campaign_rule: row.campaign_rule,
-        }));
-        setLogs(normalizedEval);
       }
       setLoading(false);
     }

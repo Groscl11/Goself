@@ -129,7 +129,7 @@ export function Campaigns() {
         supabase
           .from('rewards')
           .select('*, brands(name, logo_url)')
-          .or(`client_id.eq.${clientId},is_marketplace.eq.true`)
+          .or(`client_id.eq.${clientId},offer_type.eq.marketplace_offer`)
           .eq('status', 'active')
           .order('title')
       ]);
@@ -696,7 +696,7 @@ export function Campaigns() {
                   ) : (
                     <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-3">
                       {availableRewards.map((reward) => {
-                        const isMarketplace = reward.is_marketplace === true;
+                        const isMarketplace = reward.offer_type === 'marketplace_offer';
                         const isOwnReward = reward.client_id === clientId;
 
                         return (

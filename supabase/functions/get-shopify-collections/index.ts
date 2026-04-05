@@ -68,14 +68,13 @@ Deno.serve(async (req: Request) => {
 
     // Fetch Shopify credentials — service_role only, never client-side
     const { data: integration, error: integrationError } = await adminClient
-      .from("integration_configs")
-      .select("shopify_access_token, shop_domain")
+      .from("store_installations")
+      .select("access_token, shop_domain")
       .eq("client_id", clientId)
-      .eq("platform", "shopify")
-      .eq("status", "connected")
+      .eq("installation_status", "active")
       .maybeSingle();
 
-    if (integrationError || !integration?.shopify_access_token || !integration?.shop_domain) {
+    if (integrationError || !integration?.access_token || !integration?.shop_domain) {
       return new Response(
         JSON.stringify({ error: "Shopify integration not connected", collections: [] }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -88,7 +87,7 @@ Deno.serve(async (req: Request) => {
     // Query both custom_collections and smart_collections in parallel
     const baseUrl = `https://${integration.shop_domain}/admin/api/2024-01`;
     const shopifyHeaders = {
-      "X-Shopify-Access-Token": integration.shopify_access_token,
+      "X-Shopify-Access-Token": integration.access_token,
       "Content-Type": "application/json",
     };
 

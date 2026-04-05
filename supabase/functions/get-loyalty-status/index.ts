@@ -49,21 +49,13 @@ Deno.serve(async (req: Request) => {
 
       // Guest / program-config mode — resolve client from shop_domain, return tier thresholds only
       let guestClientId: string | null = null;
-      const { data: guestIntegration } = await supabase
-        .from('integration_configs')
+      const { data: guestStore } = await supabase
+        .from('store_installations')
         .select('client_id')
         .eq('shop_domain', shopDomain)
+        .eq('installation_status', 'active')
         .maybeSingle();
-      if (guestIntegration) {
-        guestClientId = guestIntegration.client_id;
-      } else {
-        const { data: guestStore } = await supabase
-          .from('store_installations')
-          .select('client_id')
-          .eq('shop_domain', shopDomain)
-          .maybeSingle();
-        if (guestStore) guestClientId = guestStore.client_id;
-      }
+      if (guestStore) guestClientId = guestStore.client_id;
 
       if (!guestClientId) {
         return new Response(
@@ -117,28 +109,17 @@ Deno.serve(async (req: Request) => {
     let memberUserIdToUse = memberUserId;
     let resolvedClientId = clientId;
 
-    // If shop_domain is provided, find the client_id
-    // Try integration_configs first, then fall back to store_installations
+    // If shop_domain is provided, find the client_id via store_installations
     if (shopDomain && !resolvedClientId) {
-      const { data: integration } = await supabase
-        .from('integration_configs')
+      const { data: storeInstall } = await supabase
+        .from('store_installations')
         .select('client_id')
         .eq('shop_domain', shopDomain)
+        .eq('installation_status', 'active')
         .maybeSingle();
 
-      if (integration) {
-        resolvedClientId = integration.client_id;
-      } else {
-        // Fallback: check store_installations (created during Shopify OAuth)
-        const { data: storeInstall } = await supabase
-          .from('store_installations')
-          .select('client_id')
-          .eq('shop_domain', shopDomain)
-          .maybeSingle();
-
-        if (storeInstall) {
-          resolvedClientId = storeInstall.client_id;
-        }
+      if (storeInstall) {
+        resolvedClientId = storeInstall.client_id;
       }
     }
 

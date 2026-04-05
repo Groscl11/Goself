@@ -1,1121 +1,1389 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { clientMenuItems } from './clientMenuItems';
- 
-// ─── Types ────────────────────────────────────────────────────────────────────
-type TabId = 'earn' | 'surveys';
- 
-interface EarningRule {
+import {
+  ChevronDown, ChevronUp, Plus, Trash2, Save, Check, Info,
+  Award, Zap, Layers, ShoppingBag,
+} from 'lucide-react';
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+interface LoyaltyProgram {
   id: string;
-  rule_type: string;
-  name: string;
-  description?: string;
-  points_reward: number;
+  client_id: string;
+  program_name: string;
+  points_name: string;
+  points_name_singular: string;
   is_active: boolean;
-  // Purchase
-  use_tier_rate?: boolean;
-  points_earn_divisor?: number;
-  // Referral
-  referral_trigger?: 'signup' | 'first_order' | 'both';
-  referral_signup_points?: number;
-  referral_first_order_points?: number;
-  referral_discount_type?: string;
-  referral_discount_value?: number;
-  referral_min_order_value?: number;
-  max_referrals_per_day?: number;
-  // Social
-  social_platform?: string;
-  social_url?: string;
-  // General
-  max_times_per_customer?: number;
-  cooldown_days?: number;
+  currency: string;
+  allow_redemption: boolean;
+  points_expiry_days: number | null;
+  welcome_bonus_points: number;
+  referral_reward_trigger: string;
+  base_earn_rate: number;
+  base_earn_divisor: number;
+  base_points_value: number;
 }
- 
+
+type QualMode = 'any' | 'all' | 'points_only' | 'spend_only' | 'orders_only';
+type QualPeriod = 'lifetime' | 'rolling_12_months' | 'calendar_year';
+type DowngradePolicy = 'never' | 'rolling_period' | 'calendar_year';
+
+interface Perk {
+  type: string;
+  enabled: boolean;
+  label?: string;
+  value?: number;
+}
+
 interface LoyaltyTier {
-  id: string;
+  id?: string;
+  loyalty_program_id?: string;
   tier_name: string;
   tier_level: number;
   is_default: boolean;
+  color_code: string;
+  qualification_mode: QualMode;
+  min_lifetime_spend: number;
+  min_orders: number;
+  min_lifetime_points: number;
+  qualification_period: QualPeriod;
+  tier_duration_days: number | null;
+  earn_multiplier: number;
+  category_multipliers: Record<string, number>;
   points_earn_rate: number;
   points_earn_divisor: number;
   points_value: number;
   max_redemption_percent: number;
-  min_orders: number;
-  min_spend: number;
+  max_redemption_points: number | null;
+  min_redemption_points: number;
+  min_order_value_to_redeem: number;
+  redemption_step_size: number;
+  perks: Perk[];
+  benefits_description: string;
+  downgrade_policy: DowngradePolicy;
+  downgrade_grace_days: number;
 }
- 
-interface Survey {
-  id: string;
-  title: string;
-  description?: string;
-  points_reward: number;
-  questions: SurveyQuestion[];
-  is_active: boolean;
-  max_times_per_customer: number;
-  cooldown_days: number;
-  start_date?: string;
-  end_date?: string;
-  total_completions: number;
-  created_at: string;
-}
- 
-interface SurveyQuestion {
-  id: string;
-  type: 'text' | 'single_choice' | 'multiple_choice' | 'rating' | 'nps';
-  question: string;
-  options?: string[];
-  required: boolean;
-}
- 
-interface LoyaltyProgram {
-  id: string;
-  program_name: string;
-  points_name: string;
-  points_name_singular: string;
-}
- 
-// ─── Section config ───────────────────────────────────────────────────────────
-const EARN_SECTIONS = [
-  {
-    rule_type: 'purchase',
-    icon: '🛍️',
-    color: 'blue',
-    title: 'Purchase Points',
-    subtitle: 'Points earned per purchase — rate set by your loyalty tiers',
-    addLabel: null,
-    tierDriven: true,
-  },
-  {
-    rule_type: 'signup',
-    icon: '👋',
-    color: 'green',
-    title: 'Sign Up Bonus',
-    subtitle: 'Give points when a new customer joins your loyalty program',
-    addLabel: 'Add signup rule',
-    tierDriven: false,
-  },
-  {
-    rule_type: 'referral',
-    icon: '👥',
-    color: 'purple',
-    title: 'Referral Program',
-    subtitle: 'Earn points when customers refer friends. Set rewards for signup, first order, or both.',
-    addLabel: 'Add referral rule',
-    tierDriven: false,
-  },
-  {
-    rule_type: 'birthday',
-    icon: '🎂',
-    color: 'pink',
-    title: 'Birthday Rewards',
-    subtitle: 'Automatically reward customers with bonus points on their birthday',
-    addLabel: 'Add birthday rule',
-    tierDriven: false,
-  },
-  {
-    rule_type: 'social_follow',
-    icon: '📱',
-    color: 'sky',
-    title: 'Social Media',
-    subtitle: 'Reward customers for following your social media channels',
-    addLabel: 'Add social channel',
-    tierDriven: false,
-  },
-  {
-    rule_type: 'profile_complete',
-    icon: '✅',
-    color: 'teal',
-    title: 'Profile Completion',
-    subtitle: 'Reward customers for completing their profile (name, phone, birthday, etc.)',
-    addLabel: 'Add completion rule',
-    tierDriven: false,
-  },
-  {
-    rule_type: 'survey',
-    icon: '📋',
-    color: 'amber',
-    title: 'Surveys',
-    subtitle: 'Reward customers for completing surveys. Manage surveys in the Surveys tab.',
-    addLabel: null,
-    tierDriven: false,
-    external: true,
-  },
+
+// ─── Constants ──────────────────────────────────────────────────────────────────
+
+const PRESET_COLORS = [
+  { value: '#f59e0b', label: 'Amber' },
+  { value: '#ef4444', label: 'Red' },
+  { value: '#8b5cf6', label: 'Purple' },
+  { value: '#06b6d4', label: 'Cyan' },
+  { value: '#22c55e', label: 'Green' },
+  { value: '#ec4899', label: 'Pink' },
+  { value: '#3b82f6', label: 'Blue' },
+  { value: '#f97316', label: 'Orange' },
 ];
- 
-const COLOR_MAP: Record<string, { bg: string; border: string; badge: string; dot: string; btn: string }> = {
-  blue:   { bg: 'bg-blue-50',   border: 'border-blue-200',   badge: 'bg-blue-100 text-blue-700',    dot: 'bg-blue-500',   btn: 'bg-blue-500 hover:bg-blue-600' },
-  green:  { bg: 'bg-green-50',  border: 'border-green-200',  badge: 'bg-green-100 text-green-700',   dot: 'bg-green-500',  btn: 'bg-green-500 hover:bg-green-600' },
-  purple: { bg: 'bg-purple-50', border: 'border-purple-200', badge: 'bg-purple-100 text-purple-700', dot: 'bg-purple-500', btn: 'bg-purple-500 hover:bg-purple-600' },
-  pink:   { bg: 'bg-pink-50',   border: 'border-pink-200',   badge: 'bg-pink-100 text-pink-700',     dot: 'bg-pink-500',   btn: 'bg-pink-500 hover:bg-pink-600' },
-  sky:    { bg: 'bg-sky-50',    border: 'border-sky-200',    badge: 'bg-sky-100 text-sky-700',       dot: 'bg-sky-500',    btn: 'bg-sky-500 hover:bg-sky-600' },
-  teal:   { bg: 'bg-teal-50',   border: 'border-teal-200',   badge: 'bg-teal-100 text-teal-700',     dot: 'bg-teal-500',   btn: 'bg-teal-500 hover:bg-teal-600' },
-  amber:  { bg: 'bg-amber-50',  border: 'border-amber-200',  badge: 'bg-amber-100 text-amber-700',   dot: 'bg-amber-500',  btn: 'bg-amber-500 hover:bg-amber-600' },
+
+const PERK_TYPES: {
+  type: string;
+  label: string;
+  hasValue?: boolean;
+  valueSuffix?: string;
+  hasLabel?: boolean;
+}[] = [
+  { type: 'free_shipping', label: 'Free shipping' },
+  { type: 'early_access', label: 'Early access to sales' },
+  { type: 'birthday_multiplier', label: 'Birthday bonus points', hasValue: true, valueSuffix: '× multiplier' },
+  { type: 'priority_support', label: 'Priority customer support' },
+  { type: 'exclusive_offers', label: 'Exclusive offers' },
+  { type: 'custom', label: 'Custom perk', hasLabel: true },
+];
+
+const DEFAULT_PERKS: Perk[] = PERK_TYPES.map(p => ({
+  type: p.type,
+  enabled: false,
+  label: p.hasLabel ? '' : undefined,
+  value: p.hasValue ? 2 : undefined,
+}));
+
+const BASE_EARN_RATE_DEFAULT = 10;
+const BASE_EARN_DIVISOR_DEFAULT = 100;
+
+const EMPTY_PROGRAM: Omit<LoyaltyProgram, 'id' | 'client_id'> = {
+  program_name: '',
+  points_name: 'Points',
+  points_name_singular: 'Point',
+  is_active: true,
+  currency: 'INR',
+  allow_redemption: true,
+  points_expiry_days: null,
+  welcome_bonus_points: 0,
+  referral_reward_trigger: 'first_order',
+  base_earn_rate: BASE_EARN_RATE_DEFAULT,
+  base_earn_divisor: BASE_EARN_DIVISOR_DEFAULT,
+  base_points_value: 0.1,
 };
- 
-const SOCIAL_PLATFORMS = ['instagram','facebook','youtube','twitter','tiktok','linkedin','pinterest'];
- 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`bg-gray-100 rounded-lg animate-pulse ${className}`} />;
+
+function makeDefaultTier(level: number, isDefault: boolean): LoyaltyTier {
+  const names = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
+  const colors = ['#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4'];
+  return {
+    tier_name: names[level - 1] ?? `Tier ${level}`,
+    tier_level: level,
+    is_default: isDefault,
+    color_code: colors[level - 1] ?? '#3b82f6',
+    qualification_mode: 'any',
+    min_lifetime_spend: 0,
+    min_orders: 0,
+    min_lifetime_points: 0,
+    qualification_period: 'lifetime',
+    tier_duration_days: null,
+    earn_multiplier: isDefault ? 1.0 : level,
+    category_multipliers: {},
+    points_earn_rate: BASE_EARN_RATE_DEFAULT * (isDefault ? 1 : level),
+    points_earn_divisor: BASE_EARN_DIVISOR_DEFAULT,
+    points_value: 0.1,
+    max_redemption_percent: 100,
+    max_redemption_points: null,
+    min_redemption_points: 10,
+    min_order_value_to_redeem: 500,
+    redemption_step_size: 1,
+    perks: [...DEFAULT_PERKS],
+    benefits_description: '',
+    downgrade_policy: 'never',
+    downgrade_grace_days: 30,
+  };
 }
- 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+
+// ─── Steps config ───────────────────────────────────────────────────────────────
+
+const STEPS = [
+  { id: 1, label: 'Program Basics', icon: Award },
+  { id: 2, label: 'Base Earn Rate', icon: Zap },
+  { id: 3, label: 'Membership Tiers', icon: Layers },
+  { id: 4, label: 'Redemption & Save', icon: ShoppingBag },
+];
+
+// ─── Shared mini-components ─────────────────────────────────────────────────────
+
+function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
+  return (
+    <label className="block text-sm font-medium text-gray-700 mb-1">
+      {children}
+      {hint && <span className="ml-1 text-xs text-gray-400 font-normal">{hint}</span>}
+    </label>
+  );
+}
+
+function TextInput({
+  value, onChange, type = 'text', placeholder, className = '',
+  min, max, step, disabled,
+}: {
+  value: string | number;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+  className?: string;
+  min?: number;
+  max?: number;
+  step?: number | string;
+  disabled?: boolean;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      min={min}
+      max={max}
+      step={step}
+      disabled={disabled}
+      className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed ${className}`}
+    />
+  );
+}
+
+function DropdownSelect({
+  value, onChange, children, className = '',
+}: {
+  value: string | number;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white ${className}`}
+    >
+      {children}
+    </select>
+  );
+}
+
+function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
+      type="button"
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ${checked ? 'bg-emerald-500' : 'bg-gray-300'}`}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${checked ? 'bg-indigo-600' : 'bg-gray-200'}`}
     >
-      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`}
+      />
     </button>
   );
 }
- 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+
+function LiveHint({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1 text-xs text-indigo-600 bg-indigo-50 rounded px-2 py-1">{children}</p>;
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div>
-      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</label>
+    <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3 mt-5 first:mt-0">
       {children}
-      {hint && <p className="text-xs text-gray-400 mt-1">{hint}</p>}
+    </h4>
+  );
+}
+
+function ColorDotPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  return (
+    <div className="flex gap-2 flex-wrap">
+      {PRESET_COLORS.map(c => (
+        <button
+          key={c.value}
+          type="button"
+          onClick={() => onChange(c.value)}
+          title={c.label}
+          className={`w-5 h-5 rounded-full transition-transform hover:scale-110 ${value === c.value ? 'ring-2 ring-offset-2 ring-gray-700 scale-110' : ''}`}
+          style={{ backgroundColor: c.value }}
+        />
+      ))}
     </div>
   );
 }
- 
-// ─── Rule Editor ──────────────────────────────────────────────────────────────
-function RuleEditor({
-  open, onClose, rule, ruleType, clientId, programId, onSaved,
+
+// ─── Step 1 — Program Basics ────────────────────────────────────────────────────
+
+function Step1({
+  program,
+  onChange,
 }: {
-  open: boolean; onClose: () => void;
-  rule: Partial<EarningRule> | null;
-  ruleType: string; clientId: string; programId: string;
-  onSaved: () => void;
+  program: Omit<LoyaltyProgram, 'id' | 'client_id'>;
+  onChange: <K extends keyof Omit<LoyaltyProgram, 'id' | 'client_id'>>(
+    k: K,
+    v: Omit<LoyaltyProgram, 'id' | 'client_id'>[K]
+  ) => void;
 }) {
-  const isEdit = !!rule?.id;
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [form, setForm] = useState<Partial<EarningRule>>({});
- 
-  const section = EARN_SECTIONS.find(s => s.rule_type === ruleType);
- 
-  useEffect(() => {
-    if (open) {
-      setError('');
-      setForm({
-        rule_type: ruleType,
-        name: section?.title ?? '',
-        points_reward: 100,
-        is_active: true,
-        max_times_per_customer: 1,
-        cooldown_days: 0,
-        referral_trigger: 'first_order',
-        referral_signup_points: 0,
-        referral_first_order_points: 100,
-        referral_discount_type: 'flat',
-        referral_discount_value: 0,
-        referral_min_order_value: 0,
-        max_referrals_per_day: 5,
-        social_platform: 'instagram',
-        social_url: '',
-        use_tier_rate: true,
-        points_earn_divisor: 100,
-        ...rule,
-      });
-    }
-  }, [open, rule, ruleType]);
- 
-  useEffect(() => {
-    if (open) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = '';
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
- 
-  if (!open) return null;
- 
-  function set(k: keyof EarningRule, v: any) { setForm(f => ({ ...f, [k]: v })); }
- 
-  async function save() {
-    if (!form.name?.trim()) { setError('Name is required'); return; }
-    setSaving(true); setError('');
-    try {
-      const payload = { ...form, client_id: clientId, loyalty_program_id: programId };
-      if (isEdit) {
-        const { error: e } = await supabase.from('loyalty_earning_rules').update(payload).eq('id', rule!.id);
-        if (e) throw e;
-      } else {
-        const { error: e } = await supabase.from('loyalty_earning_rules').insert(payload);
-        if (e) throw e;
-      }
-      onSaved(); onClose();
-    } catch (e: any) { setError(e?.message ?? 'Save failed'); }
-    setSaving(false);
-  }
- 
-  const showSignupPoints   = form.referral_trigger === 'signup' || form.referral_trigger === 'both';
-  const showFirstOrdPoints = form.referral_trigger === 'first_order' || form.referral_trigger === 'both';
- 
+  const expiryOptions = [
+    { label: 'Never expire', value: '' },
+    { label: '90 days', value: '90' },
+    { label: '180 days', value: '180' },
+    { label: '365 days (1 year)', value: '365' },
+    { label: '2 years (730 days)', value: '730' },
+  ];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col">
- 
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-base font-semibold text-gray-900 mb-1">Program Basics</h3>
+        <p className="text-sm text-gray-500">Set your program name, currency, and global settings.</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="md:col-span-2">
+          <FieldLabel>Program name</FieldLabel>
+          <TextInput
+            value={program.program_name}
+            onChange={v => onChange('program_name', v)}
+            placeholder="e.g. Houme Coins, Gems Rewards"
+          />
+        </div>
+
+        <div>
+          <FieldLabel hint="(plural)">Points name</FieldLabel>
+          <TextInput
+            value={program.points_name}
+            onChange={v => onChange('points_name', v)}
+            placeholder="e.g. Gems"
+          />
+        </div>
+        <div>
+          <FieldLabel hint="(singular)">Points name singular</FieldLabel>
+          <TextInput
+            value={program.points_name_singular}
+            onChange={v => onChange('points_name_singular', v)}
+            placeholder="e.g. Gem"
+          />
+        </div>
+        <div>
+          <FieldLabel hint="(awarded on join / first activity)">Welcome bonus points</FieldLabel>
+          <TextInput
+            type="number"
+            value={program.welcome_bonus_points}
+            onChange={v => onChange('welcome_bonus_points', Math.max(0, Number(v)))}
+            min={0}
+            placeholder="0"
+          />
+        </div>
+        <div>
+          <FieldLabel>Points expiry</FieldLabel>
+          <DropdownSelect
+            value={program.points_expiry_days ?? ''}
+            onChange={v => onChange('points_expiry_days', v === '' ? null : Number(v))}
+          >
+            {expiryOptions.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </DropdownSelect>
+        </div>
+        <div>
+          <FieldLabel>Currency</FieldLabel>
+          <DropdownSelect value={program.currency} onChange={v => onChange('currency', v)}>
+            <option value="INR">INR (₹)</option>
+            <option value="USD">USD ($)</option>
+            <option value="AED">AED (د.إ)</option>
+          </DropdownSelect>
+        </div>
+        <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-200">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">{isEdit ? 'Edit rule' : `New ${section?.title ?? ruleType} rule`}</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{section?.subtitle}</p>
+            <p className="text-sm font-medium text-gray-900">Allow redemption</p>
+            <p className="text-xs text-gray-500">Members can redeem points for discounts</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
- 
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
- 
-          <Field label="Rule name *">
-            <input value={form.name ?? ''} onChange={e => set('name', e.target.value)}
-              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-          </Field>
- 
-          {/* ── REFERRAL: full trigger UI ────────────────────────────── */}
-          {ruleType === 'referral' && (
-            <>
-              {/* Trigger selector */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">When does the referrer earn points?</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { value: 'signup',      label: 'On Signup',      icon: '👋', desc: 'When referred person signs up' },
-                    { value: 'first_order', label: 'First Order',    icon: '📦', desc: 'When referred person places first order' },
-                    { value: 'both',        label: 'Both',           icon: '🎯', desc: 'Signup + first order rewards' },
-                  ].map(opt => (
-                    <button
-                      key={opt.value}
-                      onClick={() => set('referral_trigger', opt.value)}
-                      className={`text-left p-3 rounded-xl border-2 transition-all ${
-                        form.referral_trigger === opt.value
-                          ? 'border-purple-500 bg-purple-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="text-lg mb-1">{opt.icon}</div>
-                      <div className="text-xs font-semibold text-gray-800">{opt.label}</div>
-                      <div className="text-xs text-gray-400 mt-0.5 leading-tight">{opt.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
- 
-              {/* Referrer points — split by trigger */}
-              <div className={`p-4 rounded-xl border space-y-3 ${showSignupPoints && showFirstOrdPoints ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
-                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Referrer earns (you, the store)</p>
- 
-                {showSignupPoints && (
-                  <Field label="Points on referred person's signup">
-                    <div className="flex items-center gap-2">
-                      <input type="number" min={0} value={form.referral_signup_points ?? 0}
-                        onChange={e => set('referral_signup_points', Number(e.target.value))}
-                        className="w-24 text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
-                      <span className="text-sm text-gray-500">points</span>
-                    </div>
-                  </Field>
-                )}
- 
-                {showFirstOrdPoints && (
-                  <Field label="Points on referred person's first order">
-                    <div className="flex items-center gap-2">
-                      <input type="number" min={0} value={form.referral_first_order_points ?? form.points_reward ?? 100}
-                        onChange={e => set('referral_first_order_points', Number(e.target.value))}
-                        className="w-24 text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
-                      <span className="text-sm text-gray-500">points</span>
-                    </div>
-                  </Field>
-                )}
-              </div>
- 
-              {/* Referee reward (discount to the referred person) */}
-              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
-                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Referred person gets (optional discount)</p>
-                <Field label="Discount type & value">
-                  <div className="flex items-center gap-2">
-                    <select value={form.referral_discount_type ?? 'flat'} onChange={e => set('referral_discount_type', e.target.value)}
-                      className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/10">
-                      <option value="flat">Flat ₹</option>
-                      <option value="percentage">Percentage %</option>
-                      <option value="none">No discount</option>
-                    </select>
-                    {form.referral_discount_type !== 'none' && (
-                      <>
-                        <input type="number" min={0} value={form.referral_discount_value ?? 0}
-                          onChange={e => set('referral_discount_value', Number(e.target.value))}
-                          className="w-20 text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-                        <span className="text-sm text-gray-500">{form.referral_discount_type === 'percentage' ? '%' : '₹'} off</span>
-                      </>
-                    )}
-                  </div>
-                </Field>
-                {form.referral_discount_type !== 'none' && (
-                  <Field label="Min. order value for discount (₹)">
-                    <div className="flex items-center gap-2">
-                      <input type="number" min={0} value={form.referral_min_order_value ?? 0}
-                        onChange={e => set('referral_min_order_value', Number(e.target.value))}
-                        className="w-24 text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-                      <span className="text-sm text-gray-500">₹ minimum</span>
-                    </div>
-                  </Field>
-                )}
-              </div>
- 
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Max referrals per day">
-                  <input type="number" min={1} value={form.max_referrals_per_day ?? 5}
-                    onChange={e => set('max_referrals_per_day', Number(e.target.value))}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-                </Field>
-                <Field label="Cooldown (days)">
-                  <input type="number" min={0} value={form.cooldown_days ?? 0}
-                    onChange={e => set('cooldown_days', Number(e.target.value))}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-                </Field>
-              </div>
-            </>
-          )}
- 
-          {/* ── PURCHASE: tier-driven info ───────────────────────────── */}
-          {ruleType === 'purchase' && (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
-              <div className="flex items-start gap-2">
-                <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <p className="text-xs font-semibold text-blue-800">Points rate is set by your Loyalty Tiers</p>
-                  <p className="text-xs text-blue-600 mt-0.5">
-                    Each tier has its own earn rate (e.g. 50 pts per ₹100). Members automatically earn at their tier's rate.
-                    Go to <strong>Loyalty Points</strong> to configure tier earn rates.
-                  </p>
-                </div>
-              </div>
-              <Field label="Points earn per ₹ (divisor)" hint="Reference value for display — actual rate set in tiers">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Per ₹</span>
-                  <input type="number" min={1} value={form.points_earn_divisor ?? 100}
-                    onChange={e => set('points_earn_divisor', Number(e.target.value))}
-                    className="w-20 text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
-                  <span className="text-sm text-gray-500">spent</span>
-                </div>
-              </Field>
-            </div>
-          )}
- 
-          {/* ── SOCIAL FOLLOW ────────────────────────────────────────── */}
-          {ruleType === 'social_follow' && (
-            <>
-              <Field label="Points reward">
-                <div className="flex items-center gap-2">
-                  <input type="number" min={1} value={form.points_reward ?? 100}
-                    onChange={e => set('points_reward', Number(e.target.value))}
-                    className="w-24 text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-                  <span className="text-sm text-gray-500">points</span>
-                </div>
-              </Field>
-              <Field label="Platform">
-                <select value={form.social_platform ?? 'instagram'} onChange={e => set('social_platform', e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/10 capitalize">
-                  {SOCIAL_PLATFORMS.map(p => <option key={p} value={p} className="capitalize">{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
-                </select>
-              </Field>
-              <Field label="Profile URL">
-                <input value={form.social_url ?? ''} onChange={e => set('social_url', e.target.value)}
-                  placeholder="https://instagram.com/yourbrand"
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-              </Field>
-            </>
-          )}
- 
-          {/* ── ALL OTHER RULES ──────────────────────────────────────── */}
-          {ruleType !== 'referral' && ruleType !== 'purchase' && ruleType !== 'social_follow' && (
-            <Field label="Points reward">
-              <div className="flex items-center gap-2">
-                <input type="number" min={1} value={form.points_reward ?? 100}
-                  onChange={e => set('points_reward', Number(e.target.value))}
-                  className="w-24 text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-                <span className="text-sm text-gray-500">points</span>
-              </div>
-            </Field>
-          )}
- 
-          {/* Limits — all except purchase & referral */}
-          {ruleType !== 'purchase' && ruleType !== 'referral' && (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Max uses per customer">
-                <input type="number" min={0} value={form.max_times_per_customer ?? 1}
-                  onChange={e => set('max_times_per_customer', Number(e.target.value))}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-              </Field>
-              <Field label="Cooldown (days)">
-                <input type="number" min={0} value={form.cooldown_days ?? 0}
-                  onChange={e => set('cooldown_days', Number(e.target.value))}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-              </Field>
-            </div>
-          )}
- 
-          {error && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">{error}</div>}
-        </div>
- 
-        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-gray-50 flex gap-3">
-          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-white transition-colors">Cancel</button>
-          <button onClick={save} disabled={saving} className="flex-1 px-4 py-2 text-sm bg-gray-900 text-white rounded-xl hover:bg-gray-800 disabled:opacity-60 transition-colors">
-            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add rule'}
-          </button>
+          <ToggleSwitch
+            checked={program.allow_redemption}
+            onChange={v => onChange('allow_redemption', v)}
+          />
         </div>
       </div>
     </div>
   );
 }
- 
-// ─── Survey Editor ────────────────────────────────────────────────────────────
-function SurveyEditor({ open, onClose, survey, clientId, onSaved }: {
-  open: boolean; onClose: () => void;
-  survey: Partial<Survey> | null;
-  clientId: string; onSaved: () => void;
+
+// ─── Step 2 — Base Earn Rate ────────────────────────────────────────────────────
+
+function Step2({
+  program,
+  onChange,
+}: {
+  program: Omit<LoyaltyProgram, 'id' | 'client_id'>;
+  onChange: <K extends keyof Omit<LoyaltyProgram, 'id' | 'client_id'>>(
+    k: K,
+    v: Omit<LoyaltyProgram, 'id' | 'client_id'>[K]
+  ) => void;
 }) {
-  const isEdit = !!survey?.id;
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [title, setTitle] = useState('');
-  const [description, setDesc] = useState('');
-  const [points, setPoints] = useState(50);
-  const [maxTimes, setMaxTimes] = useState(1);
-  const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
-  const [startDate, setStart] = useState('');
-  const [endDate, setEnd] = useState('');
- 
-  useEffect(() => {
-    if (open) {
-      setError('');
-      setTitle(survey?.title ?? '');
-      setDesc(survey?.description ?? '');
-      setPoints(survey?.points_reward ?? 50);
-      setMaxTimes(survey?.max_times_per_customer ?? 1);
-      setQuestions(survey?.questions ?? []);
-      setStart(survey?.start_date?.slice(0, 10) ?? '');
-      setEnd(survey?.end_date?.slice(0, 10) ?? '');
-    }
-  }, [open, survey]);
- 
-  useEffect(() => {
-    if (open) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = '';
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
- 
-  if (!open) return null;
- 
-  function addQuestion() {
-    setQuestions(q => [...q, { id: `q_${Date.now()}`, type: 'text', question: '', required: true }]);
-  }
-  function updateQ(id: string, field: keyof SurveyQuestion, value: any) {
-    setQuestions(q => q.map(x => x.id === id ? { ...x, [field]: value } : x));
-  }
-  function removeQ(id: string) { setQuestions(q => q.filter(x => x.id !== id)); }
-  function addOpt(qId: string) { setQuestions(q => q.map(x => x.id === qId ? { ...x, options: [...(x.options ?? []), ''] } : x)); }
-  function updateOpt(qId: string, i: number, v: string) { setQuestions(q => q.map(x => x.id === qId ? { ...x, options: (x.options ?? []).map((o, j) => j === i ? v : o) } : x)); }
-  function removeOpt(qId: string, i: number) { setQuestions(q => q.map(x => x.id === qId ? { ...x, options: (x.options ?? []).filter((_, j) => j !== i) } : x)); }
- 
-  async function save() {
-    if (!title.trim()) { setError('Title is required'); return; }
-    if (questions.length === 0) { setError('Add at least one question'); return; }
-    setSaving(true); setError('');
-    try {
-      const payload: any = { client_id: clientId, title: title.trim(), description: description.trim() || null, points_reward: points, max_times_per_customer: maxTimes, questions, start_date: startDate || null, end_date: endDate || null, is_active: true };
-      if (isEdit) {
-        const { error: e } = await supabase.from('loyalty_surveys').update(payload).eq('id', survey!.id);
-        if (e) throw e;
-      } else {
-        const { error: e } = await supabase.from('loyalty_surveys').insert(payload);
-        if (e) throw e;
-      }
-      onSaved(); onClose();
-    } catch (e: any) { setError(e?.message ?? 'Save failed'); }
-    setSaving(false);
-  }
- 
+  const { base_earn_rate, base_earn_divisor, base_points_value, points_name, currency } = program;
+  const curr = currency === 'INR' ? '₹' : currency === 'USD' ? '$' : 'د.إ';
+
+  const exampleSpend = 1000;
+  const earned = (exampleSpend / Math.max(1, base_earn_divisor)) * base_earn_rate;
+  const worth = earned * base_points_value;
+
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative ml-auto h-full w-full max-w-2xl bg-white shadow-2xl flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">{isEdit ? 'Edit survey' : 'New survey'}</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Members earn points for completing this survey</p>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-base font-semibold text-gray-900 mb-1">Base Earn Rate</h3>
+        <p className="text-sm text-gray-500">
+          How many points does a member earn per unit of spend? Tiers can multiply this rate.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div>
+          <FieldLabel>Points earned</FieldLabel>
+          <TextInput
+            type="number"
+            value={base_earn_rate}
+            onChange={v => onChange('base_earn_rate', Math.max(1, Number(v)))}
+            min={1}
+            step={1}
+          />
+          <LiveHint>{base_earn_rate} {points_name || 'pts'}</LiveHint>
         </div>
- 
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <Field label="Survey title *">
-                <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Product satisfaction survey"
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-              </Field>
-            </div>
-            <div className="col-span-2">
-              <Field label="Description">
-                <textarea value={description} onChange={e => setDesc(e.target.value)} rows={2}
-                  placeholder="Tell members what this survey is about..."
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10 resize-none" />
-              </Field>
-            </div>
-            <Field label="Points reward">
-              <div className="flex items-center gap-2">
-                <input type="number" min={1} value={points} onChange={e => setPoints(Number(e.target.value))}
-                  className="w-24 text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-                <span className="text-sm text-gray-500">pts</span>
-              </div>
-            </Field>
-            <Field label="Max per member">
-              <input type="number" min={1} value={maxTimes} onChange={e => setMaxTimes(Number(e.target.value))}
-                className="w-24 text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-            </Field>
-            <Field label="Start date">
-              <input type="date" value={startDate} onChange={e => setStart(e.target.value)}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-            </Field>
-            <Field label="End date">
-              <input type="date" value={endDate} onChange={e => setEnd(e.target.value)}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-            </Field>
-          </div>
- 
-          {/* Questions */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Questions</label>
-              <span className="text-xs text-gray-400">{questions.length} question{questions.length !== 1 ? 's' : ''}</span>
-            </div>
-            <div className="space-y-3">
-              {questions.map((q, qi) => (
-                <div key={q.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
-                  <div className="flex items-start gap-3">
-                    <span className="text-xs font-bold text-gray-400 mt-2.5 w-5 text-center flex-shrink-0">{qi + 1}</span>
-                    <div className="flex-1 space-y-2">
-                      <input value={q.question} onChange={e => updateQ(q.id, 'question', e.target.value)}
-                        placeholder="Type your question..."
-                        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/10 bg-white" />
-                      <div className="flex items-center gap-2">
-                        <select value={q.type} onChange={e => updateQ(q.id, 'type', e.target.value)}
-                          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none">
-                          <option value="text">Short text</option>
-                          <option value="single_choice">Single choice</option>
-                          <option value="multiple_choice">Multiple choice</option>
-                          <option value="rating">Rating (1–5)</option>
-                          <option value="nps">NPS (0–10)</option>
-                        </select>
-                        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
-                          <input type="checkbox" checked={q.required} onChange={e => updateQ(q.id, 'required', e.target.checked)} className="accent-gray-900" />
-                          Required
-                        </label>
-                      </div>
-                      {(q.type === 'single_choice' || q.type === 'multiple_choice') && (
-                        <div className="space-y-1.5 mt-1">
-                          {(q.options ?? []).map((opt, oi) => (
-                            <div key={oi} className="flex items-center gap-2">
-                              <span className="text-xs text-gray-400 w-4 flex-shrink-0">{oi + 1}.</span>
-                              <input value={opt} onChange={e => updateOpt(q.id, oi, e.target.value)}
-                                placeholder={`Option ${oi + 1}`}
-                                className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none bg-white" />
-                              <button onClick={() => removeOpt(q.id, oi)} className="text-gray-300 hover:text-red-400 flex-shrink-0">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                              </button>
-                            </div>
-                          ))}
-                          <button onClick={() => addOpt(q.id)} className="text-xs text-gray-500 hover:text-gray-900 flex items-center gap-1 px-1">
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                            Add option
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <button onClick={() => removeQ(q.id)} className="p-1 text-gray-300 hover:text-red-400 mt-1 flex-shrink-0">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <button onClick={addQuestion}
-                className="w-full py-2.5 text-sm text-gray-500 border-2 border-dashed border-gray-200 rounded-xl hover:border-gray-300 hover:text-gray-700 transition-colors flex items-center justify-center gap-2">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                Add question
-              </button>
-            </div>
-          </div>
-          {error && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">{error}</div>}
+        <div>
+          <FieldLabel>Per {curr} spent</FieldLabel>
+          <TextInput
+            type="number"
+            value={base_earn_divisor}
+            onChange={v => onChange('base_earn_divisor', Math.max(1, Number(v)))}
+            min={1}
+            step={1}
+          />
+          <LiveHint>every {curr}{base_earn_divisor}</LiveHint>
         </div>
- 
-        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-gray-50 flex gap-3">
-          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-white">Cancel</button>
-          <button onClick={save} disabled={saving} className="flex-1 px-4 py-2 text-sm bg-gray-900 text-white rounded-xl hover:bg-gray-800 disabled:opacity-60">
-            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create survey'}
-          </button>
+        <div>
+          <FieldLabel>1 pt = {curr}X</FieldLabel>
+          <TextInput
+            type="number"
+            value={base_points_value}
+            onChange={v => onChange('base_points_value', Math.max(0.001, Number(v)))}
+            min={0.001}
+            step={0.01}
+          />
+          <LiveHint>1 pt ≈ {curr}{base_points_value}</LiveHint>
+        </div>
+      </div>
+
+      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-5 flex items-start gap-3">
+        <Info className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-indigo-900">Live preview</p>
+          <p className="text-sm text-indigo-700 mt-1">
+            For a {curr}{exampleSpend.toLocaleString()} order, a member earns{' '}
+            <span className="font-bold">{earned.toFixed(0)} {points_name || 'pts'}</span>{' '}
+            worth{' '}
+            <span className="font-bold">{curr}{worth.toFixed(2)}</span>
+          </p>
         </div>
       </div>
     </div>
   );
 }
- 
-// ─── Earn Section Accordion ───────────────────────────────────────────────────
-function EarnSection({ section, rules, tiers, loading, expanded, onToggle, onAdd, onEdit, onToggleRule, onDelete, surveys, onGoSurveys }: {
-  section: typeof EARN_SECTIONS[0];
-  rules: EarningRule[];
-  tiers: LoyaltyTier[];
-  loading: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-  onAdd: () => void;
-  onEdit: (r: EarningRule) => void;
-  onToggleRule: (r: EarningRule) => void;
-  onDelete: (id: string) => void;
-  surveys: Survey[];
-  onGoSurveys: () => void;
-}) {
-  const colors = COLOR_MAP[section.color] ?? COLOR_MAP.blue;
-  const activeCount = section.rule_type === 'survey'
-    ? surveys.filter(s => s.is_active).length
-    : rules.filter(r => r.is_active).length;
- 
-  // Referral trigger label helper
-  function referralTriggerLabel(r: EarningRule) {
-    if (r.referral_trigger === 'signup') return `+${r.referral_signup_points ?? 0} pts on signup`;
-    if (r.referral_trigger === 'first_order') return `+${r.referral_first_order_points ?? r.points_reward} pts on first order`;
-    if (r.referral_trigger === 'both') return `+${r.referral_signup_points ?? 0} signup · +${r.referral_first_order_points ?? r.points_reward} first order`;
-    return `+${r.points_reward} pts`;
-  }
- 
+
+// ─── Perk editor ────────────────────────────────────────────────────────────────
+
+function PerkEditor({ perks, onChange }: { perks: Perk[]; onChange: (p: Perk[]) => void }) {
+  const update = (type: string, patch: Partial<Perk>) => {
+    const updated = perks.map(p => p.type === type ? { ...p, ...patch } : p);
+    onChange(updated);
+  };
+
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-      <button onClick={onToggle} className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50/60 transition-colors text-left">
-        <div className={`w-10 h-10 rounded-xl ${colors.bg} border ${colors.border} flex items-center justify-center text-xl flex-shrink-0`}>
-          {section.icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-gray-900">{section.title}</span>
-            {activeCount > 0 && (
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors.badge}`}>
-                {activeCount} active
-              </span>
-            )}
-            {section.tierDriven && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">Tier-driven</span>
-            )}
+    <div className="space-y-2">
+      {PERK_TYPES.map(pt => {
+        const perk = perks.find(p => p.type === pt.type) ?? { type: pt.type, enabled: false };
+        return (
+          <div key={pt.type} className="flex items-start gap-3 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2.5">
+            <ToggleSwitch checked={perk.enabled} onChange={v => update(pt.type, { enabled: v })} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-gray-800 leading-tight">{pt.label}</p>
+              {perk.enabled && pt.hasValue && (
+                <div className="mt-2 flex items-center gap-2">
+                  <TextInput
+                    type="number"
+                    value={perk.value ?? 2}
+                    onChange={v => update(pt.type, { value: Number(v) })}
+                    min={1}
+                    step={0.5}
+                    className="!w-24"
+                  />
+                  <span className="text-xs text-gray-500">{pt.valueSuffix}</span>
+                </div>
+              )}
+              {perk.enabled && pt.hasLabel && (
+                <div className="mt-2">
+                  <TextInput
+                    value={perk.label ?? ''}
+                    onChange={v => update(pt.type, { label: v })}
+                    placeholder="Describe this perk…"
+                  />
+                </div>
+              )}
+            </div>
           </div>
-          <p className="text-xs text-gray-500 mt-0.5 truncate">{section.subtitle}</p>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Tier card ──────────────────────────────────────────────────────────────────
+
+function TierCard({
+  tier,
+  index,
+  program,
+  allTiers,
+  onUpdate,
+  onRemove,
+  canRemove,
+}: {
+  tier: LoyaltyTier;
+  index: number;
+  program: Omit<LoyaltyProgram, 'id' | 'client_id'>;
+  allTiers: LoyaltyTier[];
+  onUpdate: (patch: Partial<LoyaltyTier>) => void;
+  onRemove: () => void;
+  canRemove: boolean;
+}) {
+  const [expanded, setExpanded] = useState(index === 0);
+  const { base_earn_rate, base_earn_divisor, points_name, currency } = program;
+  const curr = currency === 'INR' ? '₹' : currency === 'USD' ? '$' : 'د.إ';
+
+  const isDuplicate = allTiers.some(
+    (t, i) =>
+      i !== index &&
+      t.tier_name.trim().toLowerCase() === tier.tier_name.trim().toLowerCase() &&
+      t.tier_name.trim() !== ''
+  );
+
+  const derivedRate = (base_earn_rate * tier.earn_multiplier).toFixed(1);
+
+  const qualConditions: {
+    field: keyof LoyaltyTier;
+    label: string;
+    prefix: string;
+    relevant: boolean;
+  }[] = [
+    {
+      field: 'min_lifetime_spend',
+      label: `Min lifetime spend (${curr})`,
+      prefix: curr,
+      relevant:
+        tier.qualification_mode !== 'points_only' &&
+        tier.qualification_mode !== 'orders_only',
+    },
+    {
+      field: 'min_orders',
+      label: 'Min orders placed',
+      prefix: '',
+      relevant:
+        tier.qualification_mode !== 'points_only' &&
+        tier.qualification_mode !== 'spend_only',
+    },
+    {
+      field: 'min_lifetime_points',
+      label: 'Min lifetime points',
+      prefix: '',
+      relevant:
+        tier.qualification_mode !== 'spend_only' &&
+        tier.qualification_mode !== 'orders_only',
+    },
+  ];
+
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+      {/* Header row */}
+      <button
+        type="button"
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center gap-3 px-4 py-3.5 bg-white hover:bg-gray-50 transition-colors text-left"
+      >
+        <div
+          className="w-3.5 h-3.5 rounded-full shrink-0 ring-1 ring-black/10"
+          style={{ backgroundColor: tier.color_code }}
+        />
+        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-gray-900 truncate">
+            {tier.tier_name || <span className="text-gray-400 italic font-normal">Untitled tier</span>}
+          </span>
+          {tier.is_default ? (
+            <span className="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium shrink-0">
+              Entry tier · All new members
+            </span>
+          ) : (
+            <span className="text-xs bg-purple-100 text-purple-700 rounded-full px-2 py-0.5 font-medium shrink-0">
+              Tier {tier.tier_level} · {tier.earn_multiplier}× earn
+            </span>
+          )}
         </div>
-        <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        {canRemove && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); onRemove(); }}
+            className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded flex-shrink-0"
+            title="Remove tier"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
+        {expanded
+          ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" />
+          : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />}
       </button>
- 
+
+      {/* Expanded body */}
       {expanded && (
-        <div className="px-5 pb-4 border-t border-gray-100">
- 
-          {/* ── Purchase: show tiers inline ───────────────────────────── */}
-          {section.tierDriven && section.rule_type === 'purchase' && (
-            <div className="pt-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-500">Earn rates are configured in your loyalty tiers below.</p>
-                <a href="/client/loyalty-points" className="text-xs text-blue-600 hover:text-blue-700 font-medium">Edit tiers →</a>
+        <div className="border-t border-gray-100 bg-gray-50 px-5 py-5 space-y-6">
+
+          {/* Tier name + color */}
+          <div>
+            <SectionTitle>Tier identity</SectionTitle>
+            <FieldLabel>Tier name</FieldLabel>
+            <TextInput
+              value={tier.tier_name}
+              onChange={v => onUpdate({ tier_name: v })}
+              placeholder="e.g. Silver · Gold · Platinum"
+              className={isDuplicate ? 'border-red-400 focus:ring-red-400' : ''}
+            />
+            {isDuplicate && (
+              <p className="mt-1 text-xs text-red-500">Tier names must be unique.</p>
+            )}
+            <div className="mt-3">
+              <FieldLabel>Colour</FieldLabel>
+              <ColorDotPicker value={tier.color_code} onChange={c => onUpdate({ color_code: c })} />
+            </div>
+          </div>
+
+          {/* Entry tier note */}
+          {tier.is_default && (
+            <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
+              <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+              <p className="text-sm text-blue-700">All new members start here. No qualification needed.</p>
+            </div>
+          )}
+
+          {/* Earn rate */}
+          <div>
+            <SectionTitle>Earn rate</SectionTitle>
+            {tier.is_default ? (
+              <div className="flex items-center gap-3">
+                <span className="inline-flex items-center bg-gray-200 text-gray-600 text-sm font-semibold rounded-lg px-3 py-1.5">
+                  1× (base)
+                </span>
+                <span className="text-xs text-gray-500">
+                  = {base_earn_rate} {points_name || 'pts'} per {curr}{base_earn_divisor}
+                </span>
               </div>
-              {tiers.length === 0 ? (
-                <div className="p-3 bg-gray-50 rounded-xl text-center text-xs text-gray-400">
-                  No tiers configured. <a href="/client/loyalty-points" className="text-blue-600 hover:underline">Set up tiers →</a>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {tiers.map(t => (
-                    <div key={t.id} className={`flex items-center gap-3 p-3 rounded-xl border ${t.is_default ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-100'}`}>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-gray-900">{t.tier_name}</span>
-                          {t.is_default && <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">Default</span>}
-                          <span className="text-xs text-gray-400">Level {t.tier_level}</span>
-                        </div>
-                        <div className="flex items-center gap-3 mt-0.5">
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${colors.badge}`}>
-                            {t.points_earn_rate} pts / ₹{t.points_earn_divisor}
-                          </span>
-                          <span className="text-xs text-gray-400">Min spend ₹{t.min_spend}</span>
-                          <span className="text-xs text-gray-400">Min orders {t.min_orders}</span>
-                        </div>
-                      </div>
+            ) : (
+              <div className="max-w-xs">
+                <FieldLabel hint="(min 1.0, step 0.5)">Earn multiplier</FieldLabel>
+                <TextInput
+                  type="number"
+                  value={tier.earn_multiplier}
+                  onChange={v => {
+                    const m = Math.max(1, Number(v));
+                    onUpdate({
+                      earn_multiplier: m,
+                      points_earn_rate: base_earn_rate * m,
+                    });
+                  }}
+                  min={1}
+                  step={0.5}
+                />
+                <LiveHint>= {derivedRate} {points_name || 'pts'} per {curr}{base_earn_divisor}</LiveHint>
+              </div>
+            )}
+          </div>
+
+          {/* Qualification — non-default only */}
+          {!tier.is_default && (
+            <div>
+              <SectionTitle>How members qualify</SectionTitle>
+
+              {/* Mode picker */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+                {(
+                  [
+                    ['any', 'Any one', 'Spend OR orders OR points'],
+                    ['all', 'All of', 'Must meet every condition'],
+                    ['points_only', 'Points only', 'Lifetime points only'],
+                  ] as [QualMode, string, string][]
+                ).map(([v, l, d]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => onUpdate({ qualification_mode: v })}
+                    className={`p-3 rounded-lg border text-left transition-colors ${
+                      tier.qualification_mode === v
+                        ? 'border-indigo-500 bg-indigo-50'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className={`w-3 h-3 rounded-full border-2 shrink-0 ${
+                          tier.qualification_mode === v
+                            ? 'border-indigo-500 bg-indigo-500'
+                            : 'border-gray-300'
+                        }`}
+                      />
+                      <span className="text-xs font-semibold text-gray-800">{l}</span>
                     </div>
-                  ))}
+                    <p className="text-xs text-gray-500 mt-1 ml-4.5">{d}</p>
+                  </button>
+                ))}
+              </div>
+
+              {/* Condition inputs */}
+              <div className="space-y-3">
+                {qualConditions.map(cond => (
+                  <div
+                    key={cond.field as string}
+                    className={`transition-opacity ${!cond.relevant ? 'opacity-40 pointer-events-none' : ''}`}
+                  >
+                    <FieldLabel>{cond.label}</FieldLabel>
+                    <TextInput
+                      type="number"
+                      value={tier[cond.field] as number}
+                      onChange={v => onUpdate({ [cond.field]: Number(v) } as Partial<LoyaltyTier>)}
+                      min={0}
+                      disabled={!cond.relevant}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                <div>
+                  <FieldLabel>Qualification period</FieldLabel>
+                  <DropdownSelect
+                    value={tier.qualification_period}
+                    onChange={v => onUpdate({ qualification_period: v as QualPeriod })}
+                  >
+                    <option value="lifetime">Lifetime (permanent)</option>
+                    <option value="rolling_12_months">Rolling 12 months</option>
+                    <option value="calendar_year">Calendar year (resets Jan 1)</option>
+                  </DropdownSelect>
                 </div>
-              )}
-              {/* Keep the purchase rule toggle for on/off */}
-              {rules.length > 0 && (
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs text-gray-500">Purchase points enabled</span>
-                  <Toggle checked={rules[0].is_active} onChange={() => onToggleRule(rules[0])} />
+                <div>
+                  <FieldLabel>Downgrade policy</FieldLabel>
+                  <DropdownSelect
+                    value={tier.downgrade_policy}
+                    onChange={v => onUpdate({ downgrade_policy: v as DowngradePolicy })}
+                  >
+                    <option value="never">Never downgrade</option>
+                    <option value="rolling_period">Downgrade if not re-qualified</option>
+                    <option value="calendar_year">Grace period then downgrade</option>
+                  </DropdownSelect>
+                </div>
+              </div>
+
+              {tier.downgrade_policy === 'calendar_year' && (
+                <div className="mt-3 max-w-xs">
+                  <FieldLabel>Grace period (days)</FieldLabel>
+                  <TextInput
+                    type="number"
+                    value={tier.downgrade_grace_days}
+                    onChange={v => onUpdate({ downgrade_grace_days: Math.max(0, Number(v)) })}
+                    min={0}
+                  />
                 </div>
               )}
             </div>
           )}
- 
-          {/* ── Survey section ────────────────────────────────────────── */}
-          {(section as any).external && section.rule_type === 'survey' && (
-            <div className="pt-4">
-              {surveys.length === 0 ? (
-                <div className="text-center py-6">
-                  <p className="text-sm text-gray-400 mb-3">No surveys yet. Create one to reward members for feedback.</p>
-                  <button onClick={onGoSurveys} className="px-4 py-2 text-sm bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors">
-                    Go to Surveys →
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2 pt-2">
-                  {surveys.map(s => (
-                    <div key={s.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 truncate">{s.title}</div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${colors.badge}`}>+{s.points_reward} pts</span>
-                          <span className="text-xs text-gray-400">{s.questions.length} questions · {s.total_completions} completions</span>
-                        </div>
-                      </div>
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.is_active ? 'bg-emerald-500' : 'bg-gray-300'}`} />
-                    </div>
-                  ))}
-                  <button onClick={onGoSurveys} className="text-xs text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1 pt-1">
-                    Manage all surveys →
-                  </button>
-                </div>
-              )}
+
+          {/* Redemption limits */}
+          <div>
+            <SectionTitle>Redemption limits</SectionTitle>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <FieldLabel>Max % of order (0–100)</FieldLabel>
+                <TextInput
+                  type="number"
+                  value={tier.max_redemption_percent}
+                  onChange={v => onUpdate({ max_redemption_percent: Math.min(100, Math.max(0, Number(v))) })}
+                  min={0}
+                  max={100}
+                />
+              </div>
+              <div>
+                <FieldLabel hint="(0 = no cap)">Max points per order</FieldLabel>
+                <TextInput
+                  type="number"
+                  value={tier.max_redemption_points ?? 0}
+                  onChange={v =>
+                    onUpdate({ max_redemption_points: Number(v) === 0 ? null : Number(v) })
+                  }
+                  min={0}
+                />
+              </div>
+              <div>
+                <FieldLabel>Min points to redeem</FieldLabel>
+                <TextInput
+                  type="number"
+                  value={tier.min_redemption_points}
+                  onChange={v => onUpdate({ min_redemption_points: Math.max(0, Number(v)) })}
+                  min={0}
+                />
+              </div>
+              <div>
+                <FieldLabel>Min order value ({curr})</FieldLabel>
+                <TextInput
+                  type="number"
+                  value={tier.min_order_value_to_redeem}
+                  onChange={v => onUpdate({ min_order_value_to_redeem: Math.max(0, Number(v)) })}
+                  min={0}
+                />
+              </div>
+              <div>
+                <FieldLabel hint="(redemption increments)">Step size (pts)</FieldLabel>
+                <TextInput
+                  type="number"
+                  value={tier.redemption_step_size}
+                  onChange={v => onUpdate({ redemption_step_size: Math.max(1, Number(v)) })}
+                  min={1}
+                />
+              </div>
             </div>
-          )}
- 
-          {/* ── Normal rules ─────────────────────────────────────────── */}
-          {!section.tierDriven && !(section as any).external && (
-            <>
-              {loading ? (
-                <div className="space-y-2 pt-3">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-14" />)}</div>
-              ) : rules.length === 0 ? (
-                <div className="text-center py-6">
-                  <p className="text-sm text-gray-400 mb-3">No rules configured yet</p>
-                  {section.addLabel && (
-                    <button onClick={onAdd} className={`px-4 py-2 text-sm text-white rounded-xl transition-colors ${colors.btn}`}>
-                      + {section.addLabel}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2 pt-3">
-                  {rules.map(rule => (
-                    <div key={rule.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 group">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-gray-900">{rule.name}</span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${colors.badge}`}>
-                            {rule.rule_type === 'referral' ? referralTriggerLabel(rule) : `+${rule.points_reward} pts`}
-                          </span>
-                          {rule.rule_type === 'referral' && rule.referral_trigger && (
-                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium capitalize">
-                              {rule.referral_trigger === 'both' ? 'Signup + First order' : rule.referral_trigger === 'first_order' ? 'First order' : 'Signup'}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          {rule.rule_type === 'referral' && rule.referral_discount_value && rule.referral_discount_value > 0 && (
-                            <span className="text-xs text-gray-400">
-                              Referred gets {rule.referral_discount_type === 'flat' ? `₹${rule.referral_discount_value}` : `${rule.referral_discount_value}%`} off
-                            </span>
-                          )}
-                          {rule.max_times_per_customer != null && rule.max_times_per_customer > 0 && rule.rule_type !== 'referral' && (
-                            <span className="text-xs text-gray-400">Max {rule.max_times_per_customer}x</span>
-                          )}
-                          {rule.cooldown_days != null && rule.cooldown_days > 0 && (
-                            <span className="text-xs text-gray-400">{rule.cooldown_days}d cooldown</span>
-                          )}
-                          {rule.max_referrals_per_day != null && rule.rule_type === 'referral' && (
-                            <span className="text-xs text-gray-400">Max {rule.max_referrals_per_day}/day</span>
-                          )}
-                          {rule.referral_min_order_value != null && rule.referral_min_order_value > 0 && (
-                            <span className="text-xs text-gray-400">Min order ₹{rule.referral_min_order_value}</span>
-                          )}
-                          {rule.social_platform && (
-                            <span className="text-xs text-gray-400 capitalize">{rule.social_platform}</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => onEdit(rule)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                        </button>
-                        <button onClick={() => onDelete(rule.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        </button>
-                      </div>
-                      <Toggle checked={rule.is_active} onChange={() => onToggleRule(rule)} />
-                    </div>
-                  ))}
-                  {section.addLabel && (
-                    <button onClick={onAdd} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 transition-colors px-1 py-1">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                      + {section.addLabel}
-                    </button>
-                  )}
-                </div>
-              )}
-            </>
-          )}
+          </div>
+
+          {/* Perks */}
+          <div>
+            <SectionTitle>Tier perks</SectionTitle>
+            <PerkEditor perks={tier.perks} onChange={p => onUpdate({ perks: p })} />
+          </div>
         </div>
       )}
     </div>
   );
 }
- 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+
+// ─── Step 3 — Membership Tiers ─────────────────────────────────────────────────
+
+function Step3({
+  tiers,
+  program,
+  onUpdate,
+  onAdd,
+  onRemove,
+}: {
+  tiers: LoyaltyTier[];
+  program: Omit<LoyaltyProgram, 'id' | 'client_id'>;
+  onUpdate: (index: number, patch: Partial<LoyaltyTier>) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900 mb-1">Membership Tiers</h3>
+          <p className="text-sm text-gray-500">Configure each tier's earn rate, qualification, and perks.</p>
+        </div>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          Add tier
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {tiers
+          .slice()
+          .sort((a, b) => a.tier_level - b.tier_level)
+          .map((tier, i) => {
+            const originalIndex = tiers.indexOf(tier);
+            return (
+              <TierCard
+                key={tier.id ?? `new-${tier.tier_level}`}
+                tier={tier}
+                index={i}
+                program={program}
+                allTiers={tiers}
+                onUpdate={patch => onUpdate(originalIndex, patch)}
+                onRemove={() => onRemove(originalIndex)}
+                canRemove={!tier.is_default && tiers.length > 1}
+              />
+            );
+          })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Step 4 — Redemption & Save ────────────────────────────────────────────────
+
+function Step4({
+  program,
+  tiers,
+  saving,
+  onSave,
+}: {
+  program: Omit<LoyaltyProgram, 'id' | 'client_id'>;
+  tiers: LoyaltyTier[];
+  saving: boolean;
+  onSave: () => void;
+}) {
+  const entryTier = tiers.find(t => t.is_default) ?? tiers[0];
+  const { points_name, currency, base_earn_rate, base_earn_divisor } = program;
+  const curr = currency === 'INR' ? '₹' : currency === 'USD' ? '$' : 'د.إ';
+  const sorted = [...tiers].sort((a, b) => a.tier_level - b.tier_level);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-base font-semibold text-gray-900 mb-1">Redemption Review & Save</h3>
+        <p className="text-sm text-gray-500">
+          Review everything before saving. Entry tier settings serve as the global baseline.
+        </p>
+      </div>
+
+      {/* Entry tier redemption summary */}
+      {entryTier && (
+        <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
+          <p className="text-sm font-semibold text-blue-900 mb-3">
+            Entry tier redemption rules
+          </p>
+          <ul className="space-y-1.5">
+            {[
+              `Cart value ≥ ${curr}${entryTier.min_order_value_to_redeem.toLocaleString()}`,
+              `Member has ≥ ${entryTier.min_redemption_points} ${points_name}`,
+              `Max ${entryTier.max_redemption_percent}% of order value`,
+              entryTier.max_redemption_points
+                ? `No more than ${entryTier.max_redemption_points} ${points_name} per order`
+                : 'No hard cap on points per order',
+              `Redemption step: ${entryTier.redemption_step_size} pt increments`,
+            ].map(line => (
+              <li key={line} className="text-sm text-blue-700 flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Tier earn rate table */}
+      <div>
+        <p className="text-sm font-semibold text-gray-700 mb-3">Tier earn rates</p>
+        <div className="space-y-2">
+          {sorted.map(t => {
+            const rate = (base_earn_rate * t.earn_multiplier).toFixed(1);
+            return (
+              <div
+                key={t.tier_name}
+                className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3"
+              >
+                <div
+                  className="w-3 h-3 rounded-full shrink-0"
+                  style={{ backgroundColor: t.color_code }}
+                />
+                <span className="flex-1 text-sm font-medium text-gray-900">
+                  {t.tier_name || <span className="text-gray-400 italic font-normal">Untitled</span>}
+                  {t.is_default && (
+                    <span className="ml-1.5 text-xs text-gray-400 font-normal">(entry)</span>
+                  )}
+                </span>
+                <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 rounded px-2 py-0.5">
+                  {t.earn_multiplier}×
+                </span>
+                <span className="text-xs text-gray-500 hidden sm:block">
+                  {rate} {points_name || 'pts'} per {curr}{base_earn_divisor}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Program summary */}
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
+        <p className="text-sm font-semibold text-gray-700 mb-3">Program summary</p>
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+          {[
+            ['Program name', program.program_name || '—'],
+            ['Currency', program.currency],
+            ['Points name', `${program.points_name} / ${program.points_name_singular}`],
+            ['Welcome bonus', `${program.welcome_bonus_points} ${program.points_name}`],
+            ['Points expiry', program.points_expiry_days ? `${program.points_expiry_days} days` : 'Never'],
+            ['Redemption', program.allow_redemption ? 'Enabled' : 'Disabled'],
+            ['Tiers', `${tiers.length} tier${tiers.length !== 1 ? 's' : ''}`],
+          ].map(([k, v]) => (
+            <div key={k} className="flex gap-2">
+              <dt className="text-gray-500 w-32 shrink-0">{k}</dt>
+              <dd className="text-gray-900 font-medium">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+          className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors shadow-sm"
+        >
+          {saving ? (
+            <>
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              Saving…
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" />
+              Save program
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Toast notification ──────────────────────────────────────────────────────────
+
+function Toast({ message, type }: { message: string; type: 'success' | 'error' }) {
+  return (
+    <div
+      className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium pointer-events-none ${
+        type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+      }`}
+    >
+      {type === 'success' ? <Check className="w-4 h-4" /> : <Info className="w-4 h-4" />}
+      {message}
+    </div>
+  );
+}
+
+// ─── Main page ──────────────────────────────────────────────────────────────────
+
 export default function LoyaltyProgramPage() {
   const { profile } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
   const clientId = profile?.client_id ?? '';
- 
-  const activeTab = (searchParams.get('tab') as TabId) || 'earn';
-  const setTab = (t: TabId) => setSearchParams({ tab: t }, { replace: true });
- 
-  const [earningRules, setEarningRules] = useState<EarningRule[]>([]);
-  const [surveys, setSurveys]           = useState<Survey[]>([]);
-  const [tiers, setTiers]               = useState<LoyaltyTier[]>([]);
-  const [program, setProgram]           = useState<LoyaltyProgram | null>(null);
-  const [loading, setLoading]           = useState(true);
-  const [expandedSections, setExpanded] = useState<Set<string>>(new Set(['purchase', 'referral']));
- 
-  const [ruleEditor, setRuleEditor]     = useState<{ open: boolean; rule: Partial<EarningRule> | null; type: string }>({ open: false, rule: null, type: 'signup' });
-  const [surveyEditor, setSurveyEditor] = useState<{ open: boolean; survey: Partial<Survey> | null }>({ open: false, survey: null });
- 
-  const fetchAll = useCallback(async () => {
-    if (!clientId) return;
-    setLoading(true);
-    const [rulesRes, surveysRes, programRes] = await Promise.all([
-      supabase.from('loyalty_earning_rules').select('*').eq('client_id', clientId).order('created_at'),
-      supabase.from('loyalty_surveys').select('*').eq('client_id', clientId).order('created_at', { ascending: false }),
-      supabase.from('loyalty_programs').select('*').eq('client_id', clientId).maybeSingle(),
-    ]);
-    setEarningRules(rulesRes.data ?? []);
-    setSurveys(surveysRes.data ?? []);
-    setProgram(programRes.data ?? null);
- 
-    // Fetch tiers via program id
-    if (programRes.data?.id) {
-      const { data: tierData } = await supabase
-        .from('loyalty_tiers')
-        .select('*')
-        .eq('loyalty_program_id', programRes.data.id)
-        .order('tier_level');
-      setTiers(tierData ?? []);
-    }
-    setLoading(false);
+
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const [programId, setProgramId] = useState<string | null>(null);
+  const [program, setProgram] = useState<Omit<LoyaltyProgram, 'id' | 'client_id'>>(EMPTY_PROGRAM);
+  const [tiers, setTiers] = useState<LoyaltyTier[]>([makeDefaultTier(1, true)]);
+  const [deletedTierIds, setDeletedTierIds] = useState<string[]>([]);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    const t = window.setTimeout(() => setToast(null), 3500);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  // ── Load data ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!clientId) { setLoading(false); return; }
+
+    (async () => {
+      setLoading(true);
+      try {
+        const { data: prog } = await supabase
+          .from('loyalty_programs')
+          .select('*')
+          .eq('client_id', clientId)
+          .maybeSingle();
+
+        if (prog) {
+          setProgramId(prog.id);
+          setProgram({
+            program_name: prog.program_name ?? '',
+            points_name: prog.points_name ?? 'Points',
+            points_name_singular: prog.points_name_singular ?? 'Point',
+            is_active: prog.is_active ?? true,
+            currency: prog.currency ?? 'INR',
+            allow_redemption: prog.allow_redemption ?? true,
+            points_expiry_days: prog.points_expiry_days ?? null,
+            welcome_bonus_points: prog.welcome_bonus_points ?? 0,
+            referral_reward_trigger: prog.referral_reward_trigger ?? 'first_order',
+            base_earn_rate: prog.base_earn_rate ?? BASE_EARN_RATE_DEFAULT,
+            base_earn_divisor: prog.base_earn_divisor ?? BASE_EARN_DIVISOR_DEFAULT,
+            base_points_value: prog.base_points_value ?? 0.1,
+          });
+
+          const { data: tierRows } = await supabase
+            .from('loyalty_tiers')
+            .select('*')
+            .eq('loyalty_program_id', prog.id)
+            .order('tier_level');
+
+          if (tierRows && tierRows.length > 0) {
+            setTiers(
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              tierRows.map((t: any): LoyaltyTier => ({
+                id: t.id,
+                loyalty_program_id: t.loyalty_program_id,
+                tier_name: t.tier_name ?? '',
+                tier_level: t.tier_level ?? 1,
+                is_default: t.is_default ?? false,
+                color_code: t.color_code ?? '#3b82f6',
+                qualification_mode: t.qualification_mode ?? 'any',
+                min_lifetime_spend: t.min_lifetime_spend ?? 0,
+                min_orders: t.min_orders ?? 0,
+                min_lifetime_points: t.min_lifetime_points ?? 0,
+                qualification_period: t.qualification_period ?? 'lifetime',
+                tier_duration_days: t.tier_duration_days ?? null,
+                earn_multiplier: t.earn_multiplier ?? 1,
+                category_multipliers: t.category_multipliers ?? {},
+                points_earn_rate: t.points_earn_rate ?? BASE_EARN_RATE_DEFAULT,
+                points_earn_divisor: t.points_earn_divisor ?? BASE_EARN_DIVISOR_DEFAULT,
+                points_value: t.points_value ?? 0.1,
+                max_redemption_percent: t.max_redemption_percent ?? 100,
+                max_redemption_points: t.max_redemption_points ?? null,
+                min_redemption_points: t.min_redemption_points ?? 10,
+                min_order_value_to_redeem: t.min_order_value_to_redeem ?? 500,
+                redemption_step_size: t.redemption_step_size ?? 1,
+                perks:
+                  Array.isArray(t.perks) && t.perks.length > 0
+                    ? DEFAULT_PERKS.map(dp => {
+                        const saved = (t.perks as Perk[]).find(p => p.type === dp.type);
+                        return saved ? { ...dp, ...saved } : dp;
+                      })
+                    : [...DEFAULT_PERKS],
+                benefits_description: t.benefits_description ?? '',
+                downgrade_policy: t.downgrade_policy ?? 'never',
+                downgrade_grace_days: t.downgrade_grace_days ?? 30,
+              }))
+            );
+          }
+        }
+      } catch (err) {
+        console.error('Error loading loyalty program:', err);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [clientId]);
- 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
- 
-  function toggleSection(t: string) {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      next.has(t) ? next.delete(t) : next.add(t);
-      return next;
+
+  // ── State handlers ───────────────────────────────────────────────────────────
+  const updateProgram = useCallback(
+    <K extends keyof Omit<LoyaltyProgram, 'id' | 'client_id'>>(
+      k: K,
+      v: Omit<LoyaltyProgram, 'id' | 'client_id'>[K]
+    ) => {
+      setProgram(p => ({ ...p, [k]: v }));
+    },
+    []
+  );
+
+  const updateTier = useCallback((index: number, patch: Partial<LoyaltyTier>) => {
+    setTiers(ts => ts.map((t, i) => (i === index ? { ...t, ...patch } : t)));
+  }, []);
+
+  const addTier = useCallback(() => {
+    setTiers(ts => {
+      const maxLevel = Math.max(...ts.map(t => t.tier_level));
+      return [...ts, makeDefaultTier(maxLevel + 1, false)];
     });
-  }
- 
-  async function toggleRule(rule: EarningRule) {
-    await supabase.from('loyalty_earning_rules').update({ is_active: !rule.is_active }).eq('id', rule.id);
-    setEarningRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r));
-  }
- 
-  async function deleteRule(id: string) {
-    if (!window.confirm('Delete this rule?')) return;
-    await supabase.from('loyalty_earning_rules').delete().eq('id', id);
-    setEarningRules(prev => prev.filter(r => r.id !== id));
-  }
- 
-  async function toggleSurvey(s: Survey) {
-    await supabase.from('loyalty_surveys').update({ is_active: !s.is_active }).eq('id', s.id);
-    setSurveys(prev => prev.map(x => x.id === s.id ? { ...x, is_active: !x.is_active } : x));
-  }
- 
-  async function deleteSurvey(id: string) {
-    if (!window.confirm('Delete this survey?')) return;
-    await supabase.from('loyalty_surveys').delete().eq('id', id);
-    setSurveys(prev => prev.filter(x => x.id !== id));
-  }
- 
-  const programId = program?.id ?? '';
-  const totalActive = earningRules.filter(r => r.is_active).length + surveys.filter(s => s.is_active).length;
- 
-  const TABS = [
-    { id: 'earn' as TabId,    label: 'Ways to Earn', icon: '⭐' },
-    { id: 'surveys' as TabId, label: 'Surveys',      icon: '📋' },
-  ];
- 
-  return (
-    <>
-      <DashboardLayout menuItems={clientMenuItems} title="Ways to Earn Points">
-        <div className="max-w-4xl mx-auto px-4 py-2">
- 
-          {/* Header */}
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">Ways to Earn Points</h1>
-              <p className="text-sm text-gray-500 mt-0.5">Configure how customers earn loyalty points in your program</p>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-medium text-emerald-700">{totalActive} active rules</span>
-            </div>
+  }, []);
+
+  const removeTier = useCallback((index: number) => {
+    setTiers(ts => {
+      const tier = ts[index];
+      if (tier.id) {
+        setDeletedTierIds(ids => [...ids, tier.id!]);
+      }
+      return ts.filter((_, i) => i !== index);
+    });
+  }, []);
+
+  // ── Save ─────────────────────────────────────────────────────────────────────
+  const handleSave = useCallback(async () => {
+    if (!clientId) return;
+    setSaving(true);
+    try {
+      // 1. Upsert loyalty_programs
+      const progPayload = programId
+        ? { id: programId, client_id: clientId, ...program }
+        : { client_id: clientId, ...program };
+
+      const { data: savedProg, error: progErr } = await supabase
+        .from('loyalty_programs')
+        .upsert(progPayload, { onConflict: 'id' })
+        .select('id')
+        .single();
+
+      if (progErr) throw progErr;
+      const progId: string = savedProg.id;
+      if (!programId) setProgramId(progId);
+
+      // 2. Delete removed tiers
+      if (deletedTierIds.length > 0) {
+        const { error: delErr } = await supabase
+          .from('loyalty_tiers')
+          .delete()
+          .in('id', deletedTierIds);
+        if (delErr) throw delErr;
+        setDeletedTierIds([]);
+      }
+
+      // 3. Upsert tiers
+      const updatedTiers = [...tiers];
+      for (let i = 0; i < updatedTiers.length; i++) {
+        const tier = updatedTiers[i];
+        const base = {
+          loyalty_program_id: progId,
+          tier_name: tier.tier_name,
+          tier_level: tier.tier_level,
+          is_default: tier.is_default,
+          color_code: tier.color_code,
+          qualification_mode: tier.qualification_mode,
+          min_lifetime_spend: tier.min_lifetime_spend,
+          min_orders: tier.min_orders,
+          min_lifetime_points: tier.min_lifetime_points,
+          qualification_period: tier.qualification_period,
+          tier_duration_days: tier.tier_duration_days,
+          earn_multiplier: tier.earn_multiplier,
+          category_multipliers: tier.category_multipliers,
+          points_earn_rate: tier.points_earn_rate,
+          points_earn_divisor: tier.points_earn_divisor,
+          points_value: tier.points_value,
+          max_redemption_percent: tier.max_redemption_percent,
+          max_redemption_points: tier.max_redemption_points,
+          min_redemption_points: tier.min_redemption_points,
+          min_order_value_to_redeem: tier.min_order_value_to_redeem,
+          redemption_step_size: tier.redemption_step_size,
+          perks: tier.perks,
+          benefits_description: tier.benefits_description,
+          downgrade_policy: tier.downgrade_policy,
+          downgrade_grace_days: tier.downgrade_grace_days,
+        };
+        const payload = tier.id ? { id: tier.id, ...base } : base;
+        const { data: savedTier, error: tierErr } = await supabase
+          .from('loyalty_tiers')
+          .upsert(payload, { onConflict: 'id' })
+          .select('id')
+          .single();
+
+        if (tierErr) throw tierErr;
+
+        if (!tier.id && savedTier?.id) {
+          updatedTiers[i] = { ...tier, id: savedTier.id, loyalty_program_id: progId };
+        }
+      }
+      setTiers(updatedTiers);
+
+      showToast('Program saved successfully!', 'success');
+    } catch (err: unknown) {
+      console.error('Error saving loyalty program:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to save. Please try again.';
+      showToast(msg, 'error');
+    } finally {
+      setSaving(false);
+    }
+  }, [clientId, programId, program, tiers, deletedTierIds, showToast]);
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <DashboardLayout menuItems={clientMenuItems} title="Loyalty Program">
+        <div className="flex items-center justify-center h-64">
+          <div className="flex flex-col items-center gap-3">
+            <svg className="animate-spin w-8 h-8 text-indigo-500" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            <p className="text-sm text-gray-500">Loading your loyalty program…</p>
           </div>
- 
-          {/* Tabs */}
-          <div className="flex border-b border-gray-200 mb-6">
-            {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
-                  ${activeTab === t.id ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                <span>{t.icon}</span>
-                {t.label}
-                {t.id === 'surveys' && surveys.length > 0 && (
-                  <span className="ml-0.5 bg-gray-100 text-gray-600 text-xs px-1.5 py-0.5 rounded-full">{surveys.length}</span>
-                )}
-              </button>
-            ))}
-          </div>
- 
-          {/* ── Ways to Earn Tab ─────────────────────────────────────── */}
-          {activeTab === 'earn' && (
-            <div className="space-y-3">
-              {EARN_SECTIONS.map(section => (
-                <EarnSection
-                  key={section.rule_type}
-                  section={section}
-                  rules={earningRules.filter(r => r.rule_type === section.rule_type)}
-                  tiers={tiers}
-                  loading={loading}
-                  expanded={expandedSections.has(section.rule_type)}
-                  onToggle={() => toggleSection(section.rule_type)}
-                  onAdd={() => setRuleEditor({ open: true, rule: null, type: section.rule_type })}
-                  onEdit={rule => setRuleEditor({ open: true, rule, type: section.rule_type })}
-                  onToggleRule={toggleRule}
-                  onDelete={deleteRule}
-                  surveys={surveys}
-                  onGoSurveys={() => setTab('surveys')}
-                />
-              ))}
-            </div>
-          )}
- 
-          {/* ── Surveys Tab ──────────────────────────────────────────── */}
-          {activeTab === 'surveys' && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-900">Member Surveys</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Members earn points for completing surveys. Responses are recorded for your insights.</p>
-                </div>
-                <button onClick={() => setSurveyEditor({ open: true, survey: null })}
-                  className="flex items-center gap-2 px-4 py-2 text-sm bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors">
-                  + New Survey
-                </button>
-              </div>
- 
-              {loading ? (
-                <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24" />)}</div>
-              ) : surveys.length === 0 ? (
-                <div className="text-center py-16 bg-white border border-gray-200 rounded-2xl">
-                  <div className="text-4xl mb-3">📋</div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-1">No surveys yet</h3>
-                  <p className="text-sm text-gray-400 mb-4">Create surveys to collect customer feedback and reward members with points for participating.</p>
-                  <button onClick={() => setSurveyEditor({ open: true, survey: null })}
-                    className="px-4 py-2 text-sm bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors">
-                    Create first survey
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {surveys.map(s => (
-                    <div key={s.id} className="bg-white border border-gray-200 rounded-2xl p-4 hover:border-gray-300 transition-colors group">
-                      <div className="flex items-start gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-xl flex-shrink-0">📋</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="text-sm font-semibold text-gray-900">{s.title}</h3>
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">+{s.points_reward} pts</span>
-                            {!s.is_active && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Paused</span>}
-                          </div>
-                          {s.description && <p className="text-xs text-gray-500 mb-2">{s.description}</p>}
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <span className="text-xs text-gray-400">{s.questions.length} question{s.questions.length !== 1 ? 's' : ''}</span>
-                            <span className="text-xs text-gray-400">{s.total_completions} completion{s.total_completions !== 1 ? 's' : ''}</span>
-                            {s.max_times_per_customer > 1 && <span className="text-xs text-gray-400">Max {s.max_times_per_customer}x per member</span>}
-                            {s.end_date && <span className="text-xs text-gray-400">Ends {new Date(s.end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => setSurveyEditor({ open: true, survey: s })}
-                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                          </button>
-                          <button onClick={() => deleteSurvey(s.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                          </button>
-                        </div>
-                        <Toggle checked={s.is_active} onChange={() => toggleSurvey(s)} />
-                      </div>
-                      {s.questions.length > 0 && (
-                        <div className="mt-3 pl-14">
-                          <div className="flex gap-1.5 flex-wrap">
-                            {s.questions.slice(0, 3).map((q, i) => (
-                              <span key={i} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full truncate max-w-[180px]">
-                                {i + 1}. {q.question || `Question ${i + 1}`}
-                              </span>
-                            ))}
-                            {s.questions.length > 3 && (
-                              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-400 rounded-full">+{s.questions.length - 3} more</span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </DashboardLayout>
- 
-      <RuleEditor
-        open={ruleEditor.open}
-        onClose={() => setRuleEditor(s => ({ ...s, open: false }))}
-        rule={ruleEditor.rule}
-        ruleType={ruleEditor.type}
-        clientId={clientId}
-        programId={programId}
-        onSaved={fetchAll}
-      />
- 
-      <SurveyEditor
-        open={surveyEditor.open}
-        onClose={() => setSurveyEditor(s => ({ ...s, open: false }))}
-        survey={surveyEditor.survey}
-        clientId={clientId}
-        onSaved={fetchAll}
-      />
-    </>
+    );
+  }
+
+  return (
+    <DashboardLayout menuItems={clientMenuItems} title="Loyalty Program">
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">Loyalty Program Setup</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Configure your points program, tier structure, and redemption rules.
+          </p>
+        </div>
+
+        <div className="flex gap-6 items-start">
+          {/* Left step sidebar */}
+          <nav className="hidden md:flex flex-col gap-1 w-52 shrink-0 sticky top-8">
+            {STEPS.map(s => {
+              const Icon = s.icon;
+              const isActive = step === s.id;
+              const isDone = step > s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setStep(s.id)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left ${
+                    isActive
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : isDone
+                      ? 'text-gray-600 hover:bg-gray-100'
+                      : 'text-gray-400 hover:bg-gray-50'
+                  }`}
+                >
+                  <div
+                    className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                      isActive
+                        ? 'bg-indigo-600 text-white'
+                        : isDone
+                        ? 'bg-green-500 text-white'
+                        : 'bg-gray-200 text-gray-400'
+                    }`}
+                  >
+                    {isDone ? <Check className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />}
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 font-normal leading-none mb-0.5">Step {s.id}</div>
+                    <div className="leading-tight">{s.label}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Right content panel */}
+          <div className="flex-1 min-w-0">
+            {/* Mobile step chips */}
+            <div className="flex md:hidden gap-1.5 mb-5 overflow-x-auto pb-1 -mx-1 px-1">
+              {STEPS.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setStep(s.id)}
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    step === s.id ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {s.id}. {s.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              {step === 1 && <Step1 program={program} onChange={updateProgram} />}
+              {step === 2 && <Step2 program={program} onChange={updateProgram} />}
+              {step === 3 && (
+                <Step3
+                  tiers={tiers}
+                  program={program}
+                  onUpdate={updateTier}
+                  onAdd={addTier}
+                  onRemove={removeTier}
+                />
+              )}
+              {step === 4 && (
+                <Step4 program={program} tiers={tiers} saving={saving} onSave={handleSave} />
+              )}
+            </div>
+
+            {/* Nav footer */}
+            <div className="flex justify-between mt-4">
+              <button
+                type="button"
+                onClick={() => setStep(s => Math.max(1, s - 1))}
+                disabled={step === 1}
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                ← Back
+              </button>
+              {step < 4 ? (
+                <button
+                  type="button"
+                  onClick={() => setStep(s => Math.min(4, s + 1))}
+                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  Next →
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Save className="w-4 h-4" />
+                  {saving ? 'Saving…' : 'Save program'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {toast && <Toast message={toast.message} type={toast.type} />}
+    </DashboardLayout>
   );
 }

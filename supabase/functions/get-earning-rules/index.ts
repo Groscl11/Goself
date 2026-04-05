@@ -31,22 +31,13 @@ Deno.serve(async (req: Request) => {
     // ── 1. Resolve client_id from shop_domain ─────────────────────────────────
     let clientId: string | null = null;
 
-    const { data: ic } = await supabase
-      .from("integration_configs")
+    const { data: si } = await supabase
+      .from("store_installations")
       .select("client_id")
       .eq("shop_domain", shopDomain)
+      .eq("installation_status", "active")
       .maybeSingle();
-    if (ic?.client_id) clientId = ic.client_id;
-
-    if (!clientId) {
-      const { data: si } = await supabase
-        .from("store_installations")
-        .select("client_id")
-        .eq("shop_domain", shopDomain)
-        .eq("installation_status", "active")
-        .maybeSingle();
-      if (si?.client_id) clientId = si.client_id;
-    }
+    if (si?.client_id) clientId = si.client_id;
 
     if (!clientId) return json({ error: "Shop not found", rules: [] }, 200);
 

@@ -22,6 +22,11 @@ export const clientMenuItems = [
     icon: <Coins className="w-5 h-5" />,
   },
   {
+    label: 'Program Setup (New)',
+    path: '/client/loyalty-program-setup',
+    icon: <Cog className="w-5 h-5" />,
+  },
+  {
     label: 'Loyalty Members',
     path: '/client/loyalty-members',
     icon: <Users className="w-5 h-5" />,

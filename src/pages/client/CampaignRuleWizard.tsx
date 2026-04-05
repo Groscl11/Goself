@@ -132,8 +132,8 @@ export function CampaignRuleWizard() {
   };
 
   const loadShopifyScopes = async () => {
-    const { data } = await supabase.from('integration_configs').select('shopify_scopes').eq('client_id', clientId).eq('platform', 'shopify').eq('status', 'connected').maybeSingle();
-    if (data?.shopify_scopes) setAvailableScopes(data.shopify_scopes);
+    const { data } = await supabase.from('store_installations').select('scopes').eq('client_id', clientId).eq('installation_status', 'active').maybeSingle();
+    if (data?.scopes) setAvailableScopes(data.scopes);
   };
 
   const loadAvailableRewards = async () => {
@@ -142,20 +142,27 @@ export function CampaignRuleWizard() {
 
     const { data: rewardsData } = await supabase.from('rewards').select(`
       id, title, description, value_description, image_url, category,
-      coupon_type, status, expiry_date,
-      brands ( id, name, logo_url ),
-      vouchers ( id, status )
-    `).eq('status', 'active').or('expiry_date.is.null,expiry_date.gt.' + new Date().toISOString());
+      coupon_type, status, expiry_date, owner_client_id, available_codes,
+      offer_type,
+      brands ( id, name, logo_url )
+    `)
+      .or(`owner_client_id.eq.${clientId},offer_type.eq.marketplace_offer`)
+      .or('expiry_date.is.null,expiry_date.gt.' + new Date().toISOString());
 
     if (rewardsData) {
-      const items: RewardPoolItem[] = rewardsData.map((r: any) => ({
-        id: r.id, title: r.title, description: r.description,
-        value_description: r.value_description, image_url: r.image_url,
-        category: r.category, coupon_type: r.coupon_type || 'unique',
-        status: r.status, expiry_date: r.expiry_date,
-        available_vouchers: (r.vouchers || []).filter((v: any) => v.status === 'available').length,
-        brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,
-      }));
+      const items: RewardPoolItem[] = rewardsData
+        // Exclude own marketplace_offer rewards
+        .filter((r: any) => !(r.offer_type === 'marketplace_offer' && r.owner_client_id === clientId))
+        // Exclude unique rewards with no available codes
+        .filter((r: any) => r.coupon_type !== 'unique' || (r.available_codes ?? 0) > 0)
+        .map((r: any) => ({
+          id: r.id, title: r.title, description: r.description,
+          value_description: r.value_description, image_url: r.image_url,
+          category: r.category, coupon_type: r.coupon_type || 'unique',
+          status: r.status, expiry_date: r.expiry_date,
+          available_vouchers: r.available_codes ?? 0,
+          brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,
+        }));
       setAllRewards(items);
       return items;
     }

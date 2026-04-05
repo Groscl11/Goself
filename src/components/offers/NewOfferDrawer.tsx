@@ -12,6 +12,7 @@ interface NewOfferDrawerProps {
   clientId: string;
   shopDomain: string;
   onCreated: () => void;
+  mode?: 'store' | 'marketplace';
 }
 
 const REWARD_TYPES: { value: RewardType; label: string }[] = [
@@ -20,7 +21,7 @@ const REWARD_TYPES: { value: RewardType; label: string }[] = [
   { value: 'free_item',            label: 'Free item' },
 ];
 
-export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated }: NewOfferDrawerProps) {
+export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated, mode = 'store' }: NewOfferDrawerProps) {
   const [flow, setFlow] = useState<Flow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -87,7 +88,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated 
         .insert({
           title: form.title.trim(),
           description: form.description.trim() || null,
-          offer_type: 'store_discount',
+          offer_type: mode === 'marketplace' ? 'marketplace_offer' : 'store_discount',
           code_source: codeSource,
           coupon_type: form.coupon_type,
           generic_coupon_code: form.coupon_type === 'generic' ? form.generic_coupon_code.trim() || null : null,
@@ -96,13 +97,12 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated 
           discount_value: form.discount_value ? Number(form.discount_value) : null,
           min_purchase_amount: form.min_purchase_amount ? Number(form.min_purchase_amount) : 0,
           currency: 'INR',
-          is_marketplace_listed: false,
           is_active: true,
           status: 'active',
           owner_client_id: clientId,
           client_id: clientId,
           valid_until: form.valid_until || null,
-          redeems_at_shop_domain: shopDomain,
+          redeems_at_shop_domain: mode === 'marketplace' ? null : shopDomain,
         })
         .select('id')
         .single();
@@ -163,8 +163,8 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated 
     <Drawer
       open={open}
       onClose={handleClose}
-      title="New store offer"
-      subtitle="Create a discount code offer for your store customers"
+      title={mode === 'marketplace' ? 'Submit marketplace offer' : 'New store offer'}
+      subtitle={mode === 'marketplace' ? 'Submit a discount offer to GoSelf marketplace for other clients to adopt' : 'Create a discount code offer for your store customers'}
       footer={
         flow ? (
           <div className="flex items-center gap-3">

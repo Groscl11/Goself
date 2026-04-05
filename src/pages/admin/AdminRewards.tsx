@@ -27,7 +27,8 @@ interface Reward {
   image_url: string | null;
   category: string;
   status: string;
-  is_marketplace: boolean;
+  is_marketplace?: boolean;
+  offer_type: string;
   voucher_count: number;
   expiry_date: string | null;
   brands: Brand;
@@ -51,7 +52,7 @@ interface RewardFormData {
   image_url: string;
   category: string;
   status: string;
-  is_marketplace: boolean;
+  offer_type: string;
   voucher_count: number;
   expiry_date: string;
 }
@@ -85,7 +86,7 @@ export function AdminRewards() {
     image_url: '',
     category: 'general',
     status: 'active',
-    is_marketplace: true,
+    offer_type: 'marketplace_offer',
     voucher_count: 0,
     expiry_date: '',
   });
@@ -107,7 +108,7 @@ export function AdminRewards() {
             name,
             logo_url
           ),
-          vouchers (id, status)
+          offer_codes (id, status)
         `)
         .order('created_at', { ascending: false });
 
@@ -127,7 +128,7 @@ export function AdminRewards() {
           isExpiringSoon,
           daysUntilExpiry,
           isAvailable: reward.status === 'active' && !isExpired,
-          unredeemedVouchers: (reward.vouchers ?? []).filter((v: any) => v.status === 'available').length,
+          unredeemedVouchers: (reward.offer_codes ?? []).filter((v: any) => v.status === 'available').length,
         };
       });
 
@@ -229,7 +230,7 @@ export function AdminRewards() {
       image_url: reward.image_url || '',
       category: reward.category,
       status: reward.status,
-      is_marketplace: reward.is_marketplace,
+      offer_type: reward.offer_type || 'marketplace_offer',
       voucher_count: reward.voucher_count,
       expiry_date: reward.expiry_date
         ? new Date(reward.expiry_date).toISOString().split('T')[0]
@@ -298,7 +299,7 @@ export function AdminRewards() {
           value_description: row.value_description,
           terms_conditions: row.terms_conditions,
           expiry_date: row.expiry_date,
-          is_marketplace: row.is_marketplace,
+          offer_type: row.is_marketplace ? 'marketplace_offer' : 'store_discount',
           status: row.status,
         };
 
@@ -325,7 +326,7 @@ export function AdminRewards() {
       image_url: '',
       category: 'general',
       status: 'active',
-      is_marketplace: true,
+      offer_type: 'marketplace_offer',
       voucher_count: 0,
       expiry_date: '',
     });

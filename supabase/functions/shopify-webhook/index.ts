@@ -40,34 +40,17 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Primary lookup: integration_configs (populated after OAuth setup)
-    const { data: integrationFromConfig } = await supabase
-      .from("integration_configs")
+    // Primary lookup: store_installations (source of truth for all store data)
+    const { data: storeInstall } = await supabase
+      .from("store_installations")
       .select("id, client_id, shopify_api_secret")
-      .eq("platform", "shopify")
       .eq("shop_domain", shopDomain)
-      .eq("status", "connected")
+      .eq("installation_status", "active")
       .maybeSingle();
 
-    // Fallback: store_installations — populated immediately at OAuth time even if
-    // integration_configs upsert hasn't run yet (e.g. first install race condition).
-    let integration: { id: string; client_id: string; shopify_api_secret: string | null } | null = integrationFromConfig;
-    if (!integration) {
-      const { data: storeInstall } = await supabase
-        .from("store_installations")
-        .select("id, client_id, shopify_api_secret")
-        .eq("shop_domain", shopDomain)
-        .eq("installation_status", "active")
-        .maybeSingle();
-      if (storeInstall) {
-        console.log(`integration_configs not found for ${shopDomain} — falling back to store_installations`);
-        integration = {
-          id: storeInstall.id,
-          client_id: storeInstall.client_id,
-          shopify_api_secret: storeInstall.shopify_api_secret ?? null,
-        };
-      }
-    }
+    const integration: { id: string; client_id: string; shopify_api_secret: string | null } | null = storeInstall
+      ? { id: storeInstall.id, client_id: storeInstall.client_id, shopify_api_secret: storeInstall.shopify_api_secret ?? null }
+      : null;
 
     if (!integration) {
       console.error(`No connected integration found for ${shopDomain}`);
@@ -80,9 +63,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // HMAC verification is mandatory when a secret is on record.
-    // Reject requests that omit the header — an attacker removing it must not bypass auth.
-    if (integration.shopify_api_secret) {
+    // HMAC verification — use env var as primary source of truth (always current),
+    // fall back to DB-stored value in case env var is absent.
+    const hmacSecret = Deno.env.get('SHOPIFY_API_SECRET') || integration.shopify_api_secret;
+    if (hmacSecret) {
       if (!hmacHeader) {
         console.error("Missing HMAC header — rejecting unauthenticated request");
         return new Response(
@@ -93,9 +77,9 @@ Deno.serve(async (req: Request) => {
           }
         );
       }
-      const isValid = await verifyShopifyHmac(rawBody, hmacHeader, integration.shopify_api_secret);
+      const isValid = await verifyShopifyHmac(rawBody, hmacHeader, hmacSecret);
       if (!isValid) {
-        console.error("Invalid HMAC signature");
+        console.error(`Invalid HMAC signature for ${shopDomain} (topic: ${shopifyTopic})`);
         return new Response(
           JSON.stringify({ error: "Invalid HMAC signature" }),
           {
@@ -106,23 +90,28 @@ Deno.serve(async (req: Request) => {
       }
       console.log("HMAC signature verified successfully");
     } else {
-      // No secret stored yet (edge case during very first install) — log and continue.
-      // This window is tiny; reregister_webhooks always writes the secret immediately.
-      console.warn(`No shopify_api_secret stored for ${shopDomain} — HMAC verification skipped (store not fully configured)`);
+      console.warn(`No SHOPIFY_API_SECRET configured — HMAC verification skipped for ${shopDomain}`);
     }
 
     await supabase.from("shopify_webhook_events").insert({
-      integration_id: integration.id,
+      store_installation_id: integration.id,
       shop_domain: shopDomain,
       topic: shopifyTopic,
       payload: orderData,
       processed: false,
     });
 
+    // Update last-active timestamp on the store
     await supabase
-      .from("integration_configs")
-      .update({ last_event_at: new Date().toISOString() })
+      .from("store_installations")
+      .update({ last_active_at: new Date().toISOString(), last_webhook_received_at: new Date().toISOString() })
       .eq("id", integration.id);
+
+    // Increment per-topic event counter on store_webhooks
+    await supabase.rpc("increment_store_webhook_event", {
+      p_store_installation_id: integration.id,
+      p_topic: shopifyTopic,
+    }).then(() => {}).catch(() => {});
 
     if (shopifyTopic === 'app/uninstalled') {
       console.log(`App uninstalled from ${shopDomain} — marking installation inactive`);
@@ -537,21 +526,20 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
 
     let customer = null;
     if (orderData.customer?.id) {
-      const { data: integration } = await supabase
-        .from("integration_configs")
-        .select("shopify_access_token, shop_domain")
+      const { data: storeForCustomer } = await supabase
+        .from("store_installations")
+        .select("access_token, shop_domain")
         .eq("client_id", clientId)
-        .eq("platform", "shopify")
-        .eq("status", "connected")
+        .eq("installation_status", "active")
         .maybeSingle();
 
-      if (integration?.shopify_access_token) {
+      if (storeForCustomer?.access_token) {
         try {
           const customerResponse = await fetch(
-            `https://${integration.shop_domain}/admin/api/2024-01/customers/${orderData.customer.id}.json`,
+            `https://${storeForCustomer.shop_domain}/admin/api/2024-01/customers/${orderData.customer.id}.json`,
             {
               headers: {
-                "X-Shopify-Access-Token": integration.shopify_access_token,
+                "X-Shopify-Access-Token": storeForCustomer.access_token,
               },
             }
           );
@@ -681,6 +669,8 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
                 order_id: orderRecord.id,
                 member_id: memberId,
                 email: orderRecord.customer_email,
+                phone: orderRecord.customer_phone || null,
+                is_pre_verified: true,
                 expires_at: expiresAt.toISOString(),
               })
               .select("token")
@@ -809,7 +799,7 @@ function evaluateConditionsLocally(conditions: any[], context: any): { allPassed
   }
 
   return {
-    allPassed: failed.length === 0 && conditions.length > 0,
+    allPassed: conditions.length === 0 || failed.length === 0,
     failed,
   };
 }

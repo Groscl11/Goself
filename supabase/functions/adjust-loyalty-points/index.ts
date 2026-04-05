@@ -61,13 +61,14 @@ Deno.serve(async (req: Request) => {
     }
 
     // Find client by shop domain
-    const { data: integration, error: integrationError } = await supabase
-      .from('integration_configs')
+    const { data: storeInstall, error: integrationError } = await supabase
+      .from('store_installations')
       .select('client_id')
       .eq('shop_domain', shop_domain)
+      .eq('installation_status', 'active')
       .maybeSingle();
 
-    if (integrationError || !integration) {
+    if (integrationError || !storeInstall) {
       return new Response(
         JSON.stringify({
           error: 'Shop not found or not integrated',
@@ -81,7 +82,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const clientId = integration.client_id;
+    const clientId = storeInstall.client_id;
 
     // Find member user
     let query = supabase

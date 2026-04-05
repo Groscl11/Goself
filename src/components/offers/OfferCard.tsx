@@ -98,7 +98,7 @@ export function OfferCard({ offer, distribution, actions, showSource, sourceLabe
       : '';
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors">
+    <div className="bg-white border border-gray-200 rounded-xl hover:border-gray-300 transition-colors">
       {/* Low stock warning */}
       {isLowStock && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2">
@@ -124,6 +124,9 @@ export function OfferCard({ offer, distribution, actions, showSource, sourceLabe
               )}
             </div>
             <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
+            <p className="text-xs text-gray-400 mt-0.5 font-mono">
+              ID: {offer.id.slice(0, 8)}&hellip; &middot; {new Date(offer.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
             {showSource && sourceLabel && (
               <div className="mt-1">{sourceLabel}</div>
             )}

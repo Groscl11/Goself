@@ -24,17 +24,10 @@ async function resolveClientId(supabase: any, shopDomain?: string | null, reques
     .from("store_installations")
     .select("client_id")
     .eq("shop_domain", shopDomain)
+    .eq("installation_status", "active")
     .maybeSingle();
 
-  if (install?.client_id) return install.client_id;
-
-  const { data: integration } = await supabase
-    .from("integration_configs")
-    .select("client_id")
-    .eq("shop_domain", shopDomain)
-    .maybeSingle();
-
-  return integration?.client_id ?? null;
+  return install?.client_id ?? null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -125,7 +118,7 @@ Deno.serve(async (req: Request) => {
       .from("offer_distributions")
       .select(
         "id, offer_id, points_cost, access_type, max_per_member, distributing_client_id, " +
-        "offer:rewards(id, title, description, image_url, terms_conditions, reward_type, discount_value, max_discount_value, min_purchase_amount, min_order_value, coupon_type, generic_coupon_code, available_codes, offer_type, tracking_type, redeems_at_shop_domain, owner_client_id, is_active, status)"
+        "offer:rewards(id, title, description, image_url, terms_conditions, reward_type, discount_value, max_discount_value, min_purchase_amount, coupon_type, generic_coupon_code, available_codes, offer_type, tracking_type, redeems_at_shop_domain, owner_client_id, is_active, status)"
       )
       .eq("distributing_client_id", clientId)
       .eq("is_active", true)

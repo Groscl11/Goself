@@ -22,7 +22,7 @@ export function RewardForm({ reward, brands, onSubmit, onCancel }: RewardFormPro
     image_url: reward?.image_url || '',
     category: reward?.category || 'general',
     status: reward?.status || 'active',
-    is_marketplace: reward?.is_marketplace ?? true,
+    offer_type: reward?.offer_type || 'marketplace_offer',
     coupon_type: reward?.coupon_type || 'unique',
     generic_coupon_code: reward?.generic_coupon_code || '',
     redemption_link: reward?.redemption_link || '',
@@ -466,16 +466,16 @@ export function RewardForm({ reward, brands, onSubmit, onCancel }: RewardFormPro
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="is_marketplace"
-                    checked={formData.is_marketplace}
-                    onChange={(e) => handleChange('is_marketplace', e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                  <label htmlFor="is_marketplace" className="text-sm font-medium text-gray-700">
-                    Available in Marketplace
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Offer Type</label>
+                  <select
+                    value={formData.offer_type}
+                    onChange={(e) => handleChange('offer_type', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="marketplace_offer">Marketplace Offer</option>
+                    <option value="store_discount">Store Discount</option>
+                    <option value="partner_voucher">Partner Voucher</option>
+                  </select>
                 </div>
               </div>
             </Card>

@@ -130,7 +130,7 @@ export function CampaignWizard() {
     const { data } = await supabase
       .from('rewards')
       .select('id, title, description, value_description, brands(name)')
-      .or(`client_id.eq.${clientId},is_marketplace.eq.true`)
+      .or(`client_id.eq.${clientId},offer_type.eq.marketplace_offer`)
       .eq('status', 'active')
       .order('title');
 

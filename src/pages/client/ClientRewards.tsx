@@ -10,7 +10,6 @@ interface OfferRow {
   coupon_type: string;
   tracking_type: string;
   is_active: boolean;
-  is_marketplace_listed: boolean;
   available_codes: number;
   total_codes_uploaded: number;
   created_at: string;
@@ -111,7 +110,7 @@ export function ClientRewards() {
 
     const { data, error } = await supabase
       .from('rewards')
-      .select('id, title, offer_type, coupon_type, tracking_type, is_active, is_marketplace_listed, available_codes, total_codes_uploaded, created_at')
+      .select('id, title, offer_type, coupon_type, tracking_type, is_active, available_codes, total_codes_uploaded, created_at')
       .or(`owner_client_id.eq.${currentClientId},client_id.eq.${currentClientId}`)
       .order('created_at', { ascending: false });
 
@@ -147,8 +146,8 @@ export function ClientRewards() {
     const { error } = await (supabase
       .from('rewards' as any) as any)
       .update({
-        is_marketplace_listed: !offer.is_marketplace_listed,
-        updated_at: new Date().toISOString(),
+          offer_type: offer.offer_type === 'marketplace_offer' ? 'store_discount' : 'marketplace_offer',
+          updated_at: new Date().toISOString(),
       })
       .eq('id', offer.id);
 
@@ -238,7 +237,7 @@ export function ClientRewards() {
 
   const analytics = useMemo(() => {
     const total = myOffers.length;
-    const listed = myOffers.filter((offer) => offer.is_marketplace_listed).length;
+    const listed = myOffers.filter((offer) => offer.offer_type === 'marketplace_offer').length;
     const active = myOffers.filter((offer) => offer.is_active).length;
     const totalUploaded = myOffers.reduce((sum, offer) => sum + Number(offer.total_codes_uploaded || 0), 0);
     const totalAvailable = myOffers.reduce((sum, offer) => sum + Number(offer.available_codes || 0), 0);
@@ -296,7 +295,7 @@ export function ClientRewards() {
                         <span>{offer.offer_type}</span>
                         <span>{offer.coupon_type}</span>
                         <span>{offer.is_active ? 'Active' : 'Inactive'}</span>
-                        <span>Marketplace: {offer.is_marketplace_listed ? 'Listed' : 'Private'}</span>
+                        <span>Marketplace: {offer.offer_type === 'marketplace_offer' ? 'Listed' : 'Private'}</span>
                         <span>
                           Codes: {offer.available_codes}/{offer.total_codes_uploaded}
                         </span>
@@ -318,7 +317,7 @@ export function ClientRewards() {
                       >
                         {saving === offer.id
                           ? 'Saving...'
-                          : offer.is_marketplace_listed
+                          : offer.offer_type === 'marketplace_offer'
                           ? 'Unlist Marketplace'
                           : 'Publish Marketplace'}
                       </button>

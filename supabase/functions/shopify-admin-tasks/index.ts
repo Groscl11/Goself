@@ -35,10 +35,12 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-  // Require service role key as Bearer token
+  // Require service role key OR ADMIN_TASKS_SECRET as Bearer token
+  const adminTasksSecret = Deno.env.get('ADMIN_TASKS_SECRET');
   const authHeader = req.headers.get('Authorization') || '';
   const token = authHeader.replace('Bearer ', '');
-  if (token !== serviceRoleKey) {
+  const isAuthorized = token === serviceRoleKey || (adminTasksSecret && token === adminTasksSecret);
+  if (!isAuthorized) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -50,7 +52,7 @@ Deno.serve(async (req: Request) => {
     const action = body.action;
     const shopDomainFilter: string | null = body.shop_domain || null;
 
-    if (action !== 'reregister_webhooks') {
+    if (!['reregister_webhooks', 'sync_secrets', 'backfill_orders'].includes(action)) {
       return new Response(JSON.stringify({ error: 'Unknown action' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -60,6 +62,113 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const webhookUrl = `${supabaseUrl}/functions/v1/shopify-webhook?apikey=${anonKey}`;
+
+    // ── sync_secrets: update shopify_api_secret in store_installations to current env var ──
+    if (action === 'sync_secrets') {
+      const currentSecret = Deno.env.get('SHOPIFY_API_SECRET');
+      if (!currentSecret) {
+        return new Response(JSON.stringify({ error: 'SHOPIFY_API_SECRET env var not set' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      let updateQuery = supabase
+        .from('store_installations')
+        .update({ shopify_api_secret: currentSecret })
+        .eq('installation_status', 'active');
+      if (shopDomainFilter) updateQuery = updateQuery.eq('shop_domain', shopDomainFilter);
+      const { error: updateErr, count } = await updateQuery;
+      if (updateErr) throw updateErr;
+      return new Response(JSON.stringify({ success: true, updated_rows: count }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── backfill_orders: fetch recent orders from Shopify and insert into shopify_orders ──
+    if (action === 'backfill_orders') {
+      const orderIds: string[] = body.order_ids || [];
+      const limit: number = body.limit || 20;
+
+      let fetchAllStores = supabase
+        .from('store_installations')
+        .select('id, shop_domain, client_id, access_token')
+        .eq('installation_status', 'active');
+      if (shopDomainFilter) fetchAllStores = fetchAllStores.eq('shop_domain', shopDomainFilter);
+      const { data: stores, error: storesErr } = await fetchAllStores;
+      if (storesErr) throw storesErr;
+
+      const backfillResults: Array<Record<string, unknown>> = [];
+      for (const store of (stores || [])) {
+        const accessToken = store.access_token;
+        if (!accessToken) {
+          backfillResults.push({ shop: store.shop_domain, error: 'No access token' });
+          continue;
+        }
+
+        // Build Shopify orders query URL
+        let ordersUrl = `https://${store.shop_domain}/admin/api/2025-01/orders.json?status=any&limit=${limit}&order=created_at+desc`;
+        if (orderIds.length > 0) {
+          ordersUrl = `https://${store.shop_domain}/admin/api/2025-01/orders.json?ids=${orderIds.join(',')}&status=any`;
+        }
+
+        const ordersRes = await fetch(ordersUrl, {
+          headers: { 'X-Shopify-Access-Token': accessToken },
+        });
+        if (!ordersRes.ok) {
+          backfillResults.push({ shop: store.shop_domain, error: `Shopify API ${ordersRes.status}` });
+          continue;
+        }
+        const ordersData = await ordersRes.json();
+        const orders = ordersData.orders || [];
+
+        let upserted = 0;
+        for (const order of orders) {
+          let paymentMethod = 'unknown';
+          if (order.gateway) {
+            paymentMethod = order.gateway.toLowerCase();
+          } else if (order.payment_gateway_names?.length > 0) {
+            paymentMethod = order.payment_gateway_names[0].toLowerCase();
+          }
+          if (paymentMethod.includes('cod') || paymentMethod.includes('cash on delivery')) {
+            paymentMethod = 'cod';
+          } else if (paymentMethod.includes('prepaid') || order.financial_status === 'paid') {
+            paymentMethod = 'prepaid';
+          }
+
+          const orderRecord = {
+            client_id: store.client_id,
+            order_id: order.id.toString(),
+            order_number: order.order_number || order.name,
+            customer_email: order.email ?? order.customer?.email ?? null,
+            customer_phone: order.phone ?? order.customer?.phone ?? null,
+            total_price: parseFloat(order.total_price || '0'),
+            currency: order.currency || 'USD',
+            payment_method: paymentMethod,
+            order_status: order.fulfillment_status || 'pending',
+            financial_status: order.financial_status,
+            fulfillment_status: order.fulfillment_status,
+            order_data: order,
+            processed_at: new Date().toISOString(),
+          };
+
+          const { error: upsertErr } = await supabase.from('shopify_orders').upsert(orderRecord, {
+            onConflict: 'client_id,order_id',
+            ignoreDuplicates: false,
+          });
+          if (!upsertErr) upserted++;
+          else console.error(`Upsert failed for order ${order.id}:`, upsertErr.message);
+        }
+        backfillResults.push({ shop: store.shop_domain, fetched: orders.length, upserted });
+      }
+
+      return new Response(JSON.stringify({ results: backfillResults }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── reregister_webhooks: delete and re-register all webhook topics ──
 
     // Fetch active stores (optionally filtered by shop_domain)
     let query = supabase
@@ -90,27 +199,6 @@ Deno.serve(async (req: Request) => {
         results.push({ shop: shopDomain, success: false, error: 'No access token' });
         continue;
       }
-
-      // Ensure integration_configs row exists with correct secret
-      await supabase.from('integration_configs').upsert({
-        client_id: store.client_id,
-        platform: 'shopify',
-        platform_name: shopDomain,
-        shop_domain: shopDomain,
-        shopify_access_token: accessToken,
-        access_token: accessToken,
-        shopify_api_secret: store.shopify_api_secret ?? Deno.env.get('SHOPIFY_API_SECRET'),
-        status: 'connected',
-        is_active: true,
-        installed_at: new Date().toISOString(),
-        webhooks_registered: false,
-        webhook_url: webhookUrl,
-        sync_frequency_minutes: 0,
-        credentials: {}
-      }, {
-        onConflict: 'client_id,platform,shop_domain',
-        ignoreDuplicates: false
-      });
 
       // First: delete existing webhooks at Shopify to avoid duplicates
       try {

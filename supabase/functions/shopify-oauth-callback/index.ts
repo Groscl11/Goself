@@ -235,34 +235,6 @@ Deno.serve(async (req: Request) => {
     const storeInstallationId = storeInstallation.id;
     console.log(`Store installation saved: ${storeInstallationId}`);
 
-    // ── STEP 4: Upsert integration_configs NOW (before redirect) ──
-    // Critical: webhook handler looks up integration_configs to authenticate events.
-    // Must exist before any order webhooks can be received.
-    await supabase
-      .from('integration_configs')
-      .upsert({
-        client_id: clientId,
-        platform: 'shopify',
-        platform_name: shop,
-        shop_domain: shop,
-        shopify_access_token: accessToken,
-        access_token: accessToken,
-        shopify_api_secret: Deno.env.get('SHOPIFY_API_SECRET'),
-        scopes: scopes,
-        status: 'connected',
-        is_active: true,
-        installed_at: new Date().toISOString(),
-        webhooks_registered: false,
-        webhook_url: `${supabaseUrl}/functions/v1/shopify-webhook?apikey=${Deno.env.get('SUPABASE_ANON_KEY')}`,
-
-        sync_frequency_minutes: 0,
-        credentials: {}
-      }, {
-        onConflict: 'client_id,platform,shop_domain',
-        ignoreDuplicates: false
-      });
-    console.log(`integration_configs upserted for ${shop}`);
-
     // ── STEP 5: Register Shopify webhooks NOW (before redirect) ──
     // Critical: without webhooks registered, orders are never received.
     // This is a short Shopify API call (< 2s) — acceptable to block on.
@@ -485,15 +457,6 @@ async function registerAndTrackWebhooks(
       webhook_health_status: successCount === WEBHOOK_TOPICS.length ? 'healthy' : 'degraded'
     })
     .eq('id', storeInstallationId);
-
-  // Update integration_configs for backward compatibility
-  await supabase
-    .from('integration_configs')
-    .update({
-      webhooks_registered: successCount > 0
-    })
-    .eq('client_id', clientId)
-    .eq('shop_domain', shop);
 
   console.log(`Webhooks registered: ${successCount}/${WEBHOOK_TOPICS.length}`);
 }

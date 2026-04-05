@@ -81,6 +81,7 @@ export default function OffersPage() {
  
   // Drawer / modal state
   const [newOfferOpen, setNewOfferOpen] = useState(false);
+  const [newOfferMode, setNewOfferMode] = useState<'store' | 'marketplace'>('store');
   const [partnerWizardOpen, setPartnerWizardOpen] = useState(false);
   const [codesDrawer, setCodesDrawer] = useState<Offer | null>(null);
   const [adoptTarget, setAdoptTarget] = useState<MarketplaceOffer | null>(null);
@@ -112,7 +113,7 @@ export default function OffersPage() {
     setStoreOffers(data ?? []);
     setStoreLoading(false);
   }, [clientId]);
- 
+
   const fetchPartnerOffers = useCallback(async () => {
     if (!clientId) return;
     setPartnerLoading(true);
@@ -158,9 +159,6 @@ export default function OffersPage() {
         .from('rewards')
         .select('*')
         .eq('offer_type', 'marketplace_offer')
-        .eq('is_marketplace_listed', true)
-        .eq('is_active', true)
-        .eq('status', 'active')
         .order('created_at', { ascending: false });
  
       if (error) throw error;
@@ -185,13 +183,27 @@ export default function OffersPage() {
   const fetchSubmissions = useCallback(async () => {
     if (!clientId) return;
     setSubmissionsLoading(true);
-    const { data } = await supabase
+    // Fetch own marketplace submissions: either flag set OR offer_type matches
+    const { data: byType, error: e1 } = await supabase
       .from('rewards')
-      .select('*, offer_distributions(id, distributing_client_id, current_issuances), offer_codes(status)')
+      .select('*, offer_distributions(id, distributing_client_id, current_issuances)')
       .eq('owner_client_id', clientId)
-      .eq('is_marketplace_listed', true)
+      .eq('offer_type', 'marketplace_offer')
       .order('created_at', { ascending: false });
-    setSubmissions(data ?? []);
+    if (e1) console.error('fetchSubmissions byType error:', e1);
+    // byFlag query now uses offer_type since is_marketplace column does not exist
+    const { data: byFlag, error: e2 } = await supabase
+      .from('rewards')
+      .select('*, offer_distributions(id, distributing_client_id, current_issuances)')
+      .eq('owner_client_id', clientId)
+      .eq('offer_type', 'marketplace_offer')
+      .order('created_at', { ascending: false });
+    if (e2) console.error('fetchSubmissions byFlag error:', e2);
+    // Merge and deduplicate by id — byType and byFlag now return same rows, dedupe handles it
+    const all = [...(byType ?? []), ...(byFlag ?? [])];
+    const seen = new Set<string>();
+    const merged = all.filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; });
+    setSubmissions(merged);
     setSubmissionsLoading(false);
   }, [clientId]);
  
@@ -388,7 +400,7 @@ export default function OffersPage() {
             </button>
             {newOfferDropdown && (
               <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-20 overflow-hidden">
-                <button onClick={() => { setNewOfferDropdown(false); setNewOfferOpen(true); }}
+                <button onClick={() => { setNewOfferDropdown(false); setNewOfferMode('store'); setNewOfferOpen(true); }}
                   className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-100">
                   <div className="font-medium">Store offer</div>
                   <div className="text-xs text-gray-400">Generate or import Shopify codes</div>
@@ -437,7 +449,7 @@ export default function OffersPage() {
                       title="No store offers yet"
                       description="Create discount codes that your loyalty members can redeem with points or claim via campaigns."
                       action={
-                        <Btn size="md" onClick={() => setNewOfferOpen(true)}>
+                        <Btn size="md" onClick={() => { setNewOfferMode('store'); setNewOfferOpen(true); }}>
                           + Create your first offer
                         </Btn>
                       }
@@ -462,8 +474,8 @@ export default function OffersPage() {
             </div>
             {!storeLoading && storeFiltered.length > 0 && (
               <AddCard label="Add another store offer">
-                <Btn onClick={() => setNewOfferOpen(true)}>Generate via Shopify</Btn>
-                <Btn onClick={() => setNewOfferOpen(true)}>Import from Shopify</Btn>
+                <Btn onClick={() => { setNewOfferMode('store'); setNewOfferOpen(true); }}>Generate via Shopify</Btn>
+                <Btn onClick={() => { setNewOfferMode('store'); setNewOfferOpen(true); }}>Import from Shopify</Btn>
               </AddCard>
             )}
           </div>
@@ -580,7 +592,7 @@ export default function OffersPage() {
             {mktSubtab === 'submit' && (
               <div>
                 <div className="flex justify-end mb-4">
-                  <Btn size="md" onClick={() => setNewOfferOpen(true)}>+ Submit an Offer</Btn>
+                  <Btn size="md" onClick={() => { setNewOfferMode('marketplace'); setNewOfferOpen(true); }}>+ Submit an Offer</Btn>
                 </div>
                 <div className="space-y-3">
                   {submissionsLoading
@@ -589,47 +601,24 @@ export default function OffersPage() {
                       ? <EmptyState
                           title="No marketplace submissions yet"
                           description="Submit an offer to make it available for other GoSelf clients to adopt for their members."
-                          action={<Btn size="md" onClick={() => setNewOfferOpen(true)}>+ Submit first offer</Btn>}
+                          action={<Btn size="md" onClick={() => { setNewOfferMode('marketplace'); setNewOfferOpen(true); }}>+ Submit first offer</Btn>}
                         />
-                      : submissions.map(offer => {
-                          const allDists = (offer.offer_distributions as OfferDistribution[] | undefined) ?? [];
-                          const adopterCount = new Set(allDists.map(d => d.distributing_client_id).filter(id => id !== clientId)).size;
-                          const totalIssued = allDists.reduce((sum, d) => sum + (d.current_issuances ?? 0), 0);
-                          const codes = (offer as any).offer_codes as { status: string }[] ?? [];
-                          const redeemed = codes.filter(c => c.status === 'redeemed').length;
-                          const rate = totalIssued > 0 ? Math.round(redeemed / totalIssued * 100) : 0;
-                          return (
-                            <div key={offer.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-300">
-                              <div className="flex items-start justify-between mb-3">
-                                <div>
-                                  <h3 className="text-sm font-semibold text-gray-900">{offer.title}</h3>
-                                  <p className="text-xs text-gray-500 mt-0.5">Listed on marketplace</p>
-                                </div>
-                                <StatusBadge status={offer.is_marketplace_listed ? 'active' : 'paused'} />
-                              </div>
-                              <div className="grid grid-cols-4 gap-3 py-3 border-t border-b border-gray-100 mb-3 text-center">
-                                {[
-                                  { label: 'Clients adopted', val: adopterCount },
-                                  { label: 'Codes remaining', val: offer.available_codes ?? 0 },
-                                  { label: 'Total issued',    val: totalIssued },
-                                  { label: 'Redemption rate', val: `${rate}%` },
-                                ].map(s => (
-                                  <div key={s.label}>
-                                    <div className="text-sm font-semibold text-gray-900">{s.val}</div>
-                                    <div className="text-xs text-gray-500">{s.label}</div>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="flex gap-2">
+                      : submissions.map(offer => (
+                          <OfferCard
+                            key={offer.id}
+                            offer={offer}
+                            distribution={null}
+                            showSource
+                            sourceLabel={<span className="text-xs text-purple-600 font-medium">Listed on marketplace</span>}
+                            actions={
+                              <>
                                 <Btn onClick={() => setCodesDrawer(offer)}>Manage Codes</Btn>
-                                <Btn variant="danger" onClick={async () => {
-                                  await supabase.from('rewards').update({ is_marketplace_listed: false }).eq('id', offer.id);
-                                  fetchSubmissions();
-                                }}>Unlist</Btn>
-                              </div>
-                            </div>
-                          );
-                        })}
+                                <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>Edit</Btn>
+                                <MoreMenu offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} />
+                              </>
+                            }
+                          />
+                        ))}
                 </div>
               </div>
             )}
@@ -762,7 +751,15 @@ export default function OffersPage() {
         onClose={() => setNewOfferOpen(false)}
         clientId={clientId}
         shopDomain={shopDomain}
-        onCreated={() => { fetchStoreOffers(); fetchDistributions(); }}
+        mode={newOfferMode}
+        onCreated={() => {
+          if (newOfferMode === 'marketplace') {
+            fetchSubmissions();
+          } else {
+            fetchStoreOffers();
+            fetchDistributions();
+          }
+        }}
       />
  
       <PartnerWizard
@@ -880,8 +877,9 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
   }, []);
  
   async function toggleMarketplace() {
+    const nowMarketplace = offer.offer_type !== 'marketplace_offer';
     await supabase.from('rewards').update({
-      is_marketplace_listed: !offer.is_marketplace_listed,
+      offer_type: nowMarketplace ? 'marketplace_offer' : 'store_discount',
     }).eq('id', offer.id);
     setOpen(false);
     onRefresh();
@@ -903,10 +901,10 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
         </svg>
       </Btn>
       {open && (
-        <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-10 overflow-hidden">
+        <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
           <button onClick={toggleMarketplace}
             className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
-            {offer.is_marketplace_listed ? 'Unlist from Marketplace' : 'Submit to Marketplace'}
+            {offer.offer_type === 'marketplace_offer' ? 'Unlist from Marketplace' : 'Submit to Marketplace'}
           </button>
           <button onClick={togglePause}
             className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50">

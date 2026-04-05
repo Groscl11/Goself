@@ -183,15 +183,14 @@ export function CampaignsAdvanced() {
   const loadShopifyScopes = async () => {
     try {
       const { data } = await supabase
-        .from('integration_configs')
-        .select('shopify_scopes')
+        .from('store_installations')
+        .select('scopes')
         .eq('client_id', clientId)
-        .eq('platform', 'shopify')
-        .eq('status', 'connected')
+        .eq('installation_status', 'active')
         .maybeSingle();
 
-      if (data?.shopify_scopes) {
-        setAvailableScopes(data.shopify_scopes);
+      if (data?.scopes) {
+        setAvailableScopes(data.scopes);
       }
     } catch (error) {
       console.error('Error loading scopes:', error);

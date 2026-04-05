@@ -83,15 +83,14 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Find client by shop domain
-    const { data: shopConfig } = await supabase
-      .from("integration_configs")
+    const { data: shopInstall } = await supabase
+      .from("store_installations")
       .select("client_id, clients(id, name)")
-      .eq("integration_type", "shopify")
-      .eq("is_active", true)
-      .ilike("config->>shop_domain", shop_domain)
+      .eq("shop_domain", shop_domain)
+      .eq("installation_status", "active")
       .maybeSingle();
 
-    if (!shopConfig || !shopConfig.client_id) {
+    if (!shopInstall || !shopInstall.client_id) {
       return new Response(
         JSON.stringify({
           qualifies: false,
@@ -104,8 +103,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const clientId = shopConfig.client_id;
-    const clientName = (shopConfig.clients as any)?.name || "Rewards Hub";
+    const clientId = shopInstall.client_id;
+    const clientName = (shopInstall.clients as any)?.name || "Rewards Hub";
 
     // Check if order already exists and has rewards
     let existingOrder = null;

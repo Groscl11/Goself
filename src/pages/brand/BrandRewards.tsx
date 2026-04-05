@@ -16,7 +16,7 @@ interface Reward {
   discount_value: number | null;
   currency: string;
   status: string;
-  is_marketplace: boolean;
+  offer_type: string;
   created_at: string;
   voucher_count: number;
   redemption_count: number;

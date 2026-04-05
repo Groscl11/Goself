@@ -50,7 +50,7 @@ export function RewardsMarketplace() {
             logo_url
           )
         `)
-        .eq('is_marketplace', true)
+        .eq('offer_type', 'marketplace_offer')
         .eq('status', 'active')
         .gt('voucher_count', 0)
         .order('created_at', { ascending: false });

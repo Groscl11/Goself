@@ -185,20 +185,8 @@ export function StoreInstallations() {
         .eq('store_installation_id', storeId)
         .order('role');
 
-      // Resolve the correct client_id for member lookups.
-      // Edge functions always prefer integration_configs.client_id (the merchant's real profile client)
-      // over store_installations.client_id (which may be an OAuth auto-created client).
+      // store_installations is the source of truth for client_id
       let clientId = knownClientId || store.client_id;
-
-      const { data: integrationConfig } = await supabase
-        .from('integration_configs')
-        .select('client_id')
-        .eq('shop_domain', store.shop_domain)
-        .maybeSingle();
-
-      if (integrationConfig?.client_id) {
-        clientId = integrationConfig.client_id;
-      }
 
       let members: StoreDetails['members'] = [];
       let orders: StoreDetails['orders'] = [];
@@ -256,14 +244,8 @@ export function StoreInstallations() {
 
   const fixProfileLink = async (store: StoreInstallation) => {
     try {
-      // Resolve the correct client_id for this store
-      const { data: ic } = await supabase
-        .from('integration_configs')
-        .select('client_id')
-        .eq('shop_domain', store.shop_domain)
-        .maybeSingle();
-
-      const clientId = ic?.client_id || store.client_id;
+      // store_installations is the source of truth
+      const clientId = store.client_id || knownClientId;
       if (!clientId) {
         alert('No client_id found for this store.');
         return;

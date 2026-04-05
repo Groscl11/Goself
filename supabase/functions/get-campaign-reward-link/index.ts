@@ -52,36 +52,14 @@ Deno.serve(async (req: Request) => {
     // ── 1. Resolve client_id from shop_domain ─────────────────────────────────
     let clientId: string | null = null;
 
-    // Try integration_configs.shop_domain column
-    const { data: ic1 } = await supabase
-      .from("integration_configs")
+    // Primary lookup: store_installations (source of truth)
+    const { data: si1 } = await supabase
+      .from("store_installations")
       .select("client_id")
       .eq("shop_domain", shopDomain)
+      .eq("installation_status", "active")
       .maybeSingle();
-    if (ic1?.client_id) clientId = ic1.client_id;
-
-    // Try integration_configs.config->>'shop_domain' JSON field (Shopify integration)
-    if (!clientId) {
-      const { data: ic2 } = await supabase
-        .from("integration_configs")
-        .select("client_id")
-        .eq("platform", "shopify")
-        .eq("status", "connected")
-        .ilike("config->>shop_domain", shopDomain)
-        .maybeSingle();
-      if (ic2?.client_id) clientId = ic2.client_id;
-    }
-
-    // Try store_installations
-    if (!clientId) {
-      const { data: si } = await supabase
-        .from("store_installations")
-        .select("client_id")
-        .eq("shop_domain", shopDomain)
-        .eq("installation_status", "active")
-        .maybeSingle();
-      if (si?.client_id) clientId = si.client_id;
-    }
+    if (si1?.client_id) clientId = si1.client_id;
 
     if (!clientId) {
       console.error(`No client found for shop_domain: ${shopDomain}`);

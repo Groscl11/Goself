@@ -33,7 +33,7 @@ export function ExcelUploadModal({ onClose, onUpload }: ExcelUploadModalProps) {
         value_description: '50% off up to $100',
         terms_conditions: 'Valid for 30 days',
         expiry_date: '2024-12-31',
-        is_marketplace: 'TRUE',
+        offer_type: 'marketplace_offer',
         status: 'active',
       },
       {
@@ -52,7 +52,7 @@ export function ExcelUploadModal({ onClose, onUpload }: ExcelUploadModalProps) {
         value_description: '$20 off',
         terms_conditions: 'Valid for 30 days',
         expiry_date: '2024-12-31',
-        is_marketplace: 'TRUE',
+        offer_type: 'marketplace_offer',
         status: 'active',
       },
     ];
@@ -137,7 +137,7 @@ export function ExcelUploadModal({ onClose, onUpload }: ExcelUploadModalProps) {
         value_description: row.value_description || '',
         terms_conditions: row.terms_conditions || '',
         expiry_date: row.expiry_date || null,
-        is_marketplace: row.is_marketplace === 'TRUE' || row.is_marketplace === true,
+        offer_type: row.offer_type || (row.is_marketplace === 'TRUE' ? 'marketplace_offer' : 'store_discount'),
         status: row.status || 'draft',
       }));
 
@@ -273,7 +273,7 @@ export function ExcelUploadModal({ onClose, onUpload }: ExcelUploadModalProps) {
                   <li>• Valid coupon types: unique, generic</li>
                   <li>• Valid categories: general, dining, travel, fitness, wellness, electronics, entertainment, fashion, groceries</li>
                   <li>• Valid statuses: draft, pending, active, inactive, expired</li>
-                  <li>• is_marketplace must be TRUE or FALSE</li>
+                  <li>• offer_type must be marketplace_offer, store_discount, or partner_voucher</li>
                   <li>• Dates should be in YYYY-MM-DD format</li>
                 </ul>
               </div>

@@ -49,36 +49,14 @@ Deno.serve(async (req: Request) => {
     // ── 1. Resolve client_id from shop domain ─────────────────────────────────
     let clientId: string | null = null;
 
-    // Try integration_configs.shop_domain direct column
-    const { data: ic1 } = await supabase
-      .from("integration_configs")
+    // Primary lookup: store_installations (source of truth)
+    const { data: si } = await supabase
+      .from("store_installations")
       .select("client_id")
       .eq("shop_domain", shop)
+      .eq("installation_status", "active")
       .maybeSingle();
-    if (ic1?.client_id) clientId = ic1.client_id;
-
-    // Try integration_configs.config->>'shop_domain' JSON field
-    if (!clientId) {
-      const { data: ic2 } = await supabase
-        .from("integration_configs")
-        .select("client_id")
-        .eq("platform", "shopify")
-        .eq("status", "connected")
-        .ilike("config->>shop_domain", shop)
-        .maybeSingle();
-      if (ic2?.client_id) clientId = ic2.client_id;
-    }
-
-    // Try store_installations
-    if (!clientId) {
-      const { data: si } = await supabase
-        .from("store_installations")
-        .select("client_id")
-        .eq("shop_domain", shop)
-        .eq("installation_status", "active")
-        .maybeSingle();
-      if (si?.client_id) clientId = si.client_id;
-    }
+    if (si?.client_id) clientId = si.client_id;
 
     if (!clientId) {
       console.error(`No client found for shop: ${shop}`);
@@ -105,10 +83,9 @@ Deno.serve(async (req: Request) => {
     let selectedCampaign: { id: string; name: string; campaign_id: string } | null = null;
     for (const campaign of campaigns) {
       const { data: rewards, error: rErr } = await supabase
-        .from("campaign_rewards")
+        .from("campaign_reward_pools")
         .select("id")
-        .eq("campaign_id", campaign.id)
-        .eq("is_active", true)
+        .eq("campaign_rule_id", campaign.id)
         .limit(1);
       if (!rErr && rewards && rewards.length > 0) {
         selectedCampaign = campaign;

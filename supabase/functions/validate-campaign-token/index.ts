@@ -50,7 +50,7 @@ Deno.serve(async (req: Request) => {
         campaign_rule_id,
         campaign_rules (
           id, name, client_id, is_active,
-          reward_selection_mode, min_rewards_choice, max_rewards_choice
+          reward_selection_mode, min_rewards_choice, max_rewards_choice, reward_action
         )
       `)
       .eq("token", token)
@@ -127,26 +127,44 @@ Deno.serve(async (req: Request) => {
         sort_order,
         rewards (
           id, title, description, value_description, image_url, category, coupon_type,
-          expiry_date, status,
-          brands ( id, name, logo_url ),
-          vouchers ( id, status )
+          expiry_date, status, available_codes, generic_coupon_code,
+          brands ( id, name, logo_url )
         )
       `)
       .eq("campaign_rule_id", campaign.id)
       .order("sort_order");
 
-    if (poolError) console.error("Pool load error:", poolError);
+    if (poolError) {
+      console.error("Pool load error:", poolError);
+      return new Response(
+        JSON.stringify({ valid: false, reason: "pool_load_failed", detail: poolError.message }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fallback: if the pool table is empty, try reward_action.reward_pool (saved by CampaignsPage drawer)
+    let rawRewards: any[] = (poolRows || []).map((r: any) => r.rewards);
+    if (rawRewards.length === 0) {
+      const inlinePool: any[] = (campaign.reward_action as any)?.reward_pool ?? [];
+      if (inlinePool.length > 0) {
+        const rewardIds = inlinePool.map((r: any) => r.id).filter(Boolean);
+        if (rewardIds.length > 0) {
+          const { data: fullRewards } = await supabase
+            .from("rewards")
+            .select(`id, title, description, value_description, image_url, category, coupon_type,
+              expiry_date, status, available_codes, generic_coupon_code,
+              brands ( id, name, logo_url )`)
+            .in("id", rewardIds);
+          if (fullRewards) rawRewards = fullRewards;
+        }
+      }
+    }
 
     const now = new Date();
-    const rewards = (poolRows || [])
-      .map((r: any) => r.rewards)
+    const rewards = rawRewards
       .filter((r: any) => {
         if (!r || r.status !== "active") return false;
         if (r.expiry_date && new Date(r.expiry_date) <= now) return false;
-        // If the reward has vouchers loaded, require at least one available.
-        // If it has no vouchers (brand-handled / generic rewards), always show it.
-        const voucherList = r.vouchers || [];
-        if (voucherList.length > 0 && !voucherList.some((v: any) => v.status === "available")) return false;
         return true;
       })
       .map((r: any) => ({
@@ -157,8 +175,9 @@ Deno.serve(async (req: Request) => {
         image_url: r.image_url,
         category: r.category,
         coupon_type: r.coupon_type,
+        generic_coupon_code: r.generic_coupon_code || null,
         brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,
-        available_vouchers: (r.vouchers || []).filter((v: any) => v.status === "available").length,
+        available_vouchers: Number(r.available_codes) || 0,
       }));
 
     if (!claim) {
@@ -252,34 +271,34 @@ Deno.serve(async (req: Request) => {
       if (!reward) continue;
       let voucherCode: string | null = null;
 
-      const { data: voucher } = await supabase
-        .from("vouchers").select("id, code")
-        .eq("reward_id", rewardId).eq("status", "available")
-        .limit(1).maybeSingle();
+      // For generic rewards, the code is shared — return it directly without claiming a slot
+      if (reward.coupon_type === "generic" && reward.generic_coupon_code) {
+        voucherCode = reward.generic_coupon_code;
+      } else {
+        // For unique-code rewards, claim one offer_codes slot
+        const { data: offerCode } = await supabase
+          .from("offer_codes").select("id, code")
+          .eq("offer_id", rewardId).eq("status", "available")
+          .limit(1).maybeSingle();
 
-      if (voucher) {
-        const { error: upErr } = await supabase
-          .from("vouchers")
-          .update({ status: "redeemed", redeemed_at: new Date().toISOString(), member_id: memberId })
-          .eq("id", voucher.id).eq("status", "available");
-        if (!upErr) voucherCode = voucher.code;
-
-        // ── INSERT into offer_codes to track campaign allocation ──────────────
-        if (memberId && voucherCode) {
-          await supabase.from("offer_codes").insert({
-            offer_id: rewardId,
-            code: voucherCode,
-            status: "assigned",
-            assigned_to_member_id: memberId,
-            assigned_at: new Date().toISOString(),
-            distributed_by_client_id: campaign.client_id,
-            global_user_id: memberDataForTracking?.global_user_id ?? null,
-            member_email: memberDataForTracking?.email ?? null,
-            receiving_client_id: null,
-            code_source: "campaign",
-            source_rule_id: campaign.id,
-          }).catch((err) => console.error("offer_codes insert for campaign failed:", err));
+        if (offerCode) {
+          const { error: upErr } = await supabase
+            .from("offer_codes")
+            .update({
+              status: "assigned",
+              assigned_at: new Date().toISOString(),
+              assigned_to_member_id: memberId ?? null,
+              distributed_by_client_id: campaign.client_id,
+              global_user_id: memberDataForTracking?.global_user_id ?? null,
+              member_email: memberDataForTracking?.email ?? null,
+              code_source: "campaign",
+              source_rule_id: campaign.id,
+            })
+            .eq("id", offerCode.id).eq("status", "available");
+          if (!upErr) voucherCode = offerCode.code;
         }
+
+
       }
 
       if (memberId) {

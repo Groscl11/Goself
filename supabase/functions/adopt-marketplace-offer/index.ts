@@ -24,15 +24,7 @@ async function resolveClientId(supabase: any, shopDomain?: string | null) {
     .eq("installation_status", "active")
     .maybeSingle();
 
-  if (installation?.client_id) return installation.client_id;
-
-  const { data: integration } = await supabase
-    .from("integration_configs")
-    .select("client_id")
-    .eq("shop_domain", shopDomain)
-    .maybeSingle();
-
-  return integration?.client_id ?? null;
+  return installation?.client_id ?? null;
 }
 
 Deno.serve(async (req: Request) => {

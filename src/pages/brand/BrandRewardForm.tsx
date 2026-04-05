@@ -28,7 +28,6 @@ export function BrandRewardForm() {
     terms_conditions: '',
     redemption_link: '',
     image_url: '',
-    is_marketplace: true,
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -69,7 +68,7 @@ export function BrandRewardForm() {
             terms_conditions: formData.terms_conditions || null,
             redemption_link: formData.redemption_link || null,
             image_url: formData.image_url || null,
-            is_marketplace: formData.is_marketplace,
+            offer_type: 'marketplace_offer',
             status: 'pending',
           },
         ])
@@ -315,20 +314,7 @@ export function BrandRewardForm() {
                   />
                 </div>
 
-                <div className="md:col-span-2">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      name="is_marketplace"
-                      checked={formData.is_marketplace}
-                      onChange={handleChange}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <span className="text-sm font-medium text-gray-700">
-                      Make available in marketplace
-                    </span>
-                  </label>
-                </div>
+
               </div>
 
               <div className="flex gap-4 pt-4">
