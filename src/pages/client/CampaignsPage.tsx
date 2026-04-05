@@ -1199,7 +1199,7 @@ function TriggerLogsPanel({ clientId, onClose }: { clientId: string; onClose: ()
       // Step 1: fetch raw logs without embedded join (join can silently fail due to RLS on campaign_rules)
       const { data, error } = await supabase
         .from('campaign_trigger_logs')
-        .select('id, created_at, trigger_result, customer_email, campaign_rule_id')
+        .select('id, created_at, trigger_result, customer_email, customer_phone, campaign_rule_id, order_id, order_number, order_value, shopify_order_name, transaction_id, campaign_display_id, reward_link, reason')
         .eq('client_id', clientId)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -1228,8 +1228,17 @@ function TriggerLogsPanel({ clientId, onClose }: { clientId: string; onClose: ()
           trigger_type: campaignMap[row.campaign_rule_id]?.trigger_type || 'advanced',
           status: row.trigger_result,
           member_email: row.customer_email,
+          member_phone: row.customer_phone,
           triggered_at: row.created_at,
           campaign_rule: campaignMap[row.campaign_rule_id] ?? null,
+          order_id: row.order_id,
+          order_number: row.order_number,
+          order_value: row.order_value,
+          shopify_order_name: row.shopify_order_name,
+          transaction_id: row.transaction_id,
+          campaign_display_id: row.campaign_display_id,
+          reward_link: row.reward_link,
+          reason: row.reason,
         }));
         setLogs(normalized);
       }
@@ -1265,7 +1274,7 @@ function TriggerLogsPanel({ clientId, onClose }: { clientId: string; onClose: ()
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/60">
-                  {['Campaign', 'Trigger', 'Member', 'Status', 'When'].map(h => (
+                  {['Campaign', 'Order', 'Member', 'Value', 'Status', 'Reason', 'Tx ID', 'When'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -1275,18 +1284,49 @@ function TriggerLogsPanel({ clientId, onClose }: { clientId: string; onClose: ()
                   <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-900">{log.campaign_rule?.name ?? '—'}</div>
-                      <div className="text-xs text-gray-400 font-mono">{log.campaign_rule?.campaign_id}</div>
+                      <div className="text-xs text-indigo-600 font-mono">{log.campaign_display_id || log.campaign_rule?.campaign_id}</div>
+                      <div className="text-xs text-gray-400">{TRIGGER_LABELS[log.trigger_type] ?? log.trigger_type}</div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-600">{TRIGGER_LABELS[log.trigger_type] ?? log.trigger_type}</td>
-                    <td className="px-4 py-3 text-xs text-gray-600">{log.member_email ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      <div className="text-xs font-medium text-gray-900">{log.shopify_order_name || (log.order_number ? `#${log.order_number}` : '—')}</div>
+                      <div className="text-xs text-gray-400 font-mono" title={log.order_id}>{log.order_id ? `${log.order_id}` : '—'}</div>
+                      {log.reward_link && (
+                        <a href={log.reward_link} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-0.5 text-xs text-indigo-600 hover:text-indigo-800 mt-0.5">
+                          ↗ Reward link
+                        </a>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-xs text-gray-600">{log.member_email ?? '—'}</div>
+                      {log.member_phone && <div className="text-xs text-gray-400">{log.member_phone}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {log.order_value != null ? `₹${Number(log.order_value).toFixed(2)}` : '—'}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         log.status === 'success' ? 'bg-emerald-50 text-emerald-700' :
                         log.status === 'failed' ? 'bg-red-50 text-red-600' :
+                        log.status === 'below_threshold' ? 'bg-yellow-50 text-yellow-700' :
+                        log.status === 'no_member' ? 'bg-orange-50 text-orange-700' :
+                        log.status === 'already_enrolled' ? 'bg-blue-50 text-blue-700' :
                         'bg-gray-100 text-gray-600'
                       }`}>{log.status}</span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-400">
+                    <td className="px-4 py-3">
+                      <div className="text-xs text-gray-500 max-w-[180px] truncate" title={log.reason}>{log.reason ?? '—'}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {log.transaction_id ? (
+                        <span className="font-mono text-xs text-gray-400 cursor-pointer hover:text-gray-700"
+                          title={log.transaction_id}
+                          onClick={() => navigator.clipboard.writeText(log.transaction_id)}>
+                          {log.transaction_id.slice(0, 8)}…
+                        </span>
+                      ) : <span className="text-xs text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                       {new Date(log.triggered_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </td>
                   </tr>
