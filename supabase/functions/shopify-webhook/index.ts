@@ -269,8 +269,11 @@ Deno.serve(async (req: Request) => {
       console.log(`Order ${orderRecord.order_number} processed successfully via OAuth webhook`);
       console.log(`[v2] Executing campaign rules for client ${integration.client_id}`);
 
-      await checkAndExecuteCampaignRules(supabase, integration.client_id, orderRecord);
-      await checkAdvancedCampaignRules(supabase, integration.client_id, orderData, orderRecord);
+      const transactionId = crypto.randomUUID();
+      const shopifyOrderName: string | null = orderData.name ?? null;
+
+      await checkAndExecuteCampaignRules(supabase, integration.client_id, orderRecord, transactionId, shopifyOrderName);
+      await checkAdvancedCampaignRules(supabase, integration.client_id, orderData, orderRecord, transactionId, shopifyOrderName);
       await processPendingCommunications(supabase);
 
       if (orderRecord.financial_status === "paid") {
@@ -494,13 +497,17 @@ async function logCampaignTrigger(
       customer_phone: orderRecord.customer_phone,
       reason: reason,
       metadata: metadata,
+      transaction_id: metadata.transaction_id ?? null,
+      reward_link: metadata.reward_link ?? null,
+      campaign_display_id: metadata.campaign_display_id ?? null,
+      shopify_order_name: metadata.shopify_order_name ?? null,
     });
   } catch (error) {
     console.error("Error logging campaign trigger:", error);
   }
 }
 
-async function checkAdvancedCampaignRules(supabase: any, clientId: string, orderData: any, orderRecord: any) {
+async function checkAdvancedCampaignRules(supabase: any, clientId: string, orderData: any, orderRecord: any, transactionId: string | null = null, shopifyOrderName: string | null = null) {
   try {
     console.log(`Checking advanced campaign rules for client ${clientId}`);
 
@@ -559,17 +566,17 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
       try {
         console.log(`Evaluating advanced rule: ${rule.name}`);
 
-        // Idempotency: skip if this order already successfully triggered this rule
+        // Idempotency: skip if this order already has a terminal result for this rule
         const { data: existingLog } = await supabase
           .from("campaign_trigger_logs")
-          .select("id")
+          .select("id, trigger_result")
           .eq("campaign_rule_id", rule.id)
           .eq("order_id", orderRecord.order_id)
-          .eq("trigger_result", "success")
+          .in("trigger_result", ["success", "already_enrolled", "max_reached", "below_threshold", "not_matched"])
           .maybeSingle();
 
         if (existingLog) {
-          console.log(`Order ${orderRecord.order_id} already processed for advanced rule "${rule.name}", skipping`);
+          console.log(`Order ${orderRecord.order_id} already has terminal result "${existingLog.trigger_result}" for advanced rule "${rule.name}", skipping`);
           continue;
         }
 
@@ -612,6 +619,9 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
           await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "no_member", "No member found for this order", null, null, {
             campaign_name: rule.name,
             rule_type: "advanced",
+            transaction_id: transactionId,
+            campaign_display_id: rule.campaign_id,
+            shopify_order_name: shopifyOrderName,
           });
           continue;
         }
@@ -629,6 +639,9 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
             await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "already_enrolled", "Member already enrolled in program", memberId, existingMembership.id, {
               campaign_name: rule.name,
               rule_type: "advanced",
+              transaction_id: transactionId,
+              campaign_display_id: rule.campaign_id,
+              shopify_order_name: shopifyOrderName,
             });
             continue;
           }
@@ -681,6 +694,9 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
                 campaign_name: rule.name,
                 rule_type: "standalone",
                 error: tokenError.message,
+                transaction_id: transactionId,
+                campaign_display_id: rule.campaign_id,
+                shopify_order_name: shopifyOrderName,
               });
             } else {
               await supabase.rpc("increment_campaign_enrollments", { campaign_id: rule.id });
@@ -700,10 +716,15 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
                 },
               });
 
+              const claimUrl = `${Deno.env.get("FRONTEND_URL") || "https://goself.netlify.app"}/claim/${newToken.token}`;
               await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "success", "Standalone campaign token issued", memberId, null, {
                 campaign_name: rule.name,
                 rule_type: "standalone",
                 token: newToken.token,
+                reward_link: claimUrl,
+                transaction_id: transactionId,
+                campaign_display_id: rule.campaign_id,
+                shopify_order_name: shopifyOrderName,
               });
 
               console.log(`Standalone token issued for member ${memberId} via rule "${rule.name}"`);
@@ -746,12 +767,18 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
                 await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "already_enrolled", "Member concurrently enrolled by another webhook event (idempotent skip)", memberId, existingM?.id || null, {
                   campaign_name: rule.name,
                   rule_type: "advanced",
+                  transaction_id: transactionId,
+                  campaign_display_id: rule.campaign_id,
+                  shopify_order_name: shopifyOrderName,
                 });
               } else {
                 await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "failed", `Enrollment failed: ${enrollError.message}`, memberId, null, {
                   campaign_name: rule.name,
                   rule_type: "advanced",
                   error: enrollError.message,
+                  transaction_id: transactionId,
+                  campaign_display_id: rule.campaign_id,
+                  shopify_order_name: shopifyOrderName,
                 });
               }
             } else {
@@ -761,6 +788,9 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
                 campaign_name: rule.name,
                 rule_type: "advanced",
                 program_id: rule.program_id,
+                transaction_id: transactionId,
+                campaign_display_id: rule.campaign_id,
+                shopify_order_name: shopifyOrderName,
               });
 
               console.log(`Successfully enrolled member ${memberId} via advanced rule "${rule.name}"`);
@@ -777,6 +807,9 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
             campaign_name: rule.name,
             rule_type: "advanced",
             failed_conditions: failedConditions,
+            transaction_id: transactionId,
+            campaign_display_id: rule.campaign_id,
+            shopify_order_name: shopifyOrderName,
           });
         }
       } catch (error) {
@@ -864,8 +897,45 @@ function evaluateConditionLocally(condition: any, context: any): boolean {
         return false;
       }
 
+      case "shipping_pincode": {
+        const pincode = order.shipping_address?.zip || "";
+        if (operator === "exact") return pincode === value;
+        if (operator === "starts_with") return pincode.startsWith(value);
+        if (operator === "in_list") {
+          const list = value.split(",").map((v: string) => v.trim());
+          return list.includes(pincode);
+        }
+        return false;
+      }
+
+      case "shipping_state": {
+        const state = order.shipping_address?.province?.toLowerCase() || "";
+        const sv = value.toLowerCase();
+        if (operator === "exact") return state === sv;
+        if (operator === "in_list") {
+          const list = value.split(",").map((v: string) => v.trim().toLowerCase());
+          return list.includes(state);
+        }
+        return false;
+      }
+
+      case "collection_contains": {
+        // Check order tags or line-item product_type for a matching collection handle
+        const lineItems: any[] = order.line_items || [];
+        const searchVal = value.toLowerCase();
+        const orderTags = (order.tags || "").toLowerCase().split(",").map((t: string) => t.trim());
+        if (orderTags.includes(searchVal)) return true;
+        return lineItems.some((item: any) =>
+          item.product_type?.toLowerCase() === searchVal ||
+          (item.properties || []).some((p: any) =>
+            p.name?.toLowerCase() === "collection" && p.value?.toLowerCase() === searchVal
+          )
+        );
+      }
+
       default:
-        return true;
+        console.warn(`evaluateConditionLocally: unrecognized condition type "${type}" — failing safe (order ${order.name})`);
+        return false;
     }
   } catch (error) {
     console.error(`Error evaluating condition ${type}:`, error);
@@ -873,7 +943,7 @@ function evaluateConditionLocally(condition: any, context: any): boolean {
   }
 }
 
-async function checkAndExecuteCampaignRules(supabase: any, clientId: string, orderRecord: any) {
+async function checkAndExecuteCampaignRules(supabase: any, clientId: string, orderRecord: any, transactionId: string | null = null, shopifyOrderName: string | null = null) {
   try {
     console.log(`Checking campaign rules for client ${clientId}, order value: ${orderRecord.total_price}`);
 
@@ -904,17 +974,17 @@ async function checkAndExecuteCampaignRules(supabase: any, clientId: string, ord
 
     for (const rule of sortedRules) {
       const minOrderValue = rule.trigger_conditions?.min_order_value || 0;
-      // Idempotency: skip if this order already successfully triggered this rule
+      // Idempotency: skip if this order already has a terminal result for this rule
       const { data: existingLog } = await supabase
         .from("campaign_trigger_logs")
-        .select("id")
+        .select("id, trigger_result")
         .eq("campaign_rule_id", rule.id)
         .eq("order_id", orderRecord.order_id)
-        .eq("trigger_result", "success")
+        .in("trigger_result", ["success", "already_enrolled", "max_reached", "below_threshold", "not_matched"])
         .maybeSingle();
 
       if (existingLog) {
-        console.log(`Order ${orderRecord.order_id} already processed for rule "${rule.name}", skipping`);
+        console.log(`Order ${orderRecord.order_id} already has terminal result "${existingLog.trigger_result}" for rule "${rule.name}", skipping`);
         continue;
       }
       console.log(`Checking rule \"${rule.name}\": min_order_value=${minOrderValue}, order_value=${orderRecord.total_price}`);
@@ -963,6 +1033,9 @@ async function checkAndExecuteCampaignRules(supabase: any, clientId: string, ord
           await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "no_member", reason, null, null, {
             campaign_name: rule.name,
             min_order_value: minOrderValue,
+            transaction_id: transactionId,
+            campaign_display_id: rule.campaign_id,
+            shopify_order_name: shopifyOrderName,
           });
           continue;
         }
@@ -986,6 +1059,9 @@ async function checkAndExecuteCampaignRules(supabase: any, clientId: string, ord
             campaign_name: rule.name,
             existing_campaign_id: existingMembership.campaign_rule_id,
             min_order_value: minOrderValue,
+            transaction_id: transactionId,
+            campaign_display_id: rule.campaign_id,
+            shopify_order_name: shopifyOrderName,
           });
           continue;
         }
@@ -1000,6 +1076,9 @@ async function checkAndExecuteCampaignRules(supabase: any, clientId: string, ord
             current_enrollments: rule.current_enrollments,
             max_enrollments: rule.max_enrollments,
             min_order_value: minOrderValue,
+            transaction_id: transactionId,
+            campaign_display_id: rule.campaign_id,
+            shopify_order_name: shopifyOrderName,
           });
           continue;
         }
@@ -1044,6 +1123,9 @@ async function checkAndExecuteCampaignRules(supabase: any, clientId: string, ord
             await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "already_enrolled", reason, memberId, existingM?.id || null, {
               campaign_name: rule.name,
               min_order_value: minOrderValue,
+              transaction_id: transactionId,
+              campaign_display_id: rule.campaign_id,
+              shopify_order_name: shopifyOrderName,
             });
           } else {
             const reason = `Enrollment failed: ${enrollError.message}`;
@@ -1052,6 +1134,9 @@ async function checkAndExecuteCampaignRules(supabase: any, clientId: string, ord
               campaign_name: rule.name,
               error: enrollError.message,
               min_order_value: minOrderValue,
+              transaction_id: transactionId,
+              campaign_display_id: rule.campaign_id,
+              shopify_order_name: shopifyOrderName,
             });
           }
         } else {
@@ -1063,6 +1148,9 @@ async function checkAndExecuteCampaignRules(supabase: any, clientId: string, ord
             campaign_name: rule.name,
             program_id: rule.program_id,
             min_order_value: minOrderValue,
+            transaction_id: transactionId,
+            campaign_display_id: rule.campaign_id,
+            shopify_order_name: shopifyOrderName,
           });
 
           break;
@@ -1074,6 +1162,9 @@ async function checkAndExecuteCampaignRules(supabase: any, clientId: string, ord
           campaign_name: rule.name,
           min_order_value: minOrderValue,
           order_value: orderRecord.total_price,
+          transaction_id: transactionId,
+          campaign_display_id: rule.campaign_id,
+          shopify_order_name: shopifyOrderName,
         });
       }
     }

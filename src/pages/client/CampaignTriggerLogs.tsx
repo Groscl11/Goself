@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { clientMenuItems } from './clientMenuItems';
-import { AlertCircle, CheckCircle, XCircle, Clock, Users, Filter, ArrowLeft, Megaphone, Layers, Activity } from 'lucide-react';
+import { AlertCircle, CheckCircle, XCircle, Clock, Users, Filter, ArrowLeft, Megaphone, Layers, Activity, ExternalLink } from 'lucide-react';
 
 interface CampaignTriggerLog {
   id: string;
@@ -23,6 +23,11 @@ interface CampaignTriggerLog {
   campaign_rules: {
     name: string;
   } | null;
+  // new columns
+  transaction_id: string | null;
+  shopify_order_name: string | null;
+  campaign_display_id: string | null;
+  reward_link: string | null;
 }
 
 export default function CampaignTriggerLogs() {
@@ -147,9 +152,13 @@ export default function CampaignTriggerLogs() {
     const search = searchTerm.toLowerCase();
     return (
       log.order_number?.toLowerCase().includes(search) ||
+      log.shopify_order_name?.toLowerCase().includes(search) ||
+      log.order_id?.toLowerCase().includes(search) ||
       log.customer_email?.toLowerCase().includes(search) ||
       log.customer_phone?.toLowerCase().includes(search) ||
-      log.campaign_rules?.name?.toLowerCase().includes(search)
+      log.campaign_rules?.name?.toLowerCase().includes(search) ||
+      log.campaign_display_id?.toLowerCase().includes(search) ||
+      log.transaction_id?.toLowerCase().includes(search)
     );
   });
 
@@ -350,6 +359,9 @@ export default function CampaignTriggerLogs() {
                   Reason
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Tx ID
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Time
                 </th>
               </tr>
@@ -357,7 +369,7 @@ export default function CampaignTriggerLogs() {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={8} className="px-6 py-12 text-center text-sm text-gray-500">
                     No campaign trigger logs found
                   </td>
                 </tr>
@@ -376,20 +388,37 @@ export default function CampaignTriggerLogs() {
                       <div className="text-sm font-medium text-gray-900">
                         {log.campaign_rules?.name || 'Unknown Campaign'}
                       </div>
+                      {log.campaign_display_id && (
+                        <div className="text-xs font-mono text-indigo-600 mt-0.5">{log.campaign_display_id}</div>
+                      )}
                       {log.metadata?.rule_type === 'standalone' ? (
                         <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700 mt-1">Standalone</span>
                       ) : log.metadata?.rule_type === 'advanced' ? (
                         <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700 mt-1">Membership</span>
                       ) : null}
                       {log.metadata?.min_order_value && (
-                        <div className="text-xs text-gray-500">
-                          Min: ${log.metadata.min_order_value}
-                        </div>
+                        <div className="text-xs text-gray-500">Min: ${log.metadata.min_order_value}</div>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">#{log.order_number}</div>
-                      <div className="text-xs text-gray-500">{log.order_id?.slice(0, 8)}...</div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {log.shopify_order_name || (log.order_number ? `#${log.order_number}` : '—')}
+                      </div>
+                      <div className="text-xs text-gray-500 font-mono" title={log.order_id}>
+                        ID: {log.order_id}
+                      </div>
+                      {log.reward_link && (
+                        <a
+                          href={log.reward_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 mt-0.5"
+                          title={log.reward_link}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Reward link
+                        </a>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">
@@ -408,6 +437,19 @@ export default function CampaignTriggerLogs() {
                       <div className="text-sm text-gray-600 max-w-xs truncate" title={log.reason}>
                         {log.reason}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {log.transaction_id ? (
+                        <span
+                          className="font-mono text-xs text-gray-400 cursor-pointer hover:text-gray-700"
+                          title={log.transaction_id}
+                          onClick={() => navigator.clipboard.writeText(log.transaction_id!)}
+                        >
+                          {log.transaction_id.slice(0, 8)}…
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(log.created_at).toLocaleString()}
