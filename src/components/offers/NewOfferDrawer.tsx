@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Drawer } from './Drawers';
 import { supabase } from '../../lib/supabase';
 import { uploadOfferCodesDirect } from '../../lib/offerCodes';
@@ -21,7 +21,7 @@ const REWARD_TYPES: { value: RewardType; label: string }[] = [
   { value: 'free_item',            label: 'Free item' },
 ];
 
-export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated, mode = 'store' }: NewOfferDrawerProps) {
+export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated, mode = 'store', editOffer }: NewOfferDrawerProps & { editOffer?: import('../../types/offers').Offer | null }) {
   const [flow, setFlow] = useState<Flow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -44,6 +44,29 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
   });
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  // Pre-populate form when editing an existing offer
+  useEffect(() => {
+    if (editOffer && open) {
+      const isGeneric = editOffer.coupon_type === 'generic';
+      setFlow(isGeneric ? 'generic' : 'shopify_imported');
+      setForm({
+        title: editOffer.title ?? '',
+        description: editOffer.description ?? '',
+        reward_type: editOffer.reward_type as RewardType,
+        discount_value: editOffer.discount_value != null ? String(editOffer.discount_value) : '',
+        min_purchase_amount: editOffer.min_purchase_amount != null ? String(editOffer.min_purchase_amount) : '',
+        coupon_type: editOffer.coupon_type,
+        generic_coupon_code: editOffer.generic_coupon_code ?? '',
+        codes_count: '10',
+        code_paste: '',
+        valid_until: editOffer.valid_until ? editOffer.valid_until.slice(0, 10) : '',
+      });
+    } else if (!open) {
+      resetState();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editOffer, open]);
 
   function resetState() {
     setFlow(null); setLoading(false); setError(''); setSuccess('');
@@ -77,31 +100,52 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
       if (!form.title.trim()) throw new Error('Title is required');
       if (!form.discount_value && flow !== 'generic') throw new Error('Discount value is required');
 
+      // Resolve the actual coupon_type: if flow is 'generic', always use 'generic'
+      const resolvedCouponType = flow === 'generic' ? 'generic' : form.coupon_type;
+
       const codeSource: CodeSource =
         flow === 'shopify_generated' ? 'shopify_generated'
         : flow === 'shopify_imported' ? 'shopify_imported'
         : 'csv_uploaded';
 
+      const rewardPayload = {
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        offer_type: mode === 'marketplace' ? 'marketplace_offer' : 'store_discount',
+        code_source: codeSource,
+        coupon_type: resolvedCouponType,
+        generic_coupon_code: resolvedCouponType === 'generic' ? form.generic_coupon_code.trim() || null : null,
+        tracking_type: 'automatic',
+        reward_type: form.reward_type,
+        discount_value: form.discount_value ? Number(form.discount_value) : null,
+        min_purchase_amount: form.min_purchase_amount ? Number(form.min_purchase_amount) : 0,
+        valid_until: form.valid_until || null,
+      };
+
+      if (editOffer) {
+        // ── UPDATE existing offer ──────────────────────────────────────────
+        const { error: updErr } = await supabase
+          .from('rewards')
+          .update(rewardPayload)
+          .eq('id', editOffer.id);
+        if (updErr) throw updErr;
+        setSuccess('Offer updated successfully.');
+        setTimeout(() => { onCreated(); handleClose(); }, 1500);
+        setLoading(false);
+        return;
+      }
+
+      // ── CREATE new offer ───────────────────────────────────────────────
       // 1. Insert reward row
       const { data: reward, error: rwErr } = await supabase
         .from('rewards')
         .insert({
-          title: form.title.trim(),
-          description: form.description.trim() || null,
-          offer_type: mode === 'marketplace' ? 'marketplace_offer' : 'store_discount',
-          code_source: codeSource,
-          coupon_type: form.coupon_type,
-          generic_coupon_code: form.coupon_type === 'generic' ? form.generic_coupon_code.trim() || null : null,
-          tracking_type: 'automatic',
-          reward_type: form.reward_type,
-          discount_value: form.discount_value ? Number(form.discount_value) : null,
-          min_purchase_amount: form.min_purchase_amount ? Number(form.min_purchase_amount) : 0,
+          ...rewardPayload,
           currency: 'INR',
           is_active: true,
           status: 'active',
           owner_client_id: clientId,
           client_id: clientId,
-          valid_until: form.valid_until || null,
           redeems_at_shop_domain: mode === 'marketplace' ? null : shopDomain,
         })
         .select('id')
@@ -111,7 +155,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
       const offerId = reward.id;
 
       // 2. Upload codes if applicable
-      if (form.coupon_type === 'unique') {
+      if (resolvedCouponType === 'unique') {
         let codes: string[] = [];
         if (flow === 'shopify_imported') {
           codes = (form.code_paste || '').split('\n').map(c => c.trim()).filter(Boolean).slice(0, 1000);
@@ -163,25 +207,27 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
     <Drawer
       open={open}
       onClose={handleClose}
-      title={mode === 'marketplace' ? 'Submit marketplace offer' : 'New store offer'}
-      subtitle={mode === 'marketplace' ? 'Submit a discount offer to GoSelf marketplace for other clients to adopt' : 'Create a discount code offer for your store customers'}
+      title={editOffer ? 'Edit offer' : mode === 'marketplace' ? 'Submit marketplace offer' : 'New store offer'}
+      subtitle={editOffer ? 'Update the details for this offer' : mode === 'marketplace' ? 'Submit a discount offer to GoSelf marketplace for other clients to adopt' : 'Create a discount code offer for your store customers'}
       footer={
         flow ? (
           <div className="flex items-center gap-3">
-            <button onClick={() => { setFlow(null); setError(''); }}
-              className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-              ← Back
-            </button>
+            {!editOffer && (
+              <button onClick={() => { setFlow(null); setError(''); }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                ← Back
+              </button>
+            )}
             <button onClick={handleSubmit} disabled={loading}
               className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-60 ml-auto">
-              {loading ? 'Creating...' : 'Create Offer'}
+              {loading ? (editOffer ? 'Saving...' : 'Creating...') : (editOffer ? 'Save Changes' : 'Create Offer')}
             </button>
           </div>
         ) : null
       }
     >
-      {/* Flow selector */}
-      {!flow && (
+      {/* Flow selector — only shown when creating a new offer */}
+      {!flow && !editOffer && (
         <div className="space-y-3">
           <p className="text-sm text-gray-500 mb-4">Choose how you want to add discount codes:</p>
           {[

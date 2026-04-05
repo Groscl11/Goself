@@ -82,6 +82,7 @@ export default function OffersPage() {
   // Drawer / modal state
   const [newOfferOpen, setNewOfferOpen] = useState(false);
   const [newOfferMode, setNewOfferMode] = useState<'store' | 'marketplace'>('store');
+  const [editOffer, setEditOffer] = useState<Offer | null>(null);
   const [partnerWizardOpen, setPartnerWizardOpen] = useState(false);
   const [codesDrawer, setCodesDrawer] = useState<Offer | null>(null);
   const [adoptTarget, setAdoptTarget] = useState<MarketplaceOffer | null>(null);
@@ -748,17 +749,19 @@ export default function OffersPage() {
       {/* ── Drawers & Modals ─────────────────────────────────────────────────── */}
       <NewOfferDrawer
         open={newOfferOpen}
-        onClose={() => setNewOfferOpen(false)}
+        onClose={() => { setNewOfferOpen(false); setEditOffer(null); }}
         clientId={clientId}
         shopDomain={shopDomain}
         mode={newOfferMode}
+        editOffer={editOffer}
         onCreated={() => {
-          if (newOfferMode === 'marketplace') {
+          if (editOffer || newOfferMode === 'marketplace') {
             fetchSubmissions();
           } else {
             fetchStoreOffers();
             fetchDistributions();
           }
+          setEditOffer(null);
         }}
       />
  
