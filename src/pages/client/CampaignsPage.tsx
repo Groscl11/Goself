@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RewardPickerModal } from '../../components/RewardPickerModal';
 import { RuleBuilder } from '../../components/RuleBuilder';
 import type { RewardPoolItem } from '../../components/RewardPickerModal';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
@@ -841,7 +841,7 @@ export default function CampaignsPage() {
   const [defaultMode, setDefaultMode] = useState<RuleMode>('standalone');
   const [filter, setFilter] = useState<'all' | 'standalone' | 'membership'>('all');
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [triggerLogsOpen, setTriggerLogsOpen] = useState(false);
+  const navigate = useNavigate();
   const [copiedCampaignId, setCopiedCampaignId] = useState<string | null>(null);
   const [campaignMetrics, setCampaignMetrics] = useState<Record<string, CampaignMetrics>>({});
  
@@ -976,7 +976,7 @@ export default function CampaignsPage() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setTriggerLogsOpen(true)}
+                onClick={() => navigate('/client/campaign-logs')}
                 className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
@@ -1167,11 +1167,6 @@ export default function CampaignsPage() {
             )}
           </div>
  
-          {/* Trigger logs panel */}
-          {triggerLogsOpen && (
-            <TriggerLogsPanel clientId={clientId} onClose={() => setTriggerLogsOpen(false)} />
-          )}
- 
         </div>
       </DashboardLayout>
  
@@ -1184,159 +1179,6 @@ export default function CampaignsPage() {
         defaultMode={defaultMode}
       />
     </>
-  );
-}
- 
-// ─── Trigger Logs Panel ───────────────────────────────────────────────────────
-function TriggerLogsPanel({ clientId, onClose }: { clientId: string; onClose: () => void }) {
-  const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
- 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-
-      // Step 1: fetch raw logs without embedded join (join can silently fail due to RLS on campaign_rules)
-      const { data, error } = await supabase
-        .from('campaign_trigger_logs')
-        .select('id, created_at, trigger_result, customer_email, customer_phone, campaign_rule_id, order_id, order_number, order_value, shopify_order_name, transaction_id, campaign_display_id, reward_link, reason')
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) {
-        console.error('Failed to load campaign_trigger_logs:', error.message, error);
-      }
-
-      const rows = data ?? [];
-
-      // Step 2: enrich with campaign names via a separate query
-      let campaignMap: Record<string, { name: string; campaign_id: string; trigger_type: string }> = {};
-      if (rows.length > 0) {
-        const ruleIds = [...new Set(rows.map((r: any) => r.campaign_rule_id).filter(Boolean))];
-        if (ruleIds.length > 0) {
-          const { data: rules } = await supabase
-            .from('campaign_rules')
-            .select('id, name, campaign_id, trigger_type')
-            .in('id', ruleIds);
-          for (const r of (rules ?? [])) {
-            campaignMap[r.id] = { name: r.name, campaign_id: r.campaign_id, trigger_type: r.trigger_type };
-          }
-        }
-        const normalized = rows.map((row: any) => ({
-          id: row.id,
-          trigger_type: campaignMap[row.campaign_rule_id]?.trigger_type || 'advanced',
-          status: row.trigger_result,
-          member_email: row.customer_email,
-          member_phone: row.customer_phone,
-          triggered_at: row.created_at,
-          campaign_rule: campaignMap[row.campaign_rule_id] ?? null,
-          order_id: row.order_id,
-          order_number: row.order_number,
-          order_value: row.order_value,
-          shopify_order_name: row.shopify_order_name,
-          transaction_id: row.transaction_id,
-          campaign_display_id: row.campaign_display_id,
-          reward_link: row.reward_link,
-          reason: row.reason,
-        }));
-        setLogs(normalized);
-      }
-      setLoading(false);
-    }
-    load();
-  }, [clientId]);
- 
-  return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative ml-auto h-full w-full max-w-2xl bg-white shadow-2xl flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">Trigger Logs</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Last 50 campaign trigger events</p>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="p-6 space-y-3">{[...Array(5)].map((_, i) => (
-              <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />
-            ))}</div>
-          ) : logs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center p-6">
-              <div className="text-4xl mb-3">📋</div>
-              <p className="text-sm text-gray-500">No trigger logs yet. Logs appear here when campaigns fire.</p>
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/60">
-                  {['Campaign', 'Order', 'Member', 'Value', 'Status', 'Reason', 'Tx ID', 'When'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {logs.map(log => (
-                  <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">{log.campaign_rule?.name ?? '—'}</div>
-                      <div className="text-xs text-indigo-600 font-mono">{log.campaign_display_id || log.campaign_rule?.campaign_id}</div>
-                      <div className="text-xs text-gray-400">{TRIGGER_LABELS[log.trigger_type] ?? log.trigger_type}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-xs font-medium text-gray-900">{log.shopify_order_name || (log.order_number ? `#${log.order_number}` : '—')}</div>
-                      <div className="text-xs text-gray-400 font-mono" title={log.order_id}>{log.order_id ? `${log.order_id}` : '—'}</div>
-                      {log.reward_link && (
-                        <a href={log.reward_link} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center gap-0.5 text-xs text-indigo-600 hover:text-indigo-800 mt-0.5">
-                          ↗ Reward link
-                        </a>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-xs text-gray-600">{log.member_email ?? '—'}</div>
-                      {log.member_phone && <div className="text-xs text-gray-400">{log.member_phone}</div>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600">
-                      {log.order_value != null ? `₹${Number(log.order_value).toFixed(2)}` : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        log.status === 'success' ? 'bg-emerald-50 text-emerald-700' :
-                        log.status === 'failed' ? 'bg-red-50 text-red-600' :
-                        log.status === 'below_threshold' ? 'bg-yellow-50 text-yellow-700' :
-                        log.status === 'no_member' ? 'bg-orange-50 text-orange-700' :
-                        log.status === 'already_enrolled' ? 'bg-blue-50 text-blue-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>{log.status}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-xs text-gray-500 max-w-[180px] truncate" title={log.reason}>{log.reason ?? '—'}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {log.transaction_id ? (
-                        <span className="font-mono text-xs text-gray-400 cursor-pointer hover:text-gray-700"
-                          title={log.transaction_id}
-                          onClick={() => navigator.clipboard.writeText(log.transaction_id)}>
-                          {log.transaction_id.slice(0, 8)}…
-                        </span>
-                      ) : <span className="text-xs text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                      {new Date(log.triggered_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-    </div>
   );
 }
  
