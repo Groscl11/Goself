@@ -98,6 +98,7 @@ Deno.serve(async (req: Request) => {
 
     // ── 2.5 Gate: webhook trigger log is the single source of truth ────────────
     // When an order ID is present, always use what the webhook logged.
+    let customerFirstName = "";
     if (orderId) {
       const { data: triggerLog } = await supabase
         .from("campaign_trigger_logs")
@@ -126,7 +127,6 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 3. Look up customer member_id + first name ───────────────────────────
-    let customerFirstName = "";
     let memberId: string | null = null;
     if (customerEmail) {
       const { data: member } = await supabase
