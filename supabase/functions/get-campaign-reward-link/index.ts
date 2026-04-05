@@ -116,14 +116,16 @@ Deno.serve(async (req: Request) => {
       return json({ has_rewards: false, message: "No active campaigns for this shop" });
     }
 
-    // ── 2.5 Gate on campaign conditions before issuing token ─────────────────
+    // ── 2.5 Gate: webhook trigger log is the single source of truth ────────────
+    // When an order ID is present, always use what the webhook logged.
+    // This ensures the banner always shows the exact same link as the trigger log.
     if (shopifyOrderId) {
       const { data: triggerLog } = await supabase
         .from("campaign_trigger_logs")
-        .select("trigger_result")
+        .select("trigger_result, reward_link")
         .eq("campaign_rule_id", campaignUuid)
         .eq("order_id", shopifyOrderId)
-        .in("trigger_result", ["success", "not_matched", "below_threshold", "max_reached"])
+        .in("trigger_result", ["success", "not_matched", "below_threshold", "max_reached", "already_enrolled"])
         .maybeSingle();
 
       if (triggerLog) {
@@ -131,47 +133,16 @@ Deno.serve(async (req: Request) => {
           console.log(`Suppressing reward banner: campaign result is "${triggerLog.trigger_result}" for order ${shopifyOrderId}`);
           return json({ has_rewards: false, message: "Order does not meet campaign conditions" });
         }
-      } else {
-        // Webhook hasn't processed yet — evaluate order-value conditions locally
-        const { data: campaignDetails } = await supabase
-          .from("campaign_rules")
-          .select("trigger_type, trigger_conditions")
-          .eq("id", campaignUuid)
-          .maybeSingle();
-        const { data: orderRow } = await supabase
-          .from("shopify_orders")
-          .select("total_price")
-          .eq("order_id", shopifyOrderId)
-          .eq("client_id", clientId)
-          .maybeSingle();
-
-        if (campaignDetails && orderRow) {
-          const orderValue = parseFloat(orderRow.total_price || "0");
-          if (campaignDetails.trigger_type === "order_value") {
-            const minVal = parseFloat(campaignDetails.trigger_conditions?.min_order_value || "0");
-            if (orderValue < minVal) {
-              console.log(`Suppressing reward banner: order value ${orderValue} below min ${minVal}`);
-              return json({ has_rewards: false, message: "Order value below campaign threshold" });
-            }
-          }
-          if (campaignDetails.trigger_type === "advanced") {
-            const conditions: any[] = Array.isArray(campaignDetails.trigger_conditions)
-              ? campaignDetails.trigger_conditions : [];
-            for (const cond of conditions) {
-              if (cond.type === "order_value_gte" && orderValue < parseFloat(cond.value)) {
-                console.log(`Suppressing reward banner: order value ${orderValue} < order_value_gte ${cond.value}`);
-                return json({ has_rewards: false, message: "Order value below campaign threshold" });
-              }
-              if (cond.type === "order_value_between") {
-                const [min, max] = (cond.value as string).split(",").map((v: string) => parseFloat(v.trim()));
-                if (orderValue < min || orderValue > max) {
-                  console.log(`Suppressing reward banner: order value ${orderValue} outside range ${min}-${max}`);
-                  return json({ has_rewards: false, message: "Order value outside campaign range" });
-                }
-              }
-            }
-          }
+        // Webhook confirmed success — return its reward_link directly (single source of truth)
+        if (triggerLog.reward_link) {
+          console.log(`Returning webhook-logged reward link for order ${shopifyOrderId}`);
+          return json({ has_rewards: true, redemption_link: triggerLog.reward_link, campaign_name: campaignName, customer_first_name: customerFirstName });
         }
+        // success but no reward_link = membership campaign, fall through to token flow
+      } else {
+        // Webhook hasn't written the trigger log yet — tell the banner to retry
+        console.log(`No trigger log yet for order ${shopifyOrderId} — returning pending`);
+        return json({ has_rewards: false, pending: true, message: "Campaign evaluation in progress" });
       }
     }
 
