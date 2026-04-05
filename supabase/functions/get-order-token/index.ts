@@ -96,6 +96,67 @@ Deno.serve(async (req: Request) => {
     // Fall back to first campaign even if no rewards table entry found
     if (!selectedCampaign) selectedCampaign = campaigns[0];
 
+    // ── 2.5 Gate on campaign conditions before issuing token ─────────────────
+    if (orderId) {
+      // First choice: trust the webhook's logged terminal result
+      const { data: triggerLog } = await supabase
+        .from("campaign_trigger_logs")
+        .select("trigger_result")
+        .eq("campaign_rule_id", selectedCampaign.id)
+        .eq("order_id", orderId)
+        .in("trigger_result", ["success", "not_matched", "below_threshold", "max_reached"])
+        .maybeSingle();
+
+      if (triggerLog) {
+        if (triggerLog.trigger_result !== "success") {
+          console.log(`Suppressing reward banner: campaign result is "${triggerLog.trigger_result}" for order ${orderId}`);
+          return json({ has_reward: false, message: "Order does not meet campaign conditions" });
+        }
+        // trigger_result === "success" → proceed to issue token
+      } else {
+        // Webhook hasn't processed yet — evaluate order-value conditions locally
+        const { data: campaignDetails } = await supabase
+          .from("campaign_rules")
+          .select("trigger_type, trigger_conditions")
+          .eq("id", selectedCampaign.id)
+          .maybeSingle();
+        const { data: orderRow } = await supabase
+          .from("shopify_orders")
+          .select("total_price")
+          .eq("order_id", orderId)
+          .eq("client_id", clientId)
+          .maybeSingle();
+
+        if (campaignDetails && orderRow) {
+          const orderValue = parseFloat(orderRow.total_price || "0");
+          if (campaignDetails.trigger_type === "order_value") {
+            const minVal = parseFloat(campaignDetails.trigger_conditions?.min_order_value || "0");
+            if (orderValue < minVal) {
+              console.log(`Suppressing reward banner: order value ${orderValue} below min ${minVal}`);
+              return json({ has_reward: false, message: "Order value below campaign threshold" });
+            }
+          }
+          if (campaignDetails.trigger_type === "advanced") {
+            const conditions: any[] = Array.isArray(campaignDetails.trigger_conditions)
+              ? campaignDetails.trigger_conditions : [];
+            for (const cond of conditions) {
+              if (cond.type === "order_value_gte" && orderValue < parseFloat(cond.value)) {
+                console.log(`Suppressing reward banner: order value ${orderValue} < order_value_gte ${cond.value}`);
+                return json({ has_reward: false, message: "Order value below campaign threshold" });
+              }
+              if (cond.type === "order_value_between") {
+                const [min, max] = (cond.value as string).split(",").map((v: string) => parseFloat(v.trim()));
+                if (orderValue < min || orderValue > max) {
+                  console.log(`Suppressing reward banner: order value ${orderValue} outside range ${min}-${max}`);
+                  return json({ has_reward: false, message: "Order value outside campaign range" });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     // ── 3. Look up customer member_id + first name ───────────────────────────
     let customerFirstName = "";
     let memberId: string | null = null;
@@ -130,6 +191,25 @@ Deno.serve(async (req: Request) => {
     const identifier = customerEmail || customerPhone;
 
     if (identifier) {
+      // Reuse an existing unexpired token for the same campaign + customer identity
+      let existingTokenData: { token: string } | null = null;
+      if (customerEmail) {
+        const { data } = await supabase.from("campaign_tokens").select("token")
+          .eq("campaign_rule_id", selectedCampaign.id).eq("is_claimed", false)
+          .gt("expires_at", new Date().toISOString()).eq("email", customerEmail).maybeSingle();
+        existingTokenData = data;
+      } else if (customerPhone) {
+        const { data } = await supabase.from("campaign_tokens").select("token")
+          .eq("campaign_rule_id", selectedCampaign.id).eq("is_claimed", false)
+          .gt("expires_at", new Date().toISOString()).eq("phone", customerPhone).maybeSingle();
+        existingTokenData = data;
+      }
+      if (existingTokenData) {
+        const claimUrl = `${APP_URL}/claim-rewards?token=${existingTokenData.token}`;
+        console.log(`Reusing existing token for campaign: ${selectedCampaign.name}`);
+        return json({ has_reward: true, claim_url: claimUrl, campaign_name: selectedCampaign.name, customer_first_name: customerFirstName, expires_at: expiresAt, pre_verified: true });
+      }
+
       const tokenUuid = crypto.randomUUID();
       const { error: insertError } = await supabase
         .from("campaign_tokens")

@@ -679,7 +679,7 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
               .from("campaign_tokens")
               .insert({
                 campaign_rule_id: rule.id,
-                order_id: orderRecord.id,
+                order_id: null,
                 member_id: memberId,
                 email: orderRecord.customer_email,
                 phone: orderRecord.customer_phone || null,
@@ -716,7 +716,7 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
                 },
               });
 
-              const claimUrl = `${Deno.env.get("FRONTEND_URL") || "https://goself.netlify.app"}/claim/${newToken.token}`;
+              const claimUrl = `${Deno.env.get("FRONTEND_URL") || "https://goself.netlify.app"}/claim-rewards?token=${newToken.token}`;
               await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "success", "Standalone campaign token issued", memberId, null, {
                 campaign_name: rule.name,
                 rule_type: "standalone",
