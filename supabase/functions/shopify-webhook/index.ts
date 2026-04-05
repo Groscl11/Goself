@@ -671,23 +671,61 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
           console.log(`Advanced rule "${rule.name}" matched for order ${orderRecord.order_number}`);
 
           if (ruleMode === "standalone") {
-            // Standalone campaign: issue a tokenized claim link
+            // Standalone campaign: issue a tokenized claim link.
+            // First, check if get-order-token (post-purchase banner) already created a token
+            // for this campaign+customer — it runs before the webhook and we must reuse it
+            // so both the trigger log and the banner show the same URL.
             const expiresAt = new Date();
             expiresAt.setHours(expiresAt.getHours() + (rule.link_expiry_hours || 72));
 
-            const { data: newToken, error: tokenError } = await supabase
-              .from("campaign_tokens")
-              .insert({
-                campaign_rule_id: rule.id,
-                order_id: null,
-                member_id: memberId,
-                email: orderRecord.customer_email,
-                phone: orderRecord.customer_phone || null,
-                is_pre_verified: true,
-                expires_at: expiresAt.toISOString(),
-              })
-              .select("token")
-              .single();
+            let resolvedToken: string | null = null;
+
+            // Look up an existing unexpired unclaimed token created by get-order-token
+            if (orderRecord.customer_email) {
+              const { data: existing } = await supabase
+                .from("campaign_tokens")
+                .select("token")
+                .eq("campaign_rule_id", rule.id)
+                .eq("is_claimed", false)
+                .gt("expires_at", new Date().toISOString())
+                .eq("email", orderRecord.customer_email)
+                .maybeSingle();
+              if (existing) resolvedToken = existing.token;
+            }
+            if (!resolvedToken && orderRecord.customer_phone) {
+              const { data: existing } = await supabase
+                .from("campaign_tokens")
+                .select("token")
+                .eq("campaign_rule_id", rule.id)
+                .eq("is_claimed", false)
+                .gt("expires_at", new Date().toISOString())
+                .eq("phone", orderRecord.customer_phone)
+                .maybeSingle();
+              if (existing) resolvedToken = existing.token;
+            }
+
+            // No existing token (webhook arrived before thank-you page) — create one now
+            let tokenError: any = null;
+            if (!resolvedToken) {
+              const { data: newToken, error: insertTokenError } = await supabase
+                .from("campaign_tokens")
+                .insert({
+                  campaign_rule_id: rule.id,
+                  order_id: null,
+                  member_id: memberId,
+                  email: orderRecord.customer_email,
+                  phone: orderRecord.customer_phone || null,
+                  is_pre_verified: true,
+                  expires_at: expiresAt.toISOString(),
+                })
+                .select("token")
+                .single();
+              tokenError = insertTokenError;
+              if (newToken) resolvedToken = newToken.token;
+            }
+
+            // Synthesise a fake single-result shape for the rest of the existing logic
+            const newToken = resolvedToken ? { token: resolvedToken } : null;
 
             if (tokenError) {
               await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "failed", `Token creation failed: ${tokenError.message}`, memberId, null, {
