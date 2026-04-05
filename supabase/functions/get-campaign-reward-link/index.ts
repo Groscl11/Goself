@@ -49,71 +49,58 @@ Deno.serve(async (req: Request) => {
 
     if (!shopDomain) return json({ error: "shop_domain is required" }, 400);
 
-    // ── 1. Resolve client_id from shop_domain ─────────────────────────────────
-    let clientId: string | null = null;
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const campaignIsUuid = campaignId ? uuidPattern.test(campaignId) : false;
 
-    // Primary lookup: store_installations (source of truth)
-    const { data: si1 } = await supabase
-      .from("store_installations")
-      .select("client_id")
-      .eq("shop_domain", shopDomain)
-      .eq("installation_status", "active")
-      .maybeSingle();
-    if (si1?.client_id) clientId = si1.client_id;
+    // ── 1+2. Resolve client_id and campaign in parallel when possible ──────────
+    // When campaign_id is already a UUID we can fire both queries simultaneously
+    // and cut one full round-trip (typically 40-80 ms).
+    let clientId: string | null = null;
+    let campaignUuid: string | null = null;
+    let campaignName = "";
+
+    if (campaignIsUuid && campaignId) {
+      const [siResult, crResult] = await Promise.all([
+        supabase.from("store_installations").select("client_id")
+          .eq("shop_domain", shopDomain).eq("installation_status", "active").maybeSingle(),
+        supabase.from("campaign_rules").select("id, name, is_active, client_id")
+          .eq("id", campaignId).maybeSingle(),
+      ]);
+      if (siResult.data?.client_id) clientId = siResult.data.client_id;
+      const cr = crResult.data;
+      // Verify campaign belongs to this client and is active
+      if (cr?.is_active && clientId && cr.client_id === clientId) {
+        campaignUuid = cr.id;
+        campaignName = cr.name;
+      }
+    } else {
+      // Sequential fallback: need client_id first to look up by human-readable code
+      const { data: si1 } = await supabase
+        .from("store_installations").select("client_id")
+        .eq("shop_domain", shopDomain).eq("installation_status", "active").maybeSingle();
+      if (si1?.client_id) clientId = si1.client_id;
+
+      if (clientId && campaignId) {
+        const { data: cr } = await supabase
+          .from("campaign_rules").select("id, name, is_active")
+          .eq("campaign_id", campaignId).eq("client_id", clientId).maybeSingle();
+        if (cr?.is_active) { campaignUuid = cr.id; campaignName = cr.name; }
+      } else if (clientId) {
+        const { data: cr } = await supabase
+          .from("campaign_rules").select("id, name")
+          .eq("client_id", clientId).eq("is_active", true)
+          .order("priority", { ascending: false }).limit(1).maybeSingle();
+        if (cr) { campaignUuid = cr.id; campaignName = cr.name; }
+      }
+    }
 
     if (!clientId) {
       console.error(`No client found for shop_domain: ${shopDomain}`);
       return json({ has_rewards: false, error: "Shop not configured" });
     }
-
-    console.log(`Resolved client_id: ${clientId} for shop: ${shopDomain}`);
-
-    // ── 2. Resolve campaign — by UUID or human-readable campaign_id field ─────
-    let campaignUuid: string | null = null;
-    let campaignName  = "";
-
-    if (campaignId) {
-      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-      if (uuidPattern.test(campaignId)) {
-        // Already a UUID — verify it belongs to this client and is active
-        const { data: cr } = await supabase
-          .from("campaign_rules")
-          .select("id, name, is_active")
-          .eq("id", campaignId)
-          .eq("client_id", clientId)
-          .maybeSingle();
-        if (cr?.is_active) { campaignUuid = cr.id; campaignName = cr.name; }
-      } else {
-        // Human-readable code like "CAMP-0004"
-        const { data: cr } = await supabase
-          .from("campaign_rules")
-          .select("id, name, is_active")
-          .eq("campaign_id", campaignId)
-          .eq("client_id", clientId)
-          .maybeSingle();
-        if (cr?.is_active) { campaignUuid = cr.id; campaignName = cr.name; }
-      }
-
-      if (!campaignUuid) {
-        console.warn(`Campaign not found or inactive: ${campaignId} for client ${clientId}`);
-        return json({ has_rewards: false, message: "Campaign not found or is not active" });
-      }
-    } else {
-      // No campaign_id provided — fall back to first active campaign for this client
-      const { data: cr } = await supabase
-        .from("campaign_rules")
-        .select("id, name")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("priority", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (cr) { campaignUuid = cr.id; campaignName = cr.name; }
-    }
-
     if (!campaignUuid) {
-      return json({ has_rewards: false, message: "No active campaigns for this shop" });
+      console.warn(`Campaign not found or inactive: ${campaignId} for shop ${shopDomain}`);
+      return json({ has_rewards: false, message: "Campaign not found or is not active" });
     }
 
     // ── 2.5 Gate: webhook trigger log is the single source of truth ────────────
