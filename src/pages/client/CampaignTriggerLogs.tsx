@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { clientMenuItems } from './clientMenuItems';
-import { AlertCircle, CheckCircle, XCircle, Clock, Users, Filter, ArrowLeft, Megaphone, Layers, Activity, ExternalLink } from 'lucide-react';
+import { AlertCircle, CheckCircle, XCircle, Clock, Users, Filter, ArrowLeft, ExternalLink } from 'lucide-react';
 
 interface CampaignTriggerLog {
   id: string;
@@ -175,33 +175,6 @@ export default function CampaignTriggerLogs() {
   return (
     <DashboardLayout menuItems={clientMenuItems} title="Reward Campaigns">
       <div className="space-y-6">
-        {/* Tab bar */}
-        <div className="border-b border-gray-200">
-          <nav className="flex gap-1">
-            <button
-              onClick={() => navigate('/client/campaigns')}
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            >
-              <Megaphone className="w-4 h-4" />
-              Campaign Rules
-            </button>
-            <button
-              onClick={() => navigate('/client/campaigns-advanced')}
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            >
-              <Layers className="w-4 h-4" />
-              Advanced Rules
-            </button>
-            <button
-              onClick={() => navigate('/client/campaign-logs')}
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600"
-            >
-              <Activity className="w-4 h-4" />
-              Trigger Logs
-            </button>
-          </nav>
-        </div>
-
         {/* Back + title */}
         <div className="flex items-center gap-3">
           <button
