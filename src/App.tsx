@@ -13,7 +13,7 @@ import { ProgramDiscovery } from './pages/public/ProgramDiscovery';
 import { RewardRedemption } from './pages/public/RewardRedemption';
 import ClaimReward from './pages/public/ClaimReward';
 import RedeemRewards from './pages/public/RedeemRewards';
-import { SelectRewards } from './pages/public/SelectRewards';
+import ClaimPage from './pages/public/ClaimPage';
 import { RedemptionSuccess } from './pages/public/RedemptionSuccess';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminRewards } from './pages/admin/AdminRewards';
@@ -136,7 +136,7 @@ function App() {
           <Route path="/redeem" element={<RewardRedemption />} />
           <Route path="/redeem/:token" element={<RedeemRewards />} />
           <Route path="/claim/:token" element={<ClaimReward />} />
-          <Route path="/claim-rewards" element={<SelectRewards />} />
+          <Route path="/claim-rewards" element={<ClaimPage />} />
           <Route path="/redemption-success" element={<RedemptionSuccess />} />
 
           <Route path="/admin" element={<RoleBasedRoute allowedRoles={['admin']}><AdminDashboard /></RoleBasedRoute>} />
