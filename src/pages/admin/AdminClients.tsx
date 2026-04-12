@@ -42,7 +42,7 @@ export function AdminClients() {
         supabase.from('member_users').select('client_id'),
         supabase.from('membership_programs').select('client_id'),
         supabase.from('rewards').select('brand_id, client_id, brands(name)'),
-        supabase.from('shopify_store_installations').select('client_id'),
+        supabase.from('store_installations').select('client_id'),
       ]);
 
       setClients(clientsRes.data || []);

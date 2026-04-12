@@ -61,16 +61,27 @@ Deno.serve(async (req: Request) => {
 
     const planId = sub?.plan_id ?? "free";
 
-    // ── Load plan + entitlements in parallel ──────────────────────────────
-    const [planRes, featsRes, modsRes] = await Promise.all([
+    // ── Load plan + entitlements + per-client flag overrides in parallel ──
+    const [planRes, featsRes, modsRes, flagsRes] = await Promise.all([
       db.from("plans").select("id, name, description, price_monthly, price_annual").eq("id", planId).maybeSingle(),
       db.from("plan_feature_entitlements").select("feature").eq("plan_id", planId),
       db.from("plan_module_entitlements").select("module").eq("plan_id", planId),
+      db.from("client_feature_flags").select("feature, is_enabled").eq("client_id", clientId),
     ]);
 
     const plan    = planRes.data ?? null;
-    const features = (featsRes.data ?? []).map((r: { feature: string }) => r.feature);
-    const modules  = (modsRes.data ?? []).map((r: { module: string }) => r.module);
+    const modules = (modsRes.data ?? []).map((r: { module: string }) => r.module);
+
+    // Merge plan features + per-client overrides
+    const featureSet = new Set((featsRes.data ?? []).map((r: { feature: string }) => r.feature));
+    (flagsRes.data ?? []).forEach((flag: { feature: string; is_enabled: boolean }) => {
+      if (flag.is_enabled) {
+        featureSet.add(flag.feature);    // override ON: grant even if not in plan
+      } else {
+        featureSet.delete(flag.feature); // override OFF: revoke even if in plan
+      }
+    });
+    const features = Array.from(featureSet);
 
     // ── Build locked feature hints ─────────────────────────────────────────
     // Maps feature key → which plan first unlocks it, to guide upgrades
@@ -97,7 +108,6 @@ Deno.serve(async (req: Request) => {
     };
 
     const locked_feature_hints: Record<string, string> = {};
-    const featureSet = new Set(features);
     for (const [feat, minPlan] of Object.entries(ALL_FEATURES)) {
       if (!featureSet.has(feat)) {
         const isHigher = PLAN_ORDER.indexOf(minPlan) > PLAN_ORDER.indexOf(planId);

@@ -48,7 +48,7 @@ export function GlobalUsers() {
         .order('created_at', { ascending: false })
         .limit(500),
       supabase.from('clients').select('id, name').order('name'),
-      supabase.from('shopify_store_installations').select('client_id, shop_name'),
+      supabase.from('store_installations').select('client_id, shop_name'),
     ]);
     // Build client_id → shop_name lookup (first store per client)
     const storeMap = new Map<string, string>();
