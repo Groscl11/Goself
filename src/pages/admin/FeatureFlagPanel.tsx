@@ -224,11 +224,16 @@ export function FeatureFlagPanel() {
       dirtyFeatures.forEach(([featureKey, d]) => {
         const mod = MODULES.find((m) => m.features.some((f) => f.key === featureKey))?.key ?? '';
 
-        if (!d.enabled && d.planEnabled) {
-          // Turning off a plan-covered feature that had an override → delete override
+        if (d.enabled === d.planEnabled && !d.hasOverride) {
+          // No change from plan default and no existing override — nothing to do
+          return;
+        }
+
+        if (d.enabled === d.planEnabled && d.hasOverride) {
+          // Reverted to plan default — delete the override row
           toDelete.push(featureKey);
-        } else if (d.enabled !== d.planEnabled || d.hasOverride) {
-          // Explicit override needed
+        } else {
+          // Explicit override needed (enabled differs from plan, or overriding to disable a plan feature)
           toUpsert.push({
             client_id: clientId,
             module: mod,
