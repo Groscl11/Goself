@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle, ExternalLink, AlertCircle } from 'lucide-react';
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 
 interface StepConnectShopifyProps {
   clientId: string;

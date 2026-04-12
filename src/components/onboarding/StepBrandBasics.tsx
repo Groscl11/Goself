@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Upload, Link, X } from 'lucide-react';
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 
 interface StepBrandBasicsProps {
   clientId: string;
