@@ -8,7 +8,6 @@ import {
   Link2,
   Tag,
   Megaphone,
-  ShoppingBag,
   Building2,
   ScrollText,
   FileText,
@@ -82,12 +81,7 @@ export const clientMenuItems = [
     path: '/client/campaigns',
     icon: <Megaphone className="w-4 h-4" />,
   },
-  {
-    section: 'Rewards & Offers',
-    label: 'Rewards Catalog',
-    path: '/client/rewards',
-    icon: <ShoppingBag className="w-4 h-4" />,
-  },
+
   {
     section: 'Rewards & Offers',
     label: 'Brand Network',

@@ -1,6 +1,6 @@
 import { ReactNode, useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Menu, X, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface MenuItem {
   label: string;
@@ -19,9 +19,8 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, menuItems, title }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showProfileSwitcher, setShowProfileSwitcher] = useState(false);
+
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
-  const navigate = useNavigate();
   const location = useLocation();
 
   const toggleCollapsible = (path: string) => {
@@ -30,13 +29,6 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
       [path]: !prev[path]
     }));
   };
-
-  const profiles = [
-    { name: 'Admin', path: '/admin', color: 'bg-purple-100 text-purple-700' },
-    { name: 'Client', path: '/client', color: 'bg-blue-100 text-blue-700' },
-    { name: 'Brand', path: '/brand', color: 'bg-green-100 text-green-700' },
-    { name: 'Member', path: '/member', color: 'bg-orange-100 text-orange-700' },
-  ];
 
   // Detect first occurrence of each section to render a header
   const renderedSections = new Set<string>();
@@ -127,33 +119,7 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
             </ul>
           </nav>
 
-          <div className="p-3 border-t border-gray-100">
-            <button
-              onClick={() => setShowProfileSwitcher(!showProfileSwitcher)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 font-medium transition-colors"
-            >
-              <Users className="w-4 h-4 text-gray-400" />
-              <span>Switch Profile</span>
-            </button>
 
-            {showProfileSwitcher && (
-              <div className="mt-2 space-y-1">
-                {profiles.map((profile) => (
-                  <button
-                    key={profile.path}
-                    onClick={() => {
-                      navigate(profile.path);
-                      setShowProfileSwitcher(false);
-                      setSidebarOpen(false);
-                    }}
-                    className={`w-full px-3 py-2 rounded-lg text-xs font-medium transition-colors ${profile.color} hover:opacity-80`}
-                  >
-                    {profile.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </aside>
 
