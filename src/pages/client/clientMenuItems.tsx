@@ -1,109 +1,158 @@
-import { LayoutDashboard, Users, Award, Settings, ShoppingBag, Zap, BarChart3, Package, FileText, Megaphone, ShoppingCart, Sparkles, Mail, Coins, UserPlus, Cog, Receipt, Tag, Building2, CreditCard } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Users,
+  Coins,
+  Receipt,
+  Cog,
+  GitBranch,
+  Link2,
+  Tag,
+  Megaphone,
+  ShoppingBag,
+  Building2,
+  ScrollText,
+  FileText,
+  Mail,
+  BarChart3,
+  ShoppingCart,
+  Zap,
+  Sparkles,
+  Settings,
+  CreditCard,
+} from 'lucide-react';
 
 export const clientMenuItems = [
+  // ── No section: Dashboard ──────────────────────────────────────────────────
   {
     label: 'Dashboard',
     path: '/client',
-    icon: <LayoutDashboard className="w-5 h-5" />,
+    icon: <LayoutDashboard className="w-4 h-4" />,
   },
+
+  // ── LOYALTY ───────────────────────────────────────────────────────────────
   {
-    label: 'Membership Programs',
-    path: '/client/programs',
-    icon: <Award className="w-5 h-5" />,
-  },
-  {
+    section: 'Loyalty',
     label: 'Members',
     path: '/client/members',
-    icon: <Users className="w-5 h-5" />,
+    icon: <Users className="w-4 h-4" />,
   },
   {
-    label: 'Loyalty Points',
+    section: 'Loyalty',
+    label: 'Points & Tiers',
     path: '/client/loyalty-points',
-    icon: <Coins className="w-5 h-5" />,
+    icon: <Coins className="w-4 h-4" />,
   },
   {
-    label: 'Program Setup (New)',
-    path: '/client/loyalty-program-setup',
-    icon: <Cog className="w-5 h-5" />,
-  },
-  {
-    label: 'Loyalty Members',
-    path: '/client/loyalty-members',
-    icon: <Users className="w-5 h-5" />,
-  },
-  {
-    label: 'Loyalty Transactions',
+    section: 'Loyalty',
+    label: 'Transactions',
     path: '/client/loyalty-transactions',
-    icon: <Receipt className="w-5 h-5" />,
+    icon: <Receipt className="w-4 h-4" />,
   },
   {
-    label: 'Offers & Rewards',
-    path: '/client/offers',
-    icon: <Tag className="w-5 h-5" />,
+    section: 'Loyalty',
+    label: 'Earn Rules',
+    path: '/client/loyalty-config',
+    icon: <Cog className="w-4 h-4" />,
   },
+
+  // ── REFERRAL ──────────────────────────────────────────────────────────────
   {
-    label: 'Brand Redemptions',
-    path: '/client/brand-redemptions',
-    icon: <Building2 className="w-5 h-5" />,
-  },
-  {
+    section: 'Referral',
     label: 'Referral Tracking',
     path: '/client/referral-tracking',
-    icon: <UserPlus className="w-5 h-5" />,
+    icon: <GitBranch className="w-4 h-4" />,
   },
   {
-    label: 'Ways to Earn',
-    path: '/client/loyalty-config',
-    icon: <Cog className="w-5 h-5" />,
+    section: 'Referral',
+    label: 'Reward Links',
+    path: '/client/tokenized-links',
+    icon: <Link2 className="w-4 h-4" />,
+  },
+
+  // ── REWARDS & OFFERS ──────────────────────────────────────────────────────
+  {
+    section: 'Rewards & Offers',
+    label: 'Offers',
+    path: '/client/offers',
+    icon: <Tag className="w-4 h-4" />,
   },
   {
-    label: 'Rewards Marketplace',
-    path: '/client/rewards',
-    icon: <ShoppingBag className="w-5 h-5" />,
-  },
-  {
+    section: 'Rewards & Offers',
     label: 'Campaigns',
     path: '/client/campaigns',
-    icon: <Megaphone className="w-5 h-5" />,
+    icon: <Megaphone className="w-4 h-4" />,
   },
   {
-    label: 'Message Templates',
+    section: 'Rewards & Offers',
+    label: 'Rewards Catalog',
+    path: '/client/rewards',
+    icon: <ShoppingBag className="w-4 h-4" />,
+  },
+  {
+    section: 'Rewards & Offers',
+    label: 'Brand Network',
+    path: '/client/brand-redemptions',
+    icon: <Building2 className="w-4 h-4" />,
+  },
+  {
+    section: 'Rewards & Offers',
+    label: 'Campaign Logs',
+    path: '/client/campaign-logs',
+    icon: <ScrollText className="w-4 h-4" />,
+  },
+
+  // ── COMMUNICATIONS ────────────────────────────────────────────────────────
+  {
+    section: 'Communications',
+    label: 'Templates',
     path: '/client/templates',
-    icon: <FileText className="w-5 h-5" />,
+    icon: <FileText className="w-4 h-4" />,
   },
   {
-    label: 'Communication Logs',
+    section: 'Communications',
+    label: 'Message Logs',
     path: '/client/communications',
-    icon: <Mail className="w-5 h-5" />,
+    icon: <Mail className="w-4 h-4" />,
   },
+
+  // ── PLATFORM ──────────────────────────────────────────────────────────────
   {
-    label: 'Integrations',
-    path: '/client/integrations',
-    icon: <Zap className="w-5 h-5" />,
-  },
-  {
-    label: 'Orders',
-    path: '/client/orders',
-    icon: <ShoppingCart className="w-5 h-5" />,
-  },
-  {
-    label: 'Shopify & Widgets',
-    path: '/client/widgets',
-    icon: <Sparkles className="w-5 h-5" />,
-  },
-  {
+    section: 'Platform',
     label: 'Reports',
     path: '/client/reports',
-    icon: <BarChart3 className="w-5 h-5" />,
+    icon: <BarChart3 className="w-4 h-4" />,
   },
   {
+    section: 'Platform',
+    label: 'Orders',
+    path: '/client/orders',
+    icon: <ShoppingCart className="w-4 h-4" />,
+  },
+  {
+    section: 'Platform',
+    label: 'Integrations',
+    path: '/client/integrations',
+    icon: <Zap className="w-4 h-4" />,
+  },
+  {
+    section: 'Platform',
+    label: 'Widgets & Embed',
+    path: '/client/widgets',
+    icon: <Sparkles className="w-4 h-4" />,
+  },
+
+  // ── ACCOUNT ───────────────────────────────────────────────────────────────
+  {
+    section: 'Account',
     label: 'Settings',
     path: '/client/settings',
-    icon: <Settings className="w-5 h-5" />,
+    icon: <Settings className="w-4 h-4" />,
   },
   {
+    section: 'Account',
     label: 'Plan & Billing',
     path: '/client/billing',
-    icon: <CreditCard className="w-5 h-5" />,
+    icon: <CreditCard className="w-4 h-4" />,
   },
 ];
+
