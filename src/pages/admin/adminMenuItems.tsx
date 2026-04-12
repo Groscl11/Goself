@@ -1,4 +1,4 @@
-import { LayoutDashboard, Building2, Award, Gift, Users, Settings, BarChart3, Ticket, Zap, ShoppingCart, Store, Layers, RefreshCw, GitBranch, Globe, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Building2, Award, Gift, Users, Settings, BarChart3, Ticket, Zap, ShoppingCart, Store, Layers, RefreshCw, GitBranch, Globe, TrendingUp, CreditCard } from 'lucide-react';
 
 export const adminMenuItems = [
   {
@@ -75,6 +75,11 @@ export const adminMenuItems = [
     label: 'Referral Analytics',
     path: '/admin/referral-analytics',
     icon: <TrendingUp className="w-5 h-5" />,
+  },
+  {
+    label: 'Billing',
+    path: '/admin/billing',
+    icon: <CreditCard className="w-5 h-5" />,
   },
   {
     label: 'Settings',

@@ -19,6 +19,7 @@ interface ClientInfo {
   name: string;
   slug: string;
   registration_enabled: boolean;
+  onboarding_completed: boolean;
 }
 
 export function ClientDashboard() {
@@ -47,12 +48,17 @@ export function ClientDashboard() {
     try {
       const { data, error } = await supabase
         .from('clients')
-        .select('id, name, slug, registration_enabled')
+        .select('id, name, slug, registration_enabled, onboarding_completed')
         .eq('id', profile.client_id)
         .maybeSingle();
 
       if (error) throw error;
-      if (data) setClientInfo(data);
+      if (data) {
+        setClientInfo(data);
+        if (!data.onboarding_completed) {
+          navigate('/client/onboarding', { replace: true });
+        }
+      }
     } catch (error) {
       console.error('Error loading client info:', error);
     }
