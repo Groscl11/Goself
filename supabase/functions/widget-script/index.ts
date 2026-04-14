@@ -105,6 +105,28 @@ function generateWidgetScript(shop: string, clientId: string, config: any): stri
   // RewardHub Loyalty Widget
   // Shop: ${shop}
 
+  // ── Referral Code Capture ────────────────────────────────────────────────
+  // Read ?ref= from URL, store in localStorage, attach to Shopify cart
+  (function() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var refCode = params.get('ref');
+      if (refCode && /^[A-Z0-9]{4,16}$/i.test(refCode)) {
+        localStorage.setItem('goself_ref_code', refCode.toUpperCase());
+      }
+      var storedRef = localStorage.getItem('goself_ref_code');
+      if (storedRef && typeof fetch !== 'undefined') {
+        // Attach to Shopify cart note_attributes (idempotent, works on all pages)
+        fetch('/cart/update.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ attributes: { 'goself_ref': storedRef } })
+        }).catch(function() {});
+      }
+    } catch(e) {}
+  })();
+  // ─────────────────────────────────────────────────────────────────────────
+
   var RewardHub = window.RewardHub || {};
 
   // Configuration

@@ -280,6 +280,9 @@ Deno.serve(async (req: Request) => {
         await awardLoyaltyPoints(supabase, integration.client_id, orderRecord);
       }
 
+      // Process referral tracking — check for goself_ref in note_attributes
+      await processReferral(supabase, integration.client_id, orderData, orderRecord);
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -1268,5 +1271,134 @@ async function verifyShopifyHmac(body: string, hmacHeader: string, secret: strin
   } catch (error) {
     console.error("HMAC verification error:", error);
     return false;
+  }
+}
+
+// ── Referral Tracking ─────────────────────────────────────────────────────────
+// Called on every orders/create|updated|paid webhook.
+// Reads goself_ref (or ref) from Shopify note_attributes, looks up the referrer,
+// creates a member_referrals record and awards points – all idempotent.
+async function processReferral(supabase: any, clientId: string, orderData: any, orderRecord: any) {
+  try {
+    // Extract ref code from note_attributes (set by the widget-script cart injection)
+    const noteAttrs: Array<{ name: string; value: string }> = orderData.note_attributes || [];
+    const refAttr = noteAttrs.find(a => a.name === 'goself_ref' || a.name === 'ref');
+    if (!refAttr?.value) return;
+    const refCode = refAttr.value.toUpperCase().trim();
+    if (!refCode) return;
+
+    console.log(`[referral] Processing ref code "${refCode}" for order ${orderRecord.order_number}`);
+
+    // Get loyalty program for this client
+    const { data: program } = await supabase
+      .from('loyalty_programs')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (!program) return;
+
+    // Find referrer by code
+    const { data: referrerStatus } = await supabase
+      .from('member_loyalty_status')
+      .select('id, member_user_id, points_balance, lifetime_points_earned, referral_points_earned')
+      .eq('loyalty_program_id', program.id)
+      .eq('referral_code', refCode)
+      .maybeSingle();
+    if (!referrerStatus) {
+      console.log(`[referral] No member found with referral_code="${refCode}"`);
+      return;
+    }
+
+    // Find or acquire the referred (buyer) member
+    const buyerEmail = orderRecord.customer_email;
+    const buyerPhone = orderRecord.customer_phone;
+    let referredMember: any = null;
+    if (buyerPhone) {
+      const { data } = await supabase.from('member_users').select('id').eq('phone', buyerPhone).eq('client_id', clientId).maybeSingle();
+      referredMember = data;
+    }
+    if (!referredMember && buyerEmail) {
+      const { data } = await supabase.from('member_users').select('id').eq('email', buyerEmail).eq('client_id', clientId).maybeSingle();
+      referredMember = data;
+    }
+    if (!referredMember) {
+      console.log(`[referral] Referred buyer not found as a member — skipping`);
+      return;
+    }
+
+    // Prevent self-referral
+    if (referredMember.id === referrerStatus.member_user_id) {
+      console.log(`[referral] Self-referral detected — skipping`);
+      return;
+    }
+
+    // Idempotency: skip if already recorded for this referred member
+    const { data: existing } = await supabase
+      .from('member_referrals')
+      .select('id')
+      .eq('loyalty_program_id', program.id)
+      .eq('referred_member_id', referredMember.id)
+      .maybeSingle();
+    if (existing) {
+      console.log(`[referral] Already recorded for referred member ${referredMember.id} — skipping`);
+      return;
+    }
+
+    // Get referral earning rule points
+    const { data: rule } = await supabase
+      .from('loyalty_earning_rules')
+      .select('points_reward')
+      .eq('client_id', clientId)
+      .eq('rule_type', 'referral')
+      .eq('is_active', true)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const referralPoints: number = rule?.points_reward ?? 0;
+
+    // Insert referral record
+    await supabase.from('member_referrals').insert({
+      loyalty_program_id: program.id,
+      referrer_member_id: referrerStatus.member_user_id,
+      referred_member_id: referredMember.id,
+      referral_code: refCode,
+      referred_email: buyerEmail || null,
+      referred_phone: buyerPhone || null,
+      status: 'completed',
+      points_awarded: referralPoints,
+      completed_at: new Date().toISOString(),
+    });
+
+    console.log(`[referral] Recorded referral: referrer=${referrerStatus.member_user_id} → referred=${referredMember.id}, points=${referralPoints}`);
+
+    // Award points to referrer
+    if (referralPoints > 0) {
+      const newBalance = (referrerStatus.points_balance ?? 0) + referralPoints;
+      const newLifetime = (referrerStatus.lifetime_points_earned ?? 0) + referralPoints;
+      const newReferralPts = (referrerStatus.referral_points_earned ?? 0) + referralPoints;
+
+      await supabase.from('member_loyalty_status').update({
+        points_balance: newBalance,
+        lifetime_points_earned: newLifetime,
+        referral_points_earned: newReferralPts,
+        updated_at: new Date().toISOString(),
+      }).eq('id', referrerStatus.id);
+
+      await supabase.from('loyalty_points_transactions').insert({
+        member_loyalty_status_id: referrerStatus.id,
+        member_user_id: referrerStatus.member_user_id,
+        transaction_type: 'earned',
+        points_amount: referralPoints,
+        balance_after: newBalance,
+        description: `Referral bonus — ${buyerEmail || buyerPhone}`,
+        reference_id: referredMember.id,
+      });
+
+      console.log(`[referral] Awarded ${referralPoints} pts to referrer ${referrerStatus.member_user_id}. New balance: ${newBalance}`);
+    }
+  } catch (err) {
+    // Non-fatal: order processing must not be blocked by referral errors
+    console.error('[referral] Error processing referral:', err);
   }
 }
