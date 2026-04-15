@@ -10,9 +10,10 @@ const corsHeaders = {
 
 interface RedeemRequest {
   reward_id: string;
-  member_user_id: string;
+  member_user_id?: string;
   shop_domain: string;
   customer_email?: string;
+  email?: string;
 }
 
 async function createShopifyDiscount(
@@ -130,13 +131,33 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: RedeemRequest = await req.json();
-    const { reward_id, member_user_id, shop_domain, customer_email } = body;
+    let { reward_id, member_user_id, shop_domain, customer_email, email } = body;
 
-    if (!reward_id || !member_user_id || !shop_domain) {
+    // Validate required fields
+    if (!reward_id || !shop_domain || (!member_user_id && !customer_email && !email)) {
       return new Response(
-        JSON.stringify({ success: false, error: "Missing required fields" }),
+        JSON.stringify({ success: false, error: "shop_domain, (member_user_id or email), and reward_id are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    // ── STEP 0: Resolve member_user_id from email if not provided ──
+    if (!member_user_id && (customer_email || email)) {
+      const emailToUse = customer_email || email;
+      const { data: memberData, error: memberError } = await supabase
+        .from("member_users")
+        .select("id")
+        .eq("email", emailToUse)
+        .maybeSingle();
+
+      if (memberError || !memberData) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Member not found with provided email" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      member_user_id = memberData.id;
     }
 
     // Step 1: resolve client from shop_domain
