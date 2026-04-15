@@ -14,7 +14,7 @@ export function TopPickCard({ reward, selected, onToggle }: TopPickCardProps) {
   return (
     <button
       onClick={onToggle}
-      className="relative flex-shrink-0 w-[110px] overflow-hidden transition-all duration-200 text-left"
+      className="relative flex-shrink-0 w-[110px] sm:w-full overflow-hidden transition-all duration-200 text-left"
       style={{
         borderRadius: 'var(--gs-radius)',
         border: selected

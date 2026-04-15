@@ -21,63 +21,65 @@ function IdentityGate({
   const [value, setValueState] = React.useState('');
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen px-6 py-12 text-center" style={{ background: '#f6f6f3' }}>
-      {theme.logoUrl && (
-        <img
-          src={theme.logoUrl}
-          alt={theme.brandName}
-          className="h-10 w-auto object-contain mb-6"
-        />
-      )}
-      <div className="text-4xl mb-3">🔒</div>
-      <h1
-        className="text-xl font-bold mb-2"
-        style={{ color: 'var(--gs-brand-dark)', fontFamily: 'var(--gs-display-font)' }}
-      >
-        Verify your identity
-      </h1>
-      <p className="text-sm text-gray-500 mb-1">
-        This reward was sent to
-      </p>
-      {hint && (
-        <p
-          className="text-sm font-semibold mb-5"
-          style={{ color: 'var(--gs-brand)' }}
+    <div className="flex flex-col items-center justify-center min-h-screen px-6 py-12" style={{ background: '#f6f6f3' }}>
+      <div className="w-full max-w-md text-center">
+        {theme.logoUrl && (
+          <img
+            src={theme.logoUrl}
+            alt={theme.brandName}
+            className="h-10 w-auto object-contain mx-auto mb-6"
+          />
+        )}
+        <div className="text-4xl mb-3">🔒</div>
+        <h1
+          className="text-xl sm:text-2xl font-bold mb-2"
+          style={{ color: 'var(--gs-brand-dark)', fontFamily: 'var(--gs-display-font)' }}
         >
-          {hint}
+          Verify your identity
+        </h1>
+        <p className="text-sm text-gray-500 mb-1">
+          This reward was sent to
         </p>
-      )}
-      <p className="text-xs text-gray-400 mb-6 max-w-xs">
-        Enter the email or phone number used for your {campaignName || 'order'} to unlock your reward.
-      </p>
-      <input
-        type="text"
-        placeholder="Email or phone number"
-        value={value}
-        onChange={(e) => setValueState(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && value.trim() && onVerify(value.trim())}
-        className="w-full max-w-sm px-4 py-3 rounded-xl border text-sm mb-3 focus:outline-none"
-        style={{
-          borderColor: error ? '#ef4444' : 'var(--gs-brand-light)',
-          background: '#fff',
-          color: '#1a1a1a',
-        }}
-        autoFocus
-      />
-      {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
-      <button
-        disabled={!value.trim()}
-        onClick={() => onVerify(value.trim())}
-        className="w-full max-w-sm py-3.5 rounded-xl text-sm font-semibold"
-        style={{
-          background: value.trim()
-            ? 'linear-gradient(135deg, var(--gs-brand), var(--gs-brand-dark))'
-            : '#ccc',
-          color: '#fff',
-        }}
-      >
-        Unlock my reward
-      </button>
+        {hint && (
+          <p
+            className="text-sm font-semibold mb-5"
+            style={{ color: 'var(--gs-brand)' }}
+          >
+            {hint}
+          </p>
+        )}
+        <p className="text-xs text-gray-400 mb-6">
+          Enter the email or phone number used for your {campaignName || 'order'} to unlock your reward.
+        </p>
+        <input
+          type="text"
+          placeholder="Email or phone number"
+          value={value}
+          onChange={(e) => setValueState(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && value.trim() && onVerify(value.trim())}
+          className="w-full px-4 py-3 rounded-xl border text-sm mb-3 focus:outline-none"
+          style={{
+            borderColor: error ? '#ef4444' : 'var(--gs-brand-light)',
+            background: '#fff',
+            color: '#1a1a1a',
+          }}
+          autoFocus
+        />
+        {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
+        <button
+          disabled={!value.trim()}
+          onClick={() => onVerify(value.trim())}
+          className="w-full py-3.5 rounded-xl text-sm font-semibold"
+          style={{
+            background: value.trim()
+              ? 'linear-gradient(135deg, var(--gs-brand), var(--gs-brand-dark))'
+              : '#ccc',
+            color: '#fff',
+          }}
+        >
+          Unlock my reward
+        </button>
+      </div>
     </div>
   );
 }
@@ -95,31 +97,33 @@ function StatusScreen({ stage }: { stage: string }) {
 
   return (
     <div
-      className="flex flex-col items-center justify-center min-h-screen px-6 py-12 text-center"
+      className="flex flex-col items-center justify-center min-h-screen px-6 py-12"
       style={{ background: '#f6f6f3' }}
     >
-      {theme.logoUrl && (
-        <img
-          src={theme.logoUrl}
-          alt={theme.brandName}
-          className="h-10 w-auto object-contain mb-6"
-        />
-      )}
-      {stage === 'loading' ? (
-        <div
-          className="w-10 h-10 rounded-full border-4 border-t-transparent mb-6 animate-spin"
-          style={{ borderColor: 'var(--gs-brand-light)', borderTopColor: 'var(--gs-brand)' }}
-        />
-      ) : (
-        <div className="text-5xl mb-4 select-none">{cfg.emoji}</div>
-      )}
-      <h1
-        className="text-xl font-bold mb-2"
-        style={{ color: 'var(--gs-brand-dark)', fontFamily: 'var(--gs-display-font)' }}
-      >
-        {cfg.title}
-      </h1>
-      <p className="text-sm text-gray-500 max-w-xs">{cfg.body}</p>
+      <div className="w-full max-w-md text-center">
+        {theme.logoUrl && (
+          <img
+            src={theme.logoUrl}
+            alt={theme.brandName}
+            className="h-10 w-auto object-contain mx-auto mb-6"
+          />
+        )}
+        {stage === 'loading' ? (
+          <div
+            className="w-10 h-10 rounded-full border-4 border-t-transparent mb-6 mx-auto animate-spin"
+            style={{ borderColor: 'var(--gs-brand-light)', borderTopColor: 'var(--gs-brand)' }}
+          />
+        ) : (
+          <div className="text-5xl mb-4 select-none">{cfg.emoji}</div>
+        )}
+        <h1
+          className="text-xl sm:text-2xl font-bold mb-2"
+          style={{ color: 'var(--gs-brand-dark)', fontFamily: 'var(--gs-display-font)' }}
+        >
+          {cfg.title}
+        </h1>
+        <p className="text-sm text-gray-500">{cfg.body}</p>
+      </div>
     </div>
   );
 }

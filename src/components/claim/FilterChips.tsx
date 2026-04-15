@@ -33,6 +33,7 @@ export function FilterChips({ categories, active, onChange }: FilterChipsProps) 
   ];
 
   return (
+    <div className="mx-auto w-full max-w-2xl">
     <div
       className="flex gap-2 px-4 py-2 overflow-x-auto scrollbar-hide"
       style={{ WebkitOverflowScrolling: 'touch' }}
@@ -56,6 +57,7 @@ export function FilterChips({ categories, active, onChange }: FilterChipsProps) 
           </button>
         );
       })}
+    </div>
     </div>
   );
 }
