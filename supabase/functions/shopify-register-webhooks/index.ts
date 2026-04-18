@@ -38,6 +38,7 @@ Deno.serve(async (req: Request) => {
     // Operational webhooks → shopify-webhook handler
     const webhookTopics = [
       'orders/create',
+      'orders/updated',
       'orders/paid',
       'customers/create',
       'customers/update',
