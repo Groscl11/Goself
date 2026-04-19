@@ -254,6 +254,44 @@ Deno.serve(async (req: Request) => {
         ? reward.generic_coupon_code
         : existing.code;
 
+      // Check if points were already deducted (previous attempt may have claimed the code
+      // but failed before reaching Step 7 due to a bug — deduct now if not yet done)
+      const { data: existingTx } = await supabase
+        .from("loyalty_points_transactions")
+        .select("id")
+        .eq("member_user_id", member_user_id)
+        .eq("transaction_type", "redeemed")
+        .contains("metadata", { reward_id })
+        .maybeSingle();
+
+      let returnBalance = loyaltyStatus.points_balance;
+
+      if (!existingTx && loyaltyStatus.points_balance >= pointsCost) {
+        const newBalance = loyaltyStatus.points_balance - pointsCost;
+
+        await supabase.from("loyalty_points_transactions").insert({
+          member_loyalty_status_id: loyaltyStatus.id,
+          member_user_id,
+          transaction_type: "redeemed",
+          points_amount: -pointsCost,
+          balance_after: newBalance,
+          description: `Redeemed for ${reward.title} (${existingCode ?? "generic"})`,
+          reference_id: existingCode,
+          metadata: { reward_id, distribution_id: offerRow.id, shop_domain },
+        });
+
+        await supabase
+          .from("member_loyalty_status")
+          .update({
+            points_balance: newBalance,
+            lifetime_points_redeemed: (loyaltyStatus.lifetime_points_redeemed ?? 0) + pointsCost,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", loyaltyStatus.id);
+
+        returnBalance = newBalance;
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -261,7 +299,7 @@ Deno.serve(async (req: Request) => {
           discount_value: reward.discount_value,
           discount_type: reward.reward_type,
           expires_at: existing.expires_at,
-          new_points_balance: loyaltyStatus.points_balance,
+          new_points_balance: returnBalance,
           already_exists: true,
           offer_type: reward.offer_type,
           coupon_type: reward.coupon_type,
