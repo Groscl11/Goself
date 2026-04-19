@@ -1,10 +1,21 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Drawer } from './Drawers';
-import { supabase } from '../../lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from '../../lib/supabase';
 import { uploadOfferCodesDirect } from '../../lib/offerCodes';
 import { CodeSource, RewardType } from '../../types/offers';
 
 type Flow = 'shopify_generated' | 'shopify_imported' | 'generic';
+
+interface ShopifyPriceRule {
+  id: number;
+  title: string;
+  reward_type: RewardType;
+  discount_value: number;
+  min_purchase_amount: number;
+  ends_at: string | null;
+  codes: string[];
+  total_codes: number;
+}
 
 interface NewOfferDrawerProps {
   open: boolean;
@@ -28,6 +39,13 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
   const [success, setSuccess] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const [parsedCodes, setParsedCodes] = useState<string[]>([]);
+
+  // Shopify import picker state
+  const [shopifyRules, setShopifyRules] = useState<ShopifyPriceRule[]>([]);
+  const [shopifyLoading, setShopifyLoading] = useState(false);
+  const [shopifyError, setShopifyError] = useState('');
+  const [shopifySearch, setShopifySearch] = useState('');
+  const [shopifyPicked, setShopifyPicked] = useState(false);
 
   // Form state
   const [form, setForm] = useState({
@@ -71,11 +89,44 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
   function resetState() {
     setFlow(null); setLoading(false); setError(''); setSuccess('');
     setParsedCodes([]);
+    setShopifyRules([]); setShopifyLoading(false); setShopifyError('');
+    setShopifySearch(''); setShopifyPicked(false);
     setForm({
       title: '', description: '', reward_type: 'flat_discount', discount_value: '',
       min_purchase_amount: '', coupon_type: 'unique', generic_coupon_code: '',
       codes_count: '10', code_paste: '', valid_until: '',
     });
+  }
+
+  // Fetch Shopify price rules when Import flow is selected
+  const fetchShopifyDiscounts = useCallback(async () => {
+    if (!shopDomain) return;
+    setShopifyLoading(true);
+    setShopifyError('');
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/shopify-fetch-discounts?shop_domain=${encodeURIComponent(shopDomain)}`,
+        { headers: { 'apikey': supabaseAnonKey, 'Authorization': `Bearer ${supabaseAnonKey}` } }
+      );
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Failed to fetch Shopify discounts');
+      setShopifyRules(json.price_rules || []);
+    } catch (e: any) {
+      setShopifyError(e.message);
+    }
+    setShopifyLoading(false);
+  }, [shopDomain]);
+
+  function pickShopifyRule(rule: ShopifyPriceRule) {
+    set('title', rule.title.replace(/^Loyalty: /i, ''));
+    set('reward_type', rule.reward_type);
+    set('discount_value', String(rule.discount_value));
+    set('min_purchase_amount', rule.min_purchase_amount > 0 ? String(rule.min_purchase_amount) : '');
+    set('valid_until', rule.ends_at ? rule.ends_at.slice(0, 10) : '');
+    set('code_paste', rule.codes.join('\n'));
+    set('coupon_type', rule.codes.length === 1 ? 'generic' : 'unique');
+    if (rule.codes.length === 1) set('generic_coupon_code', rule.codes[0]);
+    setShopifyPicked(true);
   }
 
   function handleClose() { resetState(); onClose(); }
@@ -219,7 +270,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
                 ← Back
               </button>
             )}
-            <button onClick={handleSubmit} disabled={loading}
+            <button onClick={handleSubmit} disabled={loading || (flow === 'shopify_imported' && !shopifyPicked && !editOffer)}
               className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-60 ml-auto">
               {loading ? (editOffer ? 'Saving...' : 'Creating...') : (editOffer ? 'Save Changes' : 'Create Offer')}
             </button>
@@ -241,7 +292,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
             {
               id: 'shopify_imported' as Flow,
               label: 'Import from Shopify',
-              desc: 'Paste or upload codes already created in your Shopify admin',
+              desc: 'Pick an existing discount from your Shopify store',
               icon: '📥',
             },
             {
@@ -251,7 +302,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
               icon: '🏷️',
             },
           ].map(opt => (
-            <button key={opt.id} onClick={() => setFlow(opt.id)}
+            <button key={opt.id} onClick={() => { setFlow(opt.id); if (opt.id === 'shopify_imported') fetchShopifyDiscounts(); }}
               className="w-full text-left flex items-start gap-4 p-4 rounded-xl border border-gray-200 hover:border-gray-400 hover:bg-gray-50 transition-all">
               <span className="text-xl">{opt.icon}</span>
               <div>
@@ -269,6 +320,90 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
       {/* Form fields */}
       {flow && (
         <div className="space-y-4">
+          {/* ── Shopify import picker (shown before form when not yet picked) ── */}
+          {flow === 'shopify_imported' && !shopifyPicked && !editOffer && (
+            <div>
+              {shopifyLoading && (
+                <div className="flex items-center gap-2 py-8 justify-center text-sm text-gray-400">
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Fetching discounts from Shopify…
+                </div>
+              )}
+              {shopifyError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-3">
+                  {shopifyError}
+                  <button onClick={fetchShopifyDiscounts} className="ml-2 underline text-xs">Retry</button>
+                </div>
+              )}
+              {!shopifyLoading && !shopifyError && shopifyRules.length === 0 && (
+                <div className="text-center text-sm text-gray-400 py-8">No discount codes found in your Shopify store.</div>
+              )}
+              {!shopifyLoading && shopifyRules.length > 0 && (
+                <>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Select a discount from your Shopify store to import:
+                  </p>
+                  <input
+                    value={shopifySearch}
+                    onChange={e => setShopifySearch(e.target.value)}
+                    placeholder="Search by name or code…"
+                    className="input-base mb-3"
+                  />
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {shopifyRules
+                      .filter(r => {
+                        const q = shopifySearch.toLowerCase();
+                        return !q || r.title.toLowerCase().includes(q) || r.codes.some(c => c.toLowerCase().includes(q));
+                      })
+                      .map(rule => (
+                        <button
+                          key={rule.id}
+                          onClick={() => pickShopifyRule(rule)}
+                          className="w-full text-left p-3 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold text-gray-900 truncate">{rule.title.replace(/^Loyalty: /i, '')}</span>
+                            <span className="text-xs font-bold text-white bg-gray-700 rounded px-2 py-0.5 flex-shrink-0">
+                              {rule.reward_type === 'percentage_discount' ? `${rule.discount_value}%` : `₹${rule.discount_value}`} off
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-xs text-gray-500">{rule.total_codes} code{rule.total_codes !== 1 ? 's' : ''}</span>
+                            {rule.codes.slice(0, 3).map(c => (
+                              <span key={c} className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">{c}</span>
+                            ))}
+                            {rule.codes.length > 3 && <span className="text-xs text-gray-400">+{rule.codes.length - 3} more</span>}
+                          </div>
+                          {rule.ends_at && (
+                            <div className="text-xs text-gray-400 mt-0.5">Expires: {new Date(rule.ends_at).toLocaleDateString()}</div>
+                          )}
+                        </button>
+                      ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Shopify picked confirmation banner */}
+          {flow === 'shopify_imported' && shopifyPicked && !editOffer && (
+            <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+              <span>✓ Discount imported from Shopify. Adjust details below if needed.</span>
+              <button
+                onClick={() => { setShopifyPicked(false); resetState(); setFlow('shopify_imported'); fetchShopifyDiscounts(); }}
+                className="ml-auto text-xs underline text-green-600 flex-shrink-0"
+              >
+                Change
+              </button>
+            </div>
+          )}
+
+          {/* Hide the rest of the form until a Shopify rule is picked (for shopify_imported) */}
+          {flow === 'shopify_imported' && !shopifyPicked && !editOffer ? null : (
+            <div className="space-y-4">
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
           )}
@@ -390,6 +525,8 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
             <input type="date" value={form.valid_until} onChange={e => set('valid_until', e.target.value)}
               className="input-base" />
           </Field>
+            </div>
+          )}
         </div>
       )}
 
