@@ -46,6 +46,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
   const [shopifyError, setShopifyError] = useState('');
   const [shopifySearch, setShopifySearch] = useState('');
   const [shopifyPicked, setShopifyPicked] = useState(false);
+  const [shopifyFetched, setShopifyFetched] = useState(false);
 
   // Form state
   const [form, setForm] = useState({
@@ -90,7 +91,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
     setFlow(null); setLoading(false); setError(''); setSuccess('');
     setParsedCodes([]);
     setShopifyRules([]); setShopifyLoading(false); setShopifyError('');
-    setShopifySearch(''); setShopifyPicked(false);
+    setShopifySearch(''); setShopifyPicked(false); setShopifyFetched(false);
     setForm({
       title: '', description: '', reward_type: 'flat_discount', discount_value: '',
       min_purchase_amount: '', coupon_type: 'unique', generic_coupon_code: '',
@@ -100,7 +101,10 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
 
   // Fetch Shopify price rules when Import flow is selected
   const fetchShopifyDiscounts = useCallback(async () => {
-    if (!shopDomain) return;
+    if (!shopDomain) {
+      setShopifyError('No Shopify store domain found for your account. Please complete store setup first.');
+      return;
+    }
     setShopifyLoading(true);
     setShopifyError('');
     try {
@@ -115,6 +119,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
       setShopifyError(e.message);
     }
     setShopifyLoading(false);
+    setShopifyFetched(true);
   }, [shopDomain]);
 
   function pickShopifyRule(rule: ShopifyPriceRule) {
@@ -338,10 +343,10 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
                   <button onClick={fetchShopifyDiscounts} className="ml-2 underline text-xs">Retry</button>
                 </div>
               )}
-              {!shopifyLoading && !shopifyError && shopifyRules.length === 0 && (
+              {!shopifyLoading && !shopifyError && shopifyFetched && shopifyRules.length === 0 && (
                 <div className="text-center text-sm text-gray-400 py-8">No discount codes found in your Shopify store.</div>
               )}
-              {!shopifyLoading && shopifyRules.length > 0 && (
+              {!shopifyLoading && shopifyFetched && shopifyRules.length > 0 && (
                 <>
                   <p className="text-xs text-gray-500 mb-2">
                     Select a discount from your Shopify store to import:
