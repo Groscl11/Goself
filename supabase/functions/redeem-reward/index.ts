@@ -366,15 +366,18 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      if (!claimedCode?.id) {
+      // claim_next_offer_code uses RETURNS TABLE so supabase-js returns an array
+      const claimedRow = Array.isArray(claimedCode) ? claimedCode[0] : claimedCode;
+
+      if (!claimedRow?.id) {
         return new Response(
           JSON.stringify({ success: false, error: "No codes available for this offer" }),
           { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
-      claimedOfferCodeId = claimedCode.id;
-      code = claimedCode.code;
+      claimedOfferCodeId = claimedRow.id;
+      code = claimedRow.code;
     }
 
     // Step 6B: optional Shopify sync for unique store discounts
