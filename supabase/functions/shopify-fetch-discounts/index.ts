@@ -34,8 +34,10 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url);
     shopDomain = url.searchParams.get("shop_domain") || null;
     clientId = url.searchParams.get("client_id") || null;
+    const modeParam = url.searchParams.get("mode") || "store"; // "store" | "marketplace"
+    const offerTypeFilter = modeParam === "marketplace" ? "marketplace_offer" : "store_discount";
 
-    if ((!shopDomain || !clientId) && req.method === "POST") {
+    if (!shopDomain && !clientId) {
       const body = await req.json().catch(() => ({}));
       shopDomain = shopDomain ?? body.shop_domain ?? null;
       clientId = clientId ?? body.client_id ?? null;
@@ -113,6 +115,7 @@ Deno.serve(async (req: Request) => {
         .from("rewards")
         .select("generic_coupon_code")
         .eq("client_id", resolvedClientId)
+        .eq("offer_type", offerTypeFilter)
         .not("generic_coupon_code", "is", null);
       if (existingRewards) {
         for (const r of existingRewards) {

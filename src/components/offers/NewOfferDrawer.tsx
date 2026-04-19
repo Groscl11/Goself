@@ -112,6 +112,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
       const params = new URLSearchParams();
       if (shopDomain) params.set('shop_domain', shopDomain);
       if (clientId) params.set('client_id', clientId);
+      params.set('mode', mode);
       const res = await fetch(
         `${supabaseUrl}/functions/v1/shopify-fetch-discounts?${params.toString()}`,
         { headers: { 'apikey': supabaseAnonKey, 'Authorization': `Bearer ${supabaseAnonKey}` } }
@@ -124,7 +125,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
     }
     setShopifyLoading(false);
     setShopifyFetched(true);
-  }, [shopDomain, clientId]);
+  }, [shopDomain, clientId, mode]);
 
   function pickShopifyRule(rule: ShopifyPriceRule) {
     set('title', rule.title.replace(/^Loyalty: /i, ''));
