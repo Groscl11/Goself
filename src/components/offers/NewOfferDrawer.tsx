@@ -101,15 +101,18 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
 
   // Fetch Shopify price rules when Import flow is selected
   const fetchShopifyDiscounts = useCallback(async () => {
-    if (!shopDomain) {
+    if (!shopDomain && !clientId) {
       setShopifyError('No Shopify store domain found for your account. Please complete store setup first.');
       return;
     }
     setShopifyLoading(true);
     setShopifyError('');
     try {
+      const params = new URLSearchParams();
+      if (shopDomain) params.set('shop_domain', shopDomain);
+      if (clientId) params.set('client_id', clientId);
       const res = await fetch(
-        `${supabaseUrl}/functions/v1/shopify-fetch-discounts?shop_domain=${encodeURIComponent(shopDomain)}`,
+        `${supabaseUrl}/functions/v1/shopify-fetch-discounts?${params.toString()}`,
         { headers: { 'apikey': supabaseAnonKey, 'Authorization': `Bearer ${supabaseAnonKey}` } }
       );
       const json = await res.json();
@@ -120,7 +123,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
     }
     setShopifyLoading(false);
     setShopifyFetched(true);
-  }, [shopDomain]);
+  }, [shopDomain, clientId]);
 
   function pickShopifyRule(rule: ShopifyPriceRule) {
     set('title', rule.title.replace(/^Loyalty: /i, ''));

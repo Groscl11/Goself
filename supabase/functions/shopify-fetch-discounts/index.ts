@@ -27,31 +27,44 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Accept shop_domain from query string or body
+    // Accept shop_domain (or client_id as fallback) from query string or body
     let shopDomain: string | null = null;
+    let clientId: string | null = null;
 
     const url = new URL(req.url);
-    shopDomain = url.searchParams.get("shop_domain");
+    shopDomain = url.searchParams.get("shop_domain") || null;
+    clientId = url.searchParams.get("client_id") || null;
 
-    if (!shopDomain && req.method === "POST") {
+    if ((!shopDomain || !clientId) && req.method === "POST") {
       const body = await req.json().catch(() => ({}));
-      shopDomain = body.shop_domain ?? null;
+      shopDomain = shopDomain ?? body.shop_domain ?? null;
+      clientId = clientId ?? body.client_id ?? null;
     }
 
-    if (!shopDomain) {
+    if (!shopDomain && !clientId) {
       return new Response(
-        JSON.stringify({ success: false, error: "shop_domain is required" }),
+        JSON.stringify({ success: false, error: "shop_domain or client_id is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     // Fetch Shopify access token from store_installations
-    const { data: install, error: installErr } = await supabase
+    // Try by shop_domain first; fall back to client_id lookup
+    let installQuery = supabase
       .from("store_installations")
-      .select("access_token")
-      .eq("shop_domain", shopDomain)
-      .eq("installation_status", "active")
-      .maybeSingle();
+      .select("access_token, shop_domain")
+      .eq("installation_status", "active");
+
+    if (shopDomain) {
+      installQuery = installQuery.eq("shop_domain", shopDomain);
+    } else {
+      installQuery = installQuery.eq("client_id", clientId!);
+    }
+
+    const { data: install, error: installErr } = await installQuery.maybeSingle();
+
+    // Update shopDomain from the found record if we only had client_id
+    if (install?.shop_domain) shopDomain = install.shop_domain;
 
     if (installErr || !install?.access_token) {
       return new Response(
