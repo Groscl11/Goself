@@ -105,6 +105,22 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Fetch already-imported coupon codes for this client so we can mark duplicates
+    const resolvedClientId = clientId ?? null;
+    let existingCodes = new Set<string>();
+    if (resolvedClientId) {
+      const { data: existingRewards } = await supabase
+        .from("rewards")
+        .select("generic_coupon_code")
+        .eq("client_id", resolvedClientId)
+        .not("generic_coupon_code", "is", null);
+      if (existingRewards) {
+        for (const r of existingRewards) {
+          if (r.generic_coupon_code) existingCodes.add(r.generic_coupon_code.toUpperCase());
+        }
+      }
+    }
+
     // For each price rule, fetch a sample of its discount codes (first 50)
     // Limit to 20 rules to avoid too many API calls
     const rulesToFetch = rawRules.slice(0, 20);
@@ -139,6 +155,9 @@ Deno.serve(async (req: Request) => {
         // Shopify percentage is stored as negative (e.g. -10.0 = 10% off)
         const discountValue = Math.abs(parseFloat(rule.value ?? "0"));
 
+        // Check if any code from this rule is already imported
+        const alreadyImported = codes.some(c => existingCodes.has(c.toUpperCase()));
+
         return {
           id: rule.id,
           title: rule.title,
@@ -152,6 +171,7 @@ Deno.serve(async (req: Request) => {
           ends_at: rule.ends_at,
           codes,
           total_codes: totalCodes,
+          already_imported: alreadyImported,
         };
       }),
     );

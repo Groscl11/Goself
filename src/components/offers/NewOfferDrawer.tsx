@@ -15,6 +15,7 @@ interface ShopifyPriceRule {
   ends_at: string | null;
   codes: string[];
   total_codes: number;
+  already_imported: boolean;
 }
 
 interface NewOfferDrawerProps {
@@ -369,14 +370,20 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
                       .map(rule => (
                         <button
                           key={rule.id}
-                          onClick={() => pickShopifyRule(rule)}
-                          className="w-full text-left p-3 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all"
+                          onClick={() => !rule.already_imported && pickShopifyRule(rule)}
+                          disabled={rule.already_imported}
+                          className={`w-full text-left p-3 rounded-xl border transition-all ${rule.already_imported ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed' : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50 cursor-pointer'}`}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-semibold text-gray-900 truncate">{rule.title.replace(/^Loyalty: /i, '')}</span>
-                            <span className="text-xs font-bold text-white bg-gray-700 rounded px-2 py-0.5 flex-shrink-0">
-                              {rule.reward_type === 'percentage_discount' ? `${rule.discount_value}%` : `₹${rule.discount_value}`} off
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {rule.already_imported && (
+                                <span className="text-xs font-medium text-gray-400 bg-gray-100 rounded px-2 py-0.5">Already added</span>
+                              )}
+                              <span className="text-xs font-bold text-white bg-gray-700 rounded px-2 py-0.5">
+                                {rule.reward_type === 'percentage_discount' ? `${rule.discount_value}%` : `₹${rule.discount_value}`} off
+                              </span>
+                            </div>
                           </div>
                           <div className="flex items-center gap-3 mt-1">
                             <span className="text-xs text-gray-500">{rule.total_codes} code{rule.total_codes !== 1 ? 's' : ''}</span>
