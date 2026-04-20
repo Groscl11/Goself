@@ -27,6 +27,7 @@ interface OfferStat {
   reward_id: string;
   title: string;
   offer_type: string;
+  owner_client_name: string;
   claimed: number;
   redeemed: number;
   redemption_rate: number;
@@ -173,16 +174,27 @@ export function Reports() {
       offerMap.set(c.offer_id, entry);
     }
 
-    const { data: rewards } = await supabase.from('rewards').select('id, title, offer_type').in('id', Array.from(offerMap.keys()));
+    const { data: rewards } = await supabase
+      .from('rewards')
+      .select('id, title, offer_type, owner_client_id')
+      .in('id', Array.from(offerMap.keys()));
+
+    const ownerIds = [...new Set((rewards ?? []).map((r: any) => r.owner_client_id).filter(Boolean))];
+    const { data: clients } = ownerIds.length
+      ? await supabase.from('clients').select('id, name').in('id', ownerIds)
+      : { data: [] as any[] };
+    const clientNameMap = new Map((clients ?? []).map((c: any) => [c.id, c.name]));
 
     setOfferStats(
       Array.from(offerMap.entries())
         .map(([id, counts]) => {
           const r = rewards?.find((r: any) => r.id === id);
+          const ownerId = r?.owner_client_id;
           return {
             reward_id: id,
             title: r?.title ?? 'Unknown Offer',
             offer_type: r?.offer_type ?? '-',
+            owner_client_name: (ownerId && clientNameMap.get(ownerId)) ? clientNameMap.get(ownerId) as string : '',
             claimed: counts.claimed,
             redeemed: counts.redeemed,
             redemption_rate: counts.claimed > 0 ? (counts.redeemed / counts.claimed) * 100 : 0,
@@ -540,7 +552,14 @@ export function Reports() {
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 truncate">{offer.title}</p>
-                          <p className="text-xs text-gray-400 capitalize mt-0.5">{offer.offer_type?.replace(/_/g, ' ')}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {offer.owner_client_name && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700">
+                                {offer.owner_client_name}
+                              </span>
+                            )}
+                            <span className="text-xs text-gray-400 capitalize">{offer.offer_type?.replace(/_/g, ' ')}</span>
+                          </div>
                         </div>
                         <span className={`ml-2 shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${
                           offer.redemption_rate >= 50
