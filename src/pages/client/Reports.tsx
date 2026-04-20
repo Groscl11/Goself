@@ -59,6 +59,15 @@ interface MemberStat {
   joined: string;
 }
 
+interface PartnerBrandStat {
+  owner_client_id: string;
+  brand_name: string;
+  offers: Array<{ reward_id: string; title: string; claimed: number; redeemed: number }>;
+  total_claimed: number;
+  total_redeemed: number;
+  redemption_rate: number;
+}
+
 export function Reports() {
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState('');
@@ -74,6 +83,7 @@ export function Reports() {
   const [campaignStats, setCampaignStats] = useState<CampaignStat[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [memberStats, setMemberStats] = useState<MemberStat[]>([]);
+  const [partnerBrandStats, setPartnerBrandStats] = useState<PartnerBrandStat[]>([]);
   const [dateRange, setDateRange] = useState('30');
 
   useEffect(() => { loadClientId(); }, []);
@@ -109,6 +119,7 @@ export function Reports() {
         loadCampaignStats(),
         loadMonthlyData(),
         loadMemberStats(allMembers, memberIds),
+        loadPartnerBrandStats(),
       ]);
     } finally {
       setLoading(false);
@@ -281,6 +292,73 @@ export function Reports() {
     })));
   };
 
+  const loadPartnerBrandStats = async () => {
+    const startDate = getStartDate();
+    // Get all codes distributed BY this client
+    const { data: codes } = await supabase
+      .from('offer_codes')
+      .select('offer_id, status')
+      .eq('distributed_by_client_id', clientId)
+      .gte('assigned_at', startDate);
+
+    if (!codes?.length) { setPartnerBrandStats([]); return; }
+
+    const offerIds = [...new Set(codes.map((c: any) => c.offer_id))];
+    // Get rewards and their owner_client_id (the partner brand)
+    const { data: rewards } = await supabase
+      .from('rewards')
+      .select('id, title, owner_client_id')
+      .in('id', offerIds)
+      .neq('owner_client_id', clientId);  // only cross-brand
+
+    if (!rewards?.length) { setPartnerBrandStats([]); return; }
+
+    // Get client names for all partner brands
+    const partnerClientIds = [...new Set(rewards.map((r: any) => r.owner_client_id).filter(Boolean))];
+    const { data: clients } = await supabase
+      .from('clients')
+      .select('id, name')
+      .in('id', partnerClientIds);
+    const clientNameMap = new Map((clients ?? []).map((c: any) => [c.id, c.name]));
+
+    // Build per-offer tallies
+    const codesByOffer = new Map<string, { claimed: number; redeemed: number }>();
+    for (const c of codes) {
+      const e = codesByOffer.get(c.offer_id) ?? { claimed: 0, redeemed: 0 };
+      e.claimed += 1;
+      if (c.status === 'redeemed') e.redeemed += 1;
+      codesByOffer.set(c.offer_id, e);
+    }
+
+    // Group offers by partner brand
+    const brandMap = new Map<string, PartnerBrandStat>();
+    for (const r of rewards) {
+      const ownerId = r.owner_client_id;
+      if (!ownerId) continue;
+      if (!brandMap.has(ownerId)) {
+        brandMap.set(ownerId, {
+          owner_client_id: ownerId,
+          brand_name: clientNameMap.get(ownerId) ?? 'Unknown Brand',
+          offers: [],
+          total_claimed: 0,
+          total_redeemed: 0,
+          redemption_rate: 0,
+        });
+      }
+      const stat = brandMap.get(ownerId)!;
+      const counts = codesByOffer.get(r.id) ?? { claimed: 0, redeemed: 0 };
+      stat.offers.push({ reward_id: r.id, title: r.title, claimed: counts.claimed, redeemed: counts.redeemed });
+      stat.total_claimed += counts.claimed;
+      stat.total_redeemed += counts.redeemed;
+    }
+
+    setPartnerBrandStats(
+      Array.from(brandMap.values())
+        .map(s => ({ ...s, redemption_rate: s.total_claimed > 0 ? (s.total_redeemed / s.total_claimed) * 100 : 0 }))
+        .sort((a, b) => b.total_claimed - a.total_claimed)
+    );
+  };
+
   const exportToCSV = () => {
     const rows: string[][] = [
       ['=== SUMMARY METRICS ==='],
@@ -298,6 +376,10 @@ export function Reports() {
       ['=== CAMPAIGN PERFORMANCE ==='],
       ['Campaign', 'Trigger Type', 'Total Triggers', 'Successful', 'Failed', 'Success Rate'],
       ...campaignStats.map(c => [c.name, c.trigger_type, String(c.total_triggers), String(c.successful), String(c.failed), `${c.success_rate.toFixed(1)}%`]),
+      [],
+      ['=== PARTNER BRAND DISTRIBUTION ==='],
+      ['Partner Brand', 'Offer', 'Distributed to Your Members', 'Redeemed at Partner', 'Rate'],
+      ...partnerBrandStats.flatMap(b => b.offers.map(o => [b.brand_name, o.title, String(o.claimed), String(o.redeemed), `${b.redemption_rate.toFixed(1)}%`])),
     ];
     const csv = rows.map(r => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -594,6 +676,91 @@ export function Reports() {
                           <p className="text-gray-600">{m.points_balance.toLocaleString()} pts</p>
                           <p className="text-xs text-gray-400">{m.claimed} claimed · {m.redeemed} redeemed</p>
                         </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Partner Brand Cross-Distribution */}
+        <div className="mt-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle>Partner Brand Distribution</CardTitle>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Rewards from other brands that you distributed to your members — and how many your members redeemed at their store.
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <p className="text-center text-gray-400 py-8">Loading...</p>
+              ) : partnerBrandStats.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">
+                  No cross-brand rewards distributed in this period
+                </p>
+              ) : (
+                <div className="space-y-6">
+                  {partnerBrandStats.map((brand) => (
+                    <div key={brand.owner_client_id} className="border border-gray-200 rounded-xl overflow-hidden">
+                      {/* Brand header */}
+                      <div className="bg-gray-50 px-4 py-3 flex items-center justify-between border-b border-gray-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm">
+                            {brand.brand_name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900">{brand.brand_name}</p>
+                            <p className="text-xs text-gray-500">{brand.offers.length} offer{brand.offers.length !== 1 ? 's' : ''}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-6 text-sm">
+                          <div className="text-center">
+                            <p className="text-xs text-gray-500">Distributed</p>
+                            <p className="font-bold text-gray-900">{brand.total_claimed}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs text-gray-500">Redeemed</p>
+                            <p className="font-bold text-green-700">{brand.total_redeemed}</p>
+                          </div>
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            brand.redemption_rate >= 50
+                              ? 'bg-green-100 text-green-800'
+                              : brand.redemption_rate >= 20
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {brand.redemption_rate.toFixed(0)}% redeemed
+                          </span>
+                        </div>
+                      </div>
+                      {/* Per-offer breakdown */}
+                      <div className="divide-y divide-gray-100">
+                        {brand.offers.map((offer) => (
+                          <div key={offer.reward_id} className="px-4 py-3 flex items-center justify-between">
+                            <p className="text-sm text-gray-700 flex-1 min-w-0 truncate pr-4">{offer.title}</p>
+                            <div className="flex items-center gap-4 text-sm shrink-0">
+                              <span className="text-gray-500">
+                                Dist: <strong className="text-gray-900">{offer.claimed}</strong>
+                              </span>
+                              <span className="text-gray-500">
+                                Redeem: <strong className="text-green-700">{offer.redeemed}</strong>
+                              </span>
+                              <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-green-500 rounded-full"
+                                  style={{ width: `${offer.claimed > 0 ? Math.min((offer.redeemed / offer.claimed) * 100, 100) : 0}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
