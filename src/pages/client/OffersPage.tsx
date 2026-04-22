@@ -650,7 +650,10 @@ export default function OffersPage() {
                       </div>
                     )}
                   </>
- 
+                )}
+              </div>
+            )}
+
             {/* Submissions sub-tab */}
             {mktSubtab === 'submit' && (
               <div>
