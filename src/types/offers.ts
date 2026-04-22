@@ -14,6 +14,7 @@ export type CodeStatus = 'available' | 'assigned' | 'redeemed' | 'expired' | 're
 
 export interface Offer {
   id: string;
+  reward_id?: string;
   title: string;
   description?: string;
   steps_to_redeem?: string;

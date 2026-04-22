@@ -612,12 +612,13 @@ export default function OffersPage() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wide">
-                            <th className="px-4 py-3 text-left">Offer</th>
                             <th className="px-4 py-3 text-left">Reward ID</th>
+                            <th className="px-4 py-3 text-left">Offer</th>
                             <th className="px-4 py-3 text-left">Brand</th>
                             <th className="px-4 py-3 text-left">Discount</th>
                             <th className="px-4 py-3 text-left">Type</th>
                             <th className="px-4 py-3 text-left">Codes</th>
+                            <th className="px-4 py-3 text-left">Valid Until</th>
                             <th className="px-4 py-3 text-left">Points Cost</th>
                             <th className="px-4 py-3 text-left">Status</th>
                             <th className="px-4 py-3 text-left"></th>
@@ -893,13 +894,13 @@ function MktRow({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => vo
   return (
     <tr className="hover:bg-gray-50 transition-colors">
       <td className="px-4 py-3">
+        <span className="font-mono text-xs font-semibold text-gray-800 whitespace-nowrap">{offer.reward_id || '—'}</span>
+      </td>
+      <td className="px-4 py-3">
         <p className="font-medium text-gray-900 leading-snug">{offer.title}</p>
         {offer.description && (
           <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{offer.description}</p>
         )}
-      </td>
-      <td className="px-4 py-3">
-        <span className="font-mono text-xs text-gray-500 select-all" title={offer.id}>{offer.id.slice(0, 8)}…</span>
       </td>
       <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{offer.issuer_name || '—'}</td>
       <td className="px-4 py-3">
@@ -914,6 +915,9 @@ function MktRow({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => vo
       <td className="px-4 py-3 text-xs text-gray-600 capitalize">{offer.coupon_type}</td>
       <td className="px-4 py-3 text-xs text-gray-700">
         {isGenericReusable ? 'Unlimited' : outOfStock ? <span className="text-red-400">Out of stock</span> : offer.available_codes}
+      </td>
+      <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
+        {offer.valid_until ? new Date(offer.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
       </td>
       <td className="px-4 py-3 text-xs">
         {offer.my_points_cost != null
