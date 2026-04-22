@@ -334,99 +334,97 @@ export function ClientRewards() {
             )}
           </div>
         ) : tab === 'marketplace' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
             {marketplaceOffers.length === 0 ? (
-              <div className="col-span-3 bg-white border border-dashed border-gray-300 rounded-xl py-12 text-center text-sm text-gray-500">
+              <div className="py-12 text-center text-sm text-gray-500 border border-dashed border-gray-300 rounded-xl">
                 No marketplace offers available.
               </div>
             ) : (
-              marketplaceOffers.map((offer) => {
-                const discountLabel = offer.discount_value
-                  ? offer.reward_type === 'percentage_discount'
-                    ? `${offer.discount_value}% off`
-                    : `₹${offer.discount_value} off`
-                  : null;
-                return (
-                  <div key={offer.id} className="bg-white border border-gray-200 rounded-xl flex flex-col overflow-hidden hover:shadow-md transition-shadow">
-                    {/* Card header — brand */}
-                    <div className="flex items-center gap-2 px-4 pt-4 pb-2">
-                      {offer.issuer_logo ? (
-                        <img src={offer.issuer_logo} alt={offer.issuer_name ?? ''} className="w-7 h-7 rounded-full object-cover border border-gray-100" />
-                      ) : (
-                        <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs shrink-0">
-                          {(offer.issuer_name ?? '?').charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <span className="text-xs font-medium text-gray-600 truncate">{offer.issuer_name || 'Unknown Brand'}</span>
-                    </div>
-
-                    {/* Body */}
-                    <div className="px-4 pb-3 flex-1">
-                      <p className="font-semibold text-gray-900 text-sm leading-snug">{offer.title}</p>
-                      {offer.description && (
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{offer.description}</p>
-                      )}
-
-                      {/* Discount badge */}
-                      {discountLabel && (
-                        <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold">
-                          {discountLabel}
-                        </span>
-                      )}
-
-                      {/* Meta grid */}
-                      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                        <div>
-                          <p className="text-gray-400">Reward ID</p>
-                          <p className="font-mono text-gray-700 truncate" title={offer.id}>{offer.id.slice(0, 8)}…</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-400">Coupon Type</p>
-                          <p className="text-gray-700 capitalize">{offer.coupon_type}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-400">Codes Available</p>
-                          <p className="text-gray-700">
-                            {offer.coupon_type === 'generic' ? 'Unlimited' : offer.available_codes}
-                          </p>
-                        </div>
-                        {offer.my_points_cost != null && (
-                          <div>
-                            <p className="text-gray-400">Your Points Cost</p>
-                            <p className="text-indigo-700 font-semibold">{offer.my_points_cost} pts</p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="px-4 py-3 text-left">Offer</th>
+                    <th className="px-4 py-3 text-left">Brand</th>
+                    <th className="px-4 py-3 text-left">Reward ID</th>
+                    <th className="px-4 py-3 text-left">Discount</th>
+                    <th className="px-4 py-3 text-left">Type</th>
+                    <th className="px-4 py-3 text-left">Codes</th>
+                    <th className="px-4 py-3 text-left">Points Cost</th>
+                    <th className="px-4 py-3 text-left">Valid Until</th>
+                    <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-left"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {marketplaceOffers.map((offer) => {
+                    const discountLabel = offer.discount_value
+                      ? offer.reward_type === 'percentage_discount'
+                        ? `${offer.discount_value}% off`
+                        : `₹${offer.discount_value} off`
+                      : null;
+                    return (
+                      <tr key={offer.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-gray-900 leading-snug">{offer.title}</p>
+                          {offer.description && (
+                            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{offer.description}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {offer.issuer_logo ? (
+                              <img src={offer.issuer_logo} alt={offer.issuer_name ?? ''} className="w-6 h-6 rounded-full object-cover border border-gray-100 shrink-0" />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs shrink-0">
+                                {(offer.issuer_name ?? '?').charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <span className="text-gray-700 text-xs whitespace-nowrap">{offer.issuer_name || '—'}</span>
                           </div>
-                        )}
-                        {offer.valid_until && (
-                          <div className="col-span-2">
-                            <p className="text-gray-400">Valid Until</p>
-                            <p className="text-gray-700">{new Date(offer.valid_until).toLocaleDateString()}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Footer */}
-                    <div className="px-4 pb-4 pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
-                      {offer.already_adopted ? (
-                        <span className="text-xs font-medium text-green-700 flex items-center gap-1">
-                          ✓ Adopted
-                        </span>
-                      ) : <span />}
-                      <button
-                        disabled={offer.already_adopted || saving === offer.id}
-                        onClick={() => {
-                          setAdoptOffer(offer);
-                          setAdoptPointsCost(String(offer.my_points_cost || 500));
-                          setAdoptAccessType('points_redemption');
-                        }}
-                        className="ml-auto px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-50 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
-                      >
-                        {offer.already_adopted ? 'View Details' : 'Adopt Offer'}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-xs text-gray-500" title={offer.id}>{offer.id.slice(0, 8)}…</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {discountLabel ? (
+                            <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold whitespace-nowrap">{discountLabel}</span>
+                          ) : <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-600 capitalize">{offer.coupon_type}</td>
+                        <td className="px-4 py-3 text-xs text-gray-700">
+                          {offer.coupon_type === 'generic' ? 'Unlimited' : offer.available_codes}
+                        </td>
+                        <td className="px-4 py-3 text-xs">
+                          {offer.my_points_cost != null
+                            ? <span className="text-indigo-700 font-semibold">{offer.my_points_cost} pts</span>
+                            : <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
+                          {offer.valid_until ? new Date(offer.valid_until).toLocaleDateString() : '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          {offer.already_adopted && (
+                            <span className="text-xs font-medium text-green-700">✓ Added</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            disabled={offer.already_adopted || saving === offer.id}
+                            onClick={() => {
+                              setAdoptOffer(offer);
+                              setAdoptPointsCost(String(offer.my_points_cost || 500));
+                              setAdoptAccessType('points_redemption');
+                            }}
+                            className="px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-50 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 whitespace-nowrap"
+                          >
+                            {offer.already_adopted ? 'View Details' : 'Adopt Offer'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         ) : (
