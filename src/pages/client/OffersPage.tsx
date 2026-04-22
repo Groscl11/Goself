@@ -50,6 +50,7 @@ export default function OffersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const clientId = profile?.client_id ?? '';
   const shopDomain = (profile as any)?.shop_domain ?? '';
+  const brandId = profile?.brand_id ?? '';
  
   const activeTab = (searchParams.get('tab') as TabId) || 'store';
   const setTab = (t: TabId) => setSearchParams({ tab: t }, { replace: true });
@@ -423,6 +424,11 @@ export default function OffersPage() {
                   className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-100">
                   <div className="font-medium">Store offer</div>
                   <div className="text-xs text-gray-400">Generate or import Shopify codes</div>
+                </button>
+                <button onClick={() => { setNewOfferDropdown(false); setNewOfferMode('marketplace'); setNewOfferOpen(true); }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+                  <div className="font-medium">Marketplace offer</div>
+                  <div className="text-xs text-gray-400">Submit an offer for other brands to adopt</div>
                 </button>
                 <button onClick={() => { setNewOfferDropdown(false); setPartnerWizardOpen(true); }}
                   className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">
@@ -817,6 +823,7 @@ export default function OffersPage() {
         open={newOfferOpen}
         onClose={() => { setNewOfferOpen(false); setEditOffer(null); }}
         clientId={clientId}
+        brandId={brandId}
         shopDomain={shopDomain}
         mode={newOfferMode}
         editOffer={editOffer}

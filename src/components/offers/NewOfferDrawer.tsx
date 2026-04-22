@@ -22,6 +22,7 @@ interface NewOfferDrawerProps {
   open: boolean;
   onClose: () => void;
   clientId: string;
+  brandId?: string;
   shopDomain: string;
   onCreated: () => void;
   mode?: 'store' | 'marketplace';
@@ -33,7 +34,7 @@ const REWARD_TYPES: { value: RewardType; label: string }[] = [
   { value: 'free_item',            label: 'Free item' },
 ];
 
-export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated, mode = 'store', editOffer }: NewOfferDrawerProps & { editOffer?: import('../../types/offers').Offer | null }) {
+export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, onCreated, mode = 'store', editOffer }: NewOfferDrawerProps & { editOffer?: import('../../types/offers').Offer | null }) {
   const [flow, setFlow] = useState<Flow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -53,6 +54,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
   const [form, setForm] = useState({
     title: '',
     description: '',
+    callout: '',
     reward_type: 'flat_discount' as RewardType,
     discount_value: '',
     min_purchase_amount: '',
@@ -61,7 +63,17 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
     codes_count: '10',
     code_paste: '',
     valid_until: '',
+    redemption_link: '',
+    terms_conditions: '',
+    steps_to_redeem: '',
+    // Shopify generate advanced options
+    shopify_prefix: '',
+    shopify_usage_limit: '1',
+    shopify_applies_to: 'all' as 'all' | 'specific_collections' | 'specific_products',
   });
+
+  // Shopify create-discount state
+  const [shopifyCreating, setShopifyCreating] = useState(false);
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -73,6 +85,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
       setForm({
         title: editOffer.title ?? '',
         description: editOffer.description ?? '',
+        callout: '',
         reward_type: editOffer.reward_type as RewardType,
         discount_value: editOffer.discount_value != null ? String(editOffer.discount_value) : '',
         min_purchase_amount: editOffer.min_purchase_amount != null ? String(editOffer.min_purchase_amount) : '',
@@ -81,6 +94,10 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
         codes_count: '10',
         code_paste: '',
         valid_until: editOffer.valid_until ? editOffer.valid_until.slice(0, 10) : '',
+        redemption_link: editOffer.redemption_link ?? '',
+        terms_conditions: editOffer.terms_conditions ?? '',
+        steps_to_redeem: editOffer.steps_to_redeem ?? '',
+        shopify_prefix: '', shopify_usage_limit: '1', shopify_applies_to: 'all',
       });
     } else if (!open) {
       resetState();
@@ -93,10 +110,13 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
     setParsedCodes([]);
     setShopifyRules([]); setShopifyLoading(false); setShopifyError('');
     setShopifySearch(''); setShopifyPicked(false); setShopifyFetched(false);
+    setShopifyCreating(false);
     setForm({
-      title: '', description: '', reward_type: 'flat_discount', discount_value: '',
+      title: '', description: '', callout: '', reward_type: 'flat_discount', discount_value: '',
       min_purchase_amount: '', coupon_type: 'unique', generic_coupon_code: '',
       codes_count: '10', code_paste: '', valid_until: '',
+      redemption_link: '', terms_conditions: '', steps_to_redeem: '',
+      shopify_prefix: '', shopify_usage_limit: '1', shopify_applies_to: 'all',
     });
   }
 
@@ -160,6 +180,11 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
     try {
       if (!form.title.trim()) throw new Error('Title is required');
       if (!form.discount_value && flow !== 'generic') throw new Error('Discount value is required');
+      if (mode === 'marketplace') {
+        if (!form.redemption_link.trim()) throw new Error('Redemption URL is required for marketplace offers');
+        if (!form.terms_conditions.trim()) throw new Error('Terms & conditions are required for marketplace offers');
+        if (!form.steps_to_redeem.trim()) throw new Error('Steps to redeem are required for marketplace offers');
+      }
 
       // Resolve the actual coupon_type: if flow is 'generic', always use 'generic'
       const resolvedCouponType = flow === 'generic' ? 'generic' : form.coupon_type;
@@ -181,6 +206,9 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
         discount_value: form.discount_value ? Number(form.discount_value) : null,
         min_purchase_amount: form.min_purchase_amount ? Number(form.min_purchase_amount) : 0,
         valid_until: form.valid_until || null,
+        redemption_link: form.redemption_link.trim() || null,
+        terms_conditions: form.terms_conditions.trim() || null,
+        steps_to_redeem: form.steps_to_redeem.trim() || null,
       };
 
       if (editOffer) {
@@ -208,6 +236,7 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
           is_marketplace: mode === 'marketplace' ? true : false,
           owner_client_id: clientId,
           client_id: clientId,
+          brand_id: brandId || null,
           redeems_at_shop_domain: mode === 'marketplace' ? null : shopDomain,
         })
         .select('id')
@@ -222,11 +251,31 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
         if (flow === 'shopify_imported') {
           codes = (form.code_paste || '').split('\n').map(c => c.trim()).filter(Boolean).slice(0, 1000);
         } else if (flow === 'shopify_generated') {
-          // Generate simple codes client-side (actual Shopify sync happens via sync-discount-to-shopify)
-          const count = Math.min(Number(form.codes_count) || 10, 100);
-          for (let i = 0; i < count; i++) {
-            codes.push(`${form.title.replace(/\s+/g,'').toUpperCase().slice(0,4)}${Math.random().toString(36).substring(2,8).toUpperCase()}`);
-          }
+          // Call Shopify API to create a real price rule + discount codes
+          setShopifyCreating(true);
+          const res = await fetch(
+            `${supabaseUrl}/functions/v1/shopify-create-discount`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'apikey': supabaseAnonKey, 'Authorization': `Bearer ${supabaseAnonKey}` },
+              body: JSON.stringify({
+                client_id: clientId,
+                shop_domain: shopDomain,
+                title: form.title.trim(),
+                reward_type: form.reward_type,
+                discount_value: Number(form.discount_value),
+                min_purchase_amount: Number(form.min_purchase_amount) || 0,
+                codes_count: Math.min(Number(form.codes_count) || 10, 250),
+                code_prefix: form.shopify_prefix.trim() || form.title.replace(/\s+/g,'').toUpperCase().slice(0,4),
+                usage_limit_per_code: Number(form.shopify_usage_limit) || 1,
+                valid_until: form.valid_until || null,
+              }),
+            }
+          );
+          const json = await res.json();
+          setShopifyCreating(false);
+          if (!json.success) throw new Error(json.error || 'Shopify discount creation failed');
+          codes = json.codes || [];
         }
         if (codes.length > 0) {
           const uploadResult = await uploadOfferCodesDirect({
@@ -280,9 +329,9 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
                 ← Back
               </button>
             )}
-            <button onClick={handleSubmit} disabled={loading || (flow === 'shopify_imported' && !shopifyPicked && !editOffer)}
+            <button onClick={handleSubmit} disabled={loading || shopifyCreating || (flow === 'shopify_imported' && !shopifyPicked && !editOffer)}
               className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-60 ml-auto">
-              {loading ? (editOffer ? 'Saving...' : 'Creating...') : (editOffer ? 'Save Changes' : 'Create Offer')}
+              {shopifyCreating ? 'Creating in Shopify…' : loading ? (editOffer ? 'Saving...' : 'Creating...') : (editOffer ? 'Save Changes' : 'Create Offer')}
             </button>
           </div>
         ) : null
@@ -434,6 +483,15 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
               className="input-base" />
           </Field>
 
+          {/* Callout — marketplace only */}
+          {mode === 'marketplace' && (
+            <Field label="Offer callout / tagline *">
+              <input value={form.callout} onChange={e => set('callout', e.target.value)}
+                placeholder="e.g. Flat ₹200 off — use at checkout"
+                className="input-base" />
+            </Field>
+          )}
+
           {/* Description */}
           <Field label="Description">
             <textarea value={form.description} onChange={e => set('description', e.target.value)}
@@ -503,11 +561,40 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
           {/* Code generation count */}
           {flow === 'shopify_generated' && form.coupon_type === 'unique' && (
             <Field label="How many codes to generate">
-              <input type="number" min={1} max={100} value={form.codes_count}
+              <input type="number" min={1} max={250} value={form.codes_count}
                 onChange={e => set('codes_count', e.target.value)}
                 className="input-base w-28" />
-              <p className="text-xs text-gray-400 mt-1">Max 100 per batch</p>
+              <p className="text-xs text-gray-400 mt-1">Max 250 per batch — creates real Shopify discount codes</p>
             </Field>
+          )}
+
+          {/* Advanced Shopify generate options */}
+          {flow === 'shopify_generated' && form.coupon_type === 'unique' && (
+            <div className="border border-blue-100 bg-blue-50 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Shopify Discount Settings</p>
+              <Field label="Code prefix (optional)">
+                <input value={form.shopify_prefix} onChange={e => set('shopify_prefix', e.target.value.toUpperCase())}
+                  placeholder="e.g. LOYAL (default: first 4 chars of title)"
+                  className="input-base font-mono" />
+              </Field>
+              <Field label="Uses per code">
+                <select value={form.shopify_usage_limit} onChange={e => set('shopify_usage_limit', e.target.value)}
+                  className="input-base">
+                  <option value="1">1 use per code (single-use)</option>
+                  <option value="5">5 uses per code</option>
+                  <option value="10">10 uses per code</option>
+                  <option value="0">Unlimited uses</option>
+                </select>
+              </Field>
+              <Field label="Applies to">
+                <select value={form.shopify_applies_to} onChange={e => set('shopify_applies_to', e.target.value as any)}
+                  className="input-base">
+                  <option value="all">All products</option>
+                  <option value="specific_collections">Specific collections</option>
+                  <option value="specific_products">Specific products</option>
+                </select>
+              </Field>
+            </div>
           )}
 
           {/* Code import */}
@@ -541,6 +628,28 @@ export function NewOfferDrawer({ open, onClose, clientId, shopDomain, onCreated,
             <input type="date" value={form.valid_until} onChange={e => set('valid_until', e.target.value)}
               className="input-base" />
           </Field>
+
+          {/* Marketplace-only mandatory fields */}
+          {mode === 'marketplace' && (
+            <div className="border border-indigo-100 bg-indigo-50 rounded-xl p-4 space-y-4">
+              <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Marketplace Required Fields</p>
+              <Field label="Redemption URL *">
+                <input value={form.redemption_link} onChange={e => set('redemption_link', e.target.value)}
+                  placeholder="https://yourbrand.com/checkout"
+                  className="input-base" />
+              </Field>
+              <Field label="Terms & Conditions *">
+                <textarea value={form.terms_conditions} onChange={e => set('terms_conditions', e.target.value)}
+                  rows={3} placeholder="e.g. Valid once per user. Cannot be combined with other offers."
+                  className="input-base resize-none" />
+              </Field>
+              <Field label="Steps to Redeem *">
+                <textarea value={form.steps_to_redeem} onChange={e => set('steps_to_redeem', e.target.value)}
+                  rows={3} placeholder={"1. Click Redeem\n2. Copy the code\n3. Paste at checkout"}
+                  className="input-base resize-none" />
+              </Field>
+            </div>
+          )}
             </div>
           )}
         </div>
