@@ -580,10 +580,26 @@ export default function OffersPage() {
                 ) : mktFiltered.length === 0 ? (
                   <EmptyState title="No marketplace offers available" description="Check back later for new offers from partner brands." />
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {mktFiltered.map(offer => (
-                      <MktCard key={offer.id} offer={offer} onAdopt={() => setAdoptTarget(offer)} />
-                    ))}
+                  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wide">
+                          <th className="px-4 py-3 text-left">Offer</th>
+                          <th className="px-4 py-3 text-left">Brand</th>
+                          <th className="px-4 py-3 text-left">Discount</th>
+                          <th className="px-4 py-3 text-left">Type</th>
+                          <th className="px-4 py-3 text-left">Codes</th>
+                          <th className="px-4 py-3 text-left">Points Cost</th>
+                          <th className="px-4 py-3 text-left">Status</th>
+                          <th className="px-4 py-3 text-left"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {mktFiltered.map(offer => (
+                          <MktRow key={offer.id} offer={offer} onAdopt={() => setAdoptTarget(offer)} />
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -815,54 +831,60 @@ function FilterRow({ filters, active, onChange }: {
   );
 }
  
-// ─── Marketplace card ─────────────────────────────────────────────────────────
-function MktCard({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => void }) {
+// ─── Marketplace row ─────────────────────────────────────────────────────────
+function MktRow({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => void }) {
   const isGenericReusable = offer.coupon_type === 'generic' || Boolean(offer.generic_coupon_code);
   const outOfStock = !isGenericReusable && offer.coupon_type === 'unique' && (offer.available_codes ?? 0) <= 0;
- 
+  const discountLabel =
+    offer.reward_type === 'flat_discount' ? `₹${offer.discount_value} off`
+    : offer.reward_type === 'percentage_discount' ? `${offer.discount_value}% off`
+    : offer.reward_type === 'free_item' ? 'Free item'
+    : 'Other';
+
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors">
-      {offer.issuer_name && (
-        <p className="text-xs text-gray-400 mb-1">{offer.issuer_name}</p>
-      )}
-      <h3 className="text-sm font-semibold text-gray-900 mb-2">{offer.title}</h3>
-      <div className="flex gap-2 mb-3 flex-wrap">
+    <tr className="hover:bg-gray-50 transition-colors">
+      <td className="px-4 py-3">
+        <p className="font-medium text-gray-900 leading-snug">{offer.title}</p>
+        {offer.description && (
+          <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{offer.description}</p>
+        )}
+      </td>
+      <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{offer.issuer_name || '—'}</td>
+      <td className="px-4 py-3">
         <Badge variant={
           offer.reward_type === 'percentage_discount' ? 'purple'
           : offer.reward_type === 'free_item' ? 'green'
           : 'blue'
         }>
-          {offer.reward_type === 'flat_discount' ? `₹${offer.discount_value} off`
-            : offer.reward_type === 'percentage_discount' ? `${offer.discount_value}% off`
-            : offer.reward_type === 'free_item' ? 'Free item'
-            : 'Other'}
+          {discountLabel}
         </Badge>
-      </div>
-      <p className="text-xs text-gray-500 mb-3">
-        {isGenericReusable
-          ? 'Unlimited (generic code)'
-          : outOfStock
-            ? 'Out of stock'
-            : `${offer.available_codes} codes available`}
-      </p>
- 
-      {offer.already_adopted ? (
-        <div className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          Added · {offer.my_points_cost} pts
-        </div>
-      ) : (
-        <button
-          onClick={onAdopt}
-          disabled={outOfStock}
-          className="w-full py-2 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {outOfStock ? 'Out of stock' : 'Add to My Store'}
-        </button>
-      )}
-    </div>
+      </td>
+      <td className="px-4 py-3 text-xs text-gray-600 capitalize">{offer.coupon_type}</td>
+      <td className="px-4 py-3 text-xs text-gray-700">
+        {isGenericReusable ? 'Unlimited' : outOfStock ? <span className="text-red-400">Out of stock</span> : offer.available_codes}
+      </td>
+      <td className="px-4 py-3 text-xs">
+        {offer.my_points_cost != null
+          ? <span className="text-indigo-700 font-semibold">{offer.my_points_cost} pts</span>
+          : <span className="text-gray-400">—</span>}
+      </td>
+      <td className="px-4 py-3">
+        {offer.already_adopted && (
+          <span className="text-xs font-medium text-green-700">✓ Added</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        {!offer.already_adopted && (
+          <button
+            onClick={onAdopt}
+            disabled={outOfStock}
+            className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+          >
+            Add to My Store
+          </button>
+        )}
+      </td>
+    </tr>
   );
 }
  
