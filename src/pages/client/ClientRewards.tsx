@@ -19,9 +19,15 @@ interface MarketplaceOffer {
   id: string;
   title: string;
   description: string | null;
-  issuer_name: string | null;
+  reward_type: string | null;
+  discount_value: number | null;
   coupon_type: string;
   available_codes: number;
+  total_codes_uploaded: number;
+  valid_until: string | null;
+  tags: string[] | null;
+  issuer_name: string | null;
+  issuer_logo: string | null;
   already_adopted: boolean;
   my_points_cost: number | null;
 }
@@ -328,39 +334,99 @@ export function ClientRewards() {
             )}
           </div>
         ) : tab === 'marketplace' ? (
-          <div className="grid gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {marketplaceOffers.length === 0 ? (
-              <div className="bg-white border border-dashed border-gray-300 rounded-xl py-12 text-center text-sm text-gray-500">
+              <div className="col-span-3 bg-white border border-dashed border-gray-300 rounded-xl py-12 text-center text-sm text-gray-500">
                 No marketplace offers available.
               </div>
             ) : (
-              marketplaceOffers.map((offer) => (
-                <div key={offer.id} className="bg-white border border-gray-200 rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-gray-900">{offer.title}</p>
-                      <p className="text-xs text-gray-500 mt-1">{offer.description || 'No description'}</p>
-                      <div className="flex gap-3 mt-2 text-xs text-gray-600 flex-wrap">
-                        <span>Issuer: {offer.issuer_name || 'Unknown'}</span>
-                        <span>Coupon: {offer.coupon_type}</span>
-                        <span>Codes: {offer.available_codes}</span>
-                        {offer.my_points_cost ? <span>Your Cost: {offer.my_points_cost} pts</span> : null}
+              marketplaceOffers.map((offer) => {
+                const discountLabel = offer.discount_value
+                  ? offer.reward_type === 'percentage_discount'
+                    ? `${offer.discount_value}% off`
+                    : `₹${offer.discount_value} off`
+                  : null;
+                return (
+                  <div key={offer.id} className="bg-white border border-gray-200 rounded-xl flex flex-col overflow-hidden hover:shadow-md transition-shadow">
+                    {/* Card header — brand */}
+                    <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+                      {offer.issuer_logo ? (
+                        <img src={offer.issuer_logo} alt={offer.issuer_name ?? ''} className="w-7 h-7 rounded-full object-cover border border-gray-100" />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs shrink-0">
+                          {(offer.issuer_name ?? '?').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="text-xs font-medium text-gray-600 truncate">{offer.issuer_name || 'Unknown Brand'}</span>
+                    </div>
+
+                    {/* Body */}
+                    <div className="px-4 pb-3 flex-1">
+                      <p className="font-semibold text-gray-900 text-sm leading-snug">{offer.title}</p>
+                      {offer.description && (
+                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{offer.description}</p>
+                      )}
+
+                      {/* Discount badge */}
+                      {discountLabel && (
+                        <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold">
+                          {discountLabel}
+                        </span>
+                      )}
+
+                      {/* Meta grid */}
+                      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                        <div>
+                          <p className="text-gray-400">Reward ID</p>
+                          <p className="font-mono text-gray-700 truncate" title={offer.id}>{offer.id.slice(0, 8)}…</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400">Coupon Type</p>
+                          <p className="text-gray-700 capitalize">{offer.coupon_type}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400">Codes Available</p>
+                          <p className="text-gray-700">
+                            {offer.coupon_type === 'generic' ? 'Unlimited' : offer.available_codes}
+                          </p>
+                        </div>
+                        {offer.my_points_cost != null && (
+                          <div>
+                            <p className="text-gray-400">Your Points Cost</p>
+                            <p className="text-indigo-700 font-semibold">{offer.my_points_cost} pts</p>
+                          </div>
+                        )}
+                        {offer.valid_until && (
+                          <div className="col-span-2">
+                            <p className="text-gray-400">Valid Until</p>
+                            <p className="text-gray-700">{new Date(offer.valid_until).toLocaleDateString()}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <button
-                      disabled={offer.already_adopted || saving === offer.id}
-                      onClick={() => {
-                        setAdoptOffer(offer);
-                        setAdoptPointsCost(String(offer.my_points_cost || 500));
-                        setAdoptAccessType('points_redemption');
-                      }}
-                      className="px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-50 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
-                    >
-                      {offer.already_adopted ? 'Adopted' : 'Adopt Offer'}
-                    </button>
+
+                    {/* Footer */}
+                    <div className="px-4 pb-4 pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
+                      {offer.already_adopted ? (
+                        <span className="text-xs font-medium text-green-700 flex items-center gap-1">
+                          ✓ Adopted
+                        </span>
+                      ) : <span />}
+                      <button
+                        disabled={offer.already_adopted || saving === offer.id}
+                        onClick={() => {
+                          setAdoptOffer(offer);
+                          setAdoptPointsCost(String(offer.my_points_cost || 500));
+                          setAdoptAccessType('points_redemption');
+                        }}
+                        className="ml-auto px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-50 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+                      >
+                        {offer.already_adopted ? 'View Details' : 'Adopt Offer'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         ) : (
