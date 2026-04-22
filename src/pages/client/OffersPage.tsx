@@ -69,6 +69,10 @@ export default function OffersPage() {
   const [mktLoading, setMktLoading] = useState(false);
   const [mktFilter, setMktFilter] = useState('All');
   const [mktSubtab, setMktSubtab] = useState<'browse' | 'submit'>('browse');
+  const [mktSearch, setMktSearch] = useState('');
+  const [mktBrand, setMktBrand] = useState('All');
+  const [mktPage, setMktPage] = useState(1);
+  const MKT_PAGE_SIZE = 15;
   const [submissions, setSubmissions] = useState<Offer[]>([]);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
  
@@ -273,10 +277,24 @@ export default function OffersPage() {
   };
  
   const mktFiltered = mktOffers.filter(o => {
-    if (mktFilter === 'All') return true;
-    const allowed = FILTER_CATEGORY_MAP[mktFilter] ?? [];
-    return allowed.includes((o.category ?? '').toLowerCase());
+    if (mktFilter !== 'All') {
+      const allowed = FILTER_CATEGORY_MAP[mktFilter] ?? [];
+      if (!allowed.includes((o.category ?? '').toLowerCase())) return false;
+    }
+    if (mktBrand !== 'All' && o.issuer_name !== mktBrand) return false;
+    if (mktSearch.trim()) {
+      const q = mktSearch.trim().toLowerCase();
+      if (
+        !o.title.toLowerCase().includes(q) &&
+        !o.id.toLowerCase().includes(q) &&
+        !(o.issuer_name ?? '').toLowerCase().includes(q)
+      ) return false;
+    }
+    return true;
   });
+  const mktBrands = ['All', ...Array.from(new Set(mktOffers.map(o => o.issuer_name).filter(Boolean) as string[]))];
+  const mktTotalPages = Math.max(1, Math.ceil(mktFiltered.length / MKT_PAGE_SIZE));
+  const mktPageOffers = mktFiltered.slice((mktPage - 1) * MKT_PAGE_SIZE, mktPage * MKT_PAGE_SIZE);
  
   // ── FIX 2: Adopt — direct Supabase insert, no broken edge function ─────────
   async function handleAdopt(config: { access_type: string; points_cost: number; max_per_member: number }) {
@@ -553,10 +571,24 @@ export default function OffersPage() {
             {/* Browse sub-tab */}
             {mktSubtab === 'browse' && (
               <div>
-                {/* Filter chips */}
-                <div className="flex gap-2 flex-wrap mb-4">
+                {/* Search + Brand filter + Category chips */}
+                <div className="flex flex-wrap gap-2 mb-3 items-center">
+                  <input
+                    type="text"
+                    placeholder="Search by name, brand or reward ID…"
+                    value={mktSearch}
+                    onChange={e => { setMktSearch(e.target.value); setMktPage(1); }}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 w-64"
+                  />
+                  <select
+                    value={mktBrand}
+                    onChange={e => { setMktBrand(e.target.value); setMktPage(1); }}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 bg-white"
+                  >
+                    {mktBrands.map(b => <option key={b} value={b}>{b === 'All' ? 'All Brands' : b}</option>)}
+                  </select>
                   {MKT_FILTERS.map(f => (
-                    <button key={f} onClick={() => setMktFilter(f)}
+                    <button key={f} onClick={() => { setMktFilter(f); setMktPage(1); }}
                       className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors
                         ${mktFilter === f
                           ? 'bg-gray-900 text-white'
@@ -565,45 +597,59 @@ export default function OffersPage() {
                     </button>
                   ))}
                 </div>
- 
+
                 {mktLoading ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="space-y-2">
                     {[...Array(6)].map((_, i) => (
-                      <div key={i} className="bg-white border border-gray-200 rounded-xl p-4 h-40 animate-pulse">
-                        <div className="h-3 bg-gray-100 rounded w-1/3 mb-2" />
-                        <div className="h-4 bg-gray-200 rounded w-2/3 mb-3" />
-                        <div className="h-6 bg-gray-100 rounded-full w-20 mb-3" />
-                        <div className="h-3 bg-gray-100 rounded w-1/2" />
-                      </div>
+                      <div key={i} className="h-12 bg-white border border-gray-200 rounded-lg animate-pulse" />
                     ))}
                   </div>
                 ) : mktFiltered.length === 0 ? (
-                  <EmptyState title="No marketplace offers available" description="Check back later for new offers from partner brands." />
+                  <EmptyState title="No marketplace offers available" description="Try adjusting your search or filters." />
                 ) : (
-                  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wide">
-                          <th className="px-4 py-3 text-left">Offer</th>
-                          <th className="px-4 py-3 text-left">Brand</th>
-                          <th className="px-4 py-3 text-left">Discount</th>
-                          <th className="px-4 py-3 text-left">Type</th>
-                          <th className="px-4 py-3 text-left">Codes</th>
-                          <th className="px-4 py-3 text-left">Points Cost</th>
-                          <th className="px-4 py-3 text-left">Status</th>
-                          <th className="px-4 py-3 text-left"></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {mktFiltered.map(offer => (
-                          <MktRow key={offer.id} offer={offer} onAdopt={() => setAdoptTarget(offer)} />
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
+                  <>
+                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wide">
+                            <th className="px-4 py-3 text-left">Offer</th>
+                            <th className="px-4 py-3 text-left">Reward ID</th>
+                            <th className="px-4 py-3 text-left">Brand</th>
+                            <th className="px-4 py-3 text-left">Discount</th>
+                            <th className="px-4 py-3 text-left">Type</th>
+                            <th className="px-4 py-3 text-left">Codes</th>
+                            <th className="px-4 py-3 text-left">Points Cost</th>
+                            <th className="px-4 py-3 text-left">Status</th>
+                            <th className="px-4 py-3 text-left"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {mktPageOffers.map(offer => (
+                            <MktRow key={offer.id} offer={offer} onAdopt={() => setAdoptTarget(offer)} />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Pagination */}
+                    {mktTotalPages > 1 && (
+                      <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
+                        <span>{mktFiltered.length} offers · page {mktPage} of {mktTotalPages}</span>
+                        <div className="flex gap-1">
+                          <button
+                            disabled={mktPage === 1}
+                            onClick={() => setMktPage(p => p - 1)}
+                            className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+                          >← Prev</button>
+                          <button
+                            disabled={mktPage === mktTotalPages}
+                            onClick={() => setMktPage(p => p + 1)}
+                            className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+                          >Next →</button>
+                        </div>
+                      </div>
+                    )}
+                  </>
  
             {/* Submissions sub-tab */}
             {mktSubtab === 'submit' && (
@@ -848,6 +894,9 @@ function MktRow({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => vo
         {offer.description && (
           <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{offer.description}</p>
         )}
+      </td>
+      <td className="px-4 py-3">
+        <span className="font-mono text-xs text-gray-500 select-all" title={offer.id}>{offer.id.slice(0, 8)}…</span>
       </td>
       <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{offer.issuer_name || '—'}</td>
       <td className="px-4 py-3">
