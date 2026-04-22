@@ -29,6 +29,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     // Step 1
     partner_name: '',
     category: 'Food & Drink',
+    image_url: '',
     steps_to_redeem: '',
     redemption_link: '',
     terms_conditions: '',
@@ -78,6 +79,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     setParsedCodes([]);
     setForm({
       partner_name: '', category: 'Food & Drink', terms_conditions: '',
+      image_url: '',
       steps_to_redeem: '', redemption_link: '',
       coupon_type: 'unique', generic_coupon_code: '', valid_until: '',
       points_cost: '', max_per_member: '1', access_type: 'points_redemption',
@@ -92,6 +94,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     setForm({
       partner_name: (offer.title ?? '').split(' — ')[0] || '',
       category: offer.tags?.[0] || 'Food & Drink',
+      image_url: offer.image_url ?? '',
       steps_to_redeem: offer.steps_to_redeem ?? offer.description ?? '',
       redemption_link: offer.redemption_link ?? '',
       terms_conditions: offer.terms_conditions ?? '',
@@ -154,6 +157,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       const rewardPayload = {
         title: `${form.partner_name} — ${form.category}`,
         description: form.steps_to_redeem || null,
+        image_url: form.image_url.trim() || null,
         redemption_link: form.redemption_link || null,
         terms_conditions: form.terms_conditions || null,
         offer_type: 'partner_voucher',
@@ -304,6 +308,14 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
             <select value={form.category} onChange={e => set('category', e.target.value)} className="input-base">
               {PARTNER_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
+          </Field>
+          <Field label="Offer image URL (optional)">
+            <input value={form.image_url} onChange={e => set('image_url', e.target.value)}
+              placeholder="https://cdn.partner.com/offer-banner.jpg"
+              className="input-base" />
+            {form.image_url && (
+              <img src={form.image_url} alt="preview" className="mt-2 h-16 w-auto rounded-lg border border-gray-200 object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            )}
           </Field>
           <Field label="Steps to Redeem">
             <textarea value={form.steps_to_redeem} onChange={e => set('steps_to_redeem', e.target.value)}

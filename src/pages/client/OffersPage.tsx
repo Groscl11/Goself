@@ -277,7 +277,12 @@ export default function OffersPage() {
     'Electronics':  ['electronics'],
   };
  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   const mktFiltered = mktOffers.filter(o => {
+    // Hide expired offers from browse list
+    if (o.valid_until && new Date(o.valid_until) < today) return false;
     if (mktFilter !== 'All') {
       const allowed = FILTER_CATEGORY_MAP[mktFilter] ?? [];
       if (!allowed.includes((o.category ?? '').toLowerCase())) return false;
@@ -743,7 +748,14 @@ export default function OffersPage() {
                       return (
                         <tr key={dist.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                           <td className="px-4 py-3">
-                            <div className="font-medium text-gray-900 text-sm">{offer.title}</div>
+                            <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5">
+                              {offer.title}
+                              {offer.valid_until && new Date(offer.valid_until) < today && (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5">
+                                  ⚠ Expired
+                                </span>
+                              )}
+                            </div>
                             <div className="text-xs text-gray-400 mt-0.5 capitalize">
                               {offer.reward_type?.replace('_', ' ')} · {offer.coupon_type}
                             </div>

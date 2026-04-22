@@ -54,9 +54,10 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
   const [form, setForm] = useState({
     title: '',
     description: '',
-    callout: '',
+    image_url: '',
     reward_type: 'flat_discount' as RewardType,
     discount_value: '',
+    max_cap: '',
     min_purchase_amount: '',
     coupon_type: 'unique',
     generic_coupon_code: '',
@@ -85,9 +86,10 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
       setForm({
         title: editOffer.title ?? '',
         description: editOffer.description ?? '',
-        callout: '',
+        image_url: editOffer.image_url ?? '',
         reward_type: editOffer.reward_type as RewardType,
         discount_value: editOffer.discount_value != null ? String(editOffer.discount_value) : '',
+        max_cap: editOffer.max_discount_value != null ? String(editOffer.max_discount_value) : '',
         min_purchase_amount: editOffer.min_purchase_amount != null ? String(editOffer.min_purchase_amount) : '',
         coupon_type: editOffer.coupon_type,
         generic_coupon_code: editOffer.generic_coupon_code ?? '',
@@ -112,8 +114,8 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     setShopifySearch(''); setShopifyPicked(false); setShopifyFetched(false);
     setShopifyCreating(false);
     setForm({
-      title: '', description: '', callout: '', reward_type: 'flat_discount', discount_value: '',
-      min_purchase_amount: '', coupon_type: 'unique', generic_coupon_code: '',
+      title: '', description: '', image_url: '', reward_type: 'flat_discount', discount_value: '',
+      max_cap: '', min_purchase_amount: '', coupon_type: 'unique', generic_coupon_code: '',
       codes_count: '10', code_paste: '', valid_until: '',
       redemption_link: '', terms_conditions: '', steps_to_redeem: '',
       shopify_prefix: '', shopify_usage_limit: '1', shopify_applies_to: 'all',
@@ -204,7 +206,9 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         tracking_type: 'automatic',
         reward_type: form.reward_type,
         discount_value: form.discount_value ? Number(form.discount_value) : null,
+        max_discount_value: form.max_cap ? Number(form.max_cap) : null,
         min_purchase_amount: form.min_purchase_amount ? Number(form.min_purchase_amount) : 0,
+        image_url: form.image_url.trim() || null,
         valid_until: form.valid_until || null,
         redemption_link: form.redemption_link.trim() || null,
         terms_conditions: form.terms_conditions.trim() || null,
@@ -233,7 +237,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
           currency: 'INR',
           is_active: true,
           status: 'active',
-          is_marketplace: mode === 'marketplace' ? true : false,
+          is_marketplace_listed: mode === 'marketplace',
           owner_client_id: clientId,
           client_id: clientId,
           brand_id: brandId || null,
@@ -483,20 +487,21 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
               className="input-base" />
           </Field>
 
-          {/* Callout — marketplace only */}
-          {mode === 'marketplace' && (
-            <Field label="Offer callout / tagline *">
-              <input value={form.callout} onChange={e => set('callout', e.target.value)}
-                placeholder="e.g. Flat ₹200 off — use at checkout"
-                className="input-base" />
-            </Field>
-          )}
-
           {/* Description */}
           <Field label="Description">
             <textarea value={form.description} onChange={e => set('description', e.target.value)}
               rows={2} placeholder="Optional description for members"
               className="input-base resize-none" />
+          </Field>
+
+          {/* Image URL */}
+          <Field label="Offer image URL (optional)">
+            <input value={form.image_url} onChange={e => set('image_url', e.target.value)}
+              placeholder="https://cdn.yourbrand.com/offer-banner.jpg"
+              className="input-base" />
+            {form.image_url && (
+              <img src={form.image_url} alt="preview" className="mt-2 h-16 w-auto rounded-lg border border-gray-200 object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            )}
           </Field>
 
           {/* Reward type */}
@@ -514,9 +519,22 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
                   {form.reward_type === 'percentage_discount' ? '%' : '₹'}
                 </span>
-                <input type="number" min={1} value={form.discount_value}
+                <input type="number" min={1} max={form.reward_type === 'percentage_discount' ? 100 : undefined} value={form.discount_value}
                   onChange={e => set('discount_value', e.target.value)}
-                  className="input-base pl-8" />
+                  className="input-base" style={{ paddingLeft: '2rem' }} />
+              </div>
+            </Field>
+          )}
+
+          {/* Max cap — percentage only */}
+          {form.reward_type === 'percentage_discount' && (
+            <Field label="Max discount cap (₹) — optional">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+                <input type="number" min={1} value={form.max_cap}
+                  onChange={e => set('max_cap', e.target.value)}
+                  placeholder="e.g. 500 (leave blank for no cap)"
+                  className="input-base" style={{ paddingLeft: '2rem' }} />
               </div>
             </Field>
           )}
@@ -527,8 +545,8 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
               <input type="number" min={0} value={form.min_purchase_amount}
                 onChange={e => set('min_purchase_amount', e.target.value)}
-                placeholder="0 (no minimum)"
-                className="input-base pl-8" />
+                placeholder="Leave blank for no minimum"
+                className="input-base" style={{ paddingLeft: '2rem' }} />
             </div>
           </Field>
 
