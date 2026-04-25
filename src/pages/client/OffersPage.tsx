@@ -72,6 +72,7 @@ export default function OffersPage() {
   const [mktSubtab, setMktSubtab] = useState<'browse' | 'submit'>('browse');
   const [mktSearch, setMktSearch] = useState('');
   const [mktBrand, setMktBrand] = useState('All');
+  const [mktHideOutOfStock, setMktHideOutOfStock] = useState(true);
   const [mktPage, setMktPage] = useState(1);
   const MKT_PAGE_SIZE = 15;
   const [submissions, setSubmissions] = useState<Offer[]>([]);
@@ -160,20 +161,22 @@ export default function OffersPage() {
         (adoptedDists ?? []).map(d => [d.offer_id, d.points_cost])
       );
  
-      // Query marketplace offers. Keep owner filtering in JS so NULL owner_client_id rows remain visible.
+      // Query marketplace offers, join owner client for brand name
       const { data, error } = await supabase
         .from('rewards')
-        .select('*')
+        .select('*, owner_client:clients!owner_client_id(name, logo_url)')
         .eq('offer_type', 'marketplace_offer')
         .order('created_at', { ascending: false });
  
       if (error) throw error;
  
       // Secondary JS filter: belt-and-suspenders for null owner_client_id edge cases
-      const filtered = (data ?? []).filter(o => o.owner_client_id !== clientId);
+      const filtered = (data ?? []).filter((o: any) => o.owner_client_id !== clientId);
  
-      const enriched = filtered.map(o => ({
+      const enriched = filtered.map((o: any) => ({
         ...o,
+        issuer_name: o.owner_client?.name ?? null,
+        issuer_logo: o.owner_client?.logo_url ?? null,
         already_adopted: adoptedMap.has(o.id),
         my_points_cost: adoptedMap.get(o.id) ?? null,
       }));
@@ -283,6 +286,9 @@ export default function OffersPage() {
   const mktFiltered = mktOffers.filter(o => {
     // Hide expired offers from browse list
     if (o.valid_until && new Date(o.valid_until) < today) return false;
+    // Hide out-of-stock unique offers when toggle is on
+    const isGenericReusable = o.coupon_type === 'generic' || Boolean(o.generic_coupon_code);
+    if (mktHideOutOfStock && !isGenericReusable && (o.available_codes ?? 0) <= 0) return false;
     if (mktFilter !== 'All') {
       const allowed = FILTER_CATEGORY_MAP[mktFilter] ?? [];
       if (!allowed.includes((o.category ?? '').toLowerCase())) return false;
@@ -607,6 +613,15 @@ export default function OffersPage() {
                       {f}
                     </button>
                   ))}
+                  <label className="flex items-center gap-1.5 ml-auto cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={mktHideOutOfStock}
+                      onChange={e => { setMktHideOutOfStock(e.target.checked); setMktPage(1); }}
+                      className="accent-gray-900 w-3.5 h-3.5"
+                    />
+                    <span className="text-xs text-gray-500">Hide out of stock</span>
+                  </label>
                 </div>
 
                 {mktLoading ? (

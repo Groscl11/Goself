@@ -237,7 +237,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
           currency: 'INR',
           is_active: true,
           status: 'active',
-          is_marketplace_listed: mode === 'marketplace',
+          is_marketplace: mode === 'marketplace',
           owner_client_id: clientId,
           client_id: clientId,
           brand_id: brandId || null,

@@ -31,7 +31,7 @@ export interface Offer {
   max_discount_value?: number;
   min_purchase_amount?: number;
   currency: string;
-  is_marketplace_listed: boolean;
+  is_marketplace: boolean;
   is_active: boolean;
   status: OfferStatus;
   available_codes: number;
