@@ -148,16 +148,7 @@ export default function ShopifyLanding() {
     await new Promise(r => setTimeout(r, 500));
 
     // Must match app.toml exactly — any mismatch triggers Shopify "misconfigured" error
-    const scopes = [
-      'write_checkouts', 'read_checkouts',
-      'read_customers', 'write_customers',
-      'read_price_rules', 'write_price_rules',
-      'read_discounts', 'write_discounts',
-      'read_orders', 'write_orders',
-      'read_products', 'write_products',
-      'read_script_tags', 'write_script_tags',
-      'read_themes', 'write_themes',
-    ].join(',');
+    const scopes = 'read_customers,read_orders,read_discounts,write_discounts';
 
     const redirectUri = `${SUPABASE_URL}/functions/v1/shopify-oauth-callback`;
     const state = btoa(JSON.stringify({ app_url: window.location.origin, ts: Date.now() }));
