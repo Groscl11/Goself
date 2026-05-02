@@ -52,7 +52,7 @@ Deno.serve(async (req: Request) => {
   const rawDashboardUrl = Deno.env.get('DASHBOARD_URL') ?? '';
   const dashboardUrl = (rawDashboardUrl && !rawDashboardUrl.includes('netlify.app'))
     ? rawDashboardUrl
-    : 'https://ai.goself.in';
+    : 'https://app.goself.in';
 
   if (!code || !shop) {
     return new Response('Missing required parameters', { status: 400 });
@@ -343,7 +343,7 @@ Deno.serve(async (req: Request) => {
     // Redirect to ShopifyLanding with error — NOT to a ProtectedRoute page
     const errorDashboardUrl = (Deno.env.get('DASHBOARD_URL') && !Deno.env.get('DASHBOARD_URL')!.includes('netlify.app'))
       ? Deno.env.get('DASHBOARD_URL')!
-      : 'https://ai.goself.in';
+      : 'https://app.goself.in';
     const errorUrl = `${errorDashboardUrl}/?shop=${shop}&error=oauth_failed&message=${encodeURIComponent(error?.message || 'Unknown error')}`;
     return new Response(null, {
       status: 302,
