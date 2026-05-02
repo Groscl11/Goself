@@ -223,6 +223,7 @@ function App() {
 
           <Route path="/dashboard" element={<DashboardRouter />} />
           <Route path="/" element={<ShopifyLanding />} />
+          <Route path="/shopify/installed" element={<ShopifyLanding />} />
 
           <Route path="/unauthorized" element={
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
