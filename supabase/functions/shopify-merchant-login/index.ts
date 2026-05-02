@@ -64,7 +64,7 @@ Deno.serve(async (req: Request) => {
         email_confirm: true,
         user_metadata: { shop_domain, shop_name, shop_owner, client_id },
       });
-      if (createError && createError.message !== 'User already registered') {
+      if (createError && !createError.message.toLowerCase().includes('already')) {
         throw createError;
       }
       const retry = await tryGenerateLink();
