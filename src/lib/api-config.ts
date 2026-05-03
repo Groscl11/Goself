@@ -98,8 +98,7 @@ export function formatEndpointUrl(path: string): string {
  * Get the OAuth redirect URL for Shopify
  */
 export function getOAuthRedirectUrl(): string {
-  const config = getApiConfig();
-  return `${config.functionsUrl}/functions/v1/shopify-oauth-callback`;
+  return `${getApiConfig().functionsUrl}/functions/v1/shopify-oauth-callback`;
 }
 
 /**

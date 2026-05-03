@@ -2,18 +2,22 @@
  * ShopifyCallback — SSO landing page
  *
  * Flow:
- * 1. Shopify OAuth completes → Supabase sends merchant a magic link
- * 2. Magic link redirects here: /auth/shopify-callback?shop=...&client_id=...
- * 3. Supabase automatically sets the session from the URL hash (#access_token=...)
- * 4. We wait for session, then redirect merchant to their client dashboard
+ * 1. ShopifyLanding calls shopify-merchant-login → gets magic link
+ * 2. Magic link redirects here: /auth/shopify-callback?shop=...&client_id=...#access_token=...
+ * 3. Supabase processes the hash and fires SIGNED_IN
+ * 4. We wait for session, then hard-redirect to /client dashboard
+ *
+ * IMPORTANT: Use window.location.href (hard redirect) not navigate() so that
+ * AuthContext re-initializes from scratch with the session already set.
+ * If we use navigate(), AuthContext may still be loading the profile and
+ * ProtectedRoute sees profile=null → bounces back to /login.
  */
 
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
 export default function ShopifyCallback() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Setting up your Goself dashboard...');
@@ -30,7 +34,7 @@ export default function ShopifyCallback() {
       setMessage('Verifying your Shopify credentials...');
 
       // Supabase magic link puts the session in the URL hash automatically.
-      // onAuthStateChange fires once it's processed — we just need to wait.
+      // Try getSession first — it may already be set if Supabase processed the hash.
       const { data: { session }, error } = await supabase.auth.getSession();
 
       if (error) throw error;
@@ -40,39 +44,36 @@ export default function ShopifyCallback() {
         return;
       }
 
-      // Session not ready yet — wait for auth state change (magic link processing)
+      // Session not ready yet — wait for SIGNED_IN event from magic link hash processing
       setMessage('Authenticating with Shopify...');
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
-          if (event === 'SIGNED_IN' && session?.user) {
+          if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+            if (timeoutId) clearTimeout(timeoutId);
             subscription.unsubscribe();
             await completeLogin(session.user.id, session.user.email!);
-          } else if (event === 'TOKEN_REFRESHED') {
-            // Already logged in from a previous session
-            if (session?.user) {
-              subscription.unsubscribe();
-              await completeLogin(session.user.id, session.user.email!);
-            }
           }
         }
       );
 
-      // Timeout fallback after 8 seconds
-      setTimeout(() => {
+      // Timeout fallback after 12 seconds
+      timeoutId = setTimeout(() => {
         subscription.unsubscribe();
         setStatus('error');
         setMessage('Authentication timed out. Please log in manually.');
         setTimeout(() => {
-          navigate(`/login?shop=${shop}&client_id=${clientId}&from=shopify`);
+          window.location.href = `/login?shop=${shop}&from=shopify`;
         }, 2000);
-      }, 8000);
+      }, 12000);
 
     } catch (err: any) {
       console.error('SSO callback error:', err);
       setStatus('error');
       setMessage('Something went wrong. Redirecting to login...');
       setTimeout(() => {
-        navigate(`/login?shop=${shop}&client_id=${clientId}&from=shopify`);
+        window.location.href = `/login?shop=${shop}&from=shopify`;
       }, 2000);
     }
   }
@@ -81,59 +82,31 @@ export default function ShopifyCallback() {
     setMessage('Loading your merchant profile...');
 
     try {
-      // Load or create profile
-      let { data: profile } = await supabase
+      // Profile was created server-side by shopify-merchant-login.
+      // Upsert here as a safety net in case the server-side creation failed.
+      await supabase
         .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      // If profile doesn't exist, create it with client role
-      if (!profile) {
-        const { data: newProfile } = await supabase
-          .from('profiles')
-          .insert({
-            id: userId,
-            email,
-            full_name: email.split('@')[0],
-            role: 'client',
-            client_id: clientId || null,
-          })
-          .select()
-          .single();
-        profile = newProfile;
-      }
-
-      // If the URL has a client_id (from SSO magic link), always sync it onto
-      // the profile so the merchant is pointed at the correct store, even if
-      // they previously had a different client_id (e.g. another store).
-      if (profile && clientId && profile.client_id !== clientId) {
-        await supabase
-          .from('profiles')
-          .update({ client_id: clientId, role: 'client' })
-          .eq('id', userId);
-        profile.client_id = clientId;
-      }
+        .upsert({
+          id: userId,
+          email,
+          role: 'client',
+          ...(clientId ? { client_id: clientId } : {}),
+        }, { onConflict: 'id', ignoreDuplicates: false });
 
       setStatus('success');
-      setMessage(`Welcome! Redirecting to your dashboard...`);
+      setMessage('Welcome! Redirecting to your dashboard...');
 
       // Small delay so merchant sees the success state
       await new Promise(r => setTimeout(r, 800));
 
-      // Route based on role
-      if (profile?.role === 'admin') {
-        navigate('/admin');
-      } else if (profile?.role === 'client') {
-        navigate('/client');
-      } else {
-        navigate('/client');
-      }
+      // Hard redirect — forces AuthContext to re-initialize with session already set.
+      // DO NOT use navigate() here: ProtectedRoute would see profile=null mid-load → /login.
+      window.location.href = '/client';
 
     } catch (err) {
-      console.error('Profile load error:', err);
-      // Even if profile fails, navigate to client dashboard
-      navigate('/client');
+      console.error('Profile sync error:', err);
+      // Even on error, hard redirect — profile exists server-side, AuthContext will load it
+      window.location.href = '/client';
     }
   }
 
@@ -150,9 +123,7 @@ export default function ShopifyCallback() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-white">Loyalty by Goself</h1>
-          {shop && (
-            <p className="text-slate-400 text-sm mt-1">{shop}</p>
-          )}
+          {shop && <p className="text-slate-400 text-sm mt-1">{shop}</p>}
         </div>
 
         {/* Status */}

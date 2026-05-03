@@ -5,7 +5,8 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import type { Session } from '@supabase/supabase-js';
+import { supabase, supabaseAnonKey } from '../../lib/supabase';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://lizgppzyyljqbmzdytia.supabase.co';
 const SHOPIFY_API_KEY = import.meta.env.VITE_SHOPIFY_API_KEY || '3290e6e4e5cb6711e4a7876ef40f87e8';
@@ -36,8 +37,50 @@ export default function ShopifyLanding() {
       setStatus('Verifying installation...');
     }
 
-    // Step 1: Sign out and hard reload to clear session completely
+    // Step 1: Check if user is already logged in for this shop — if so, skip everything
     if (!handled) {
+      setStatus('Checking your session...');
+
+      // supabase.auth.getSession() can return null on first load before the client
+      // has finished restoring the session from localStorage (async).
+      // We MUST wait for the INITIAL_SESSION event to get the true auth state.
+      const initialSession = await new Promise<Session | null>((resolve) => {
+        let resolved = false;
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+          if (resolved) return;
+          if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+            resolved = true;
+            subscription.unsubscribe();
+            resolve(session ?? null);
+          }
+        });
+        // Safety fallback: if INITIAL_SESSION never fires, fall through after 3s
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            subscription.unsubscribe();
+            resolve(null);
+          }
+        }, 3000);
+      });
+
+      if (initialSession?.user) {
+        // User is already authenticated — check they have a profile with client role
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, client_id')
+          .eq('id', initialSession.user.id)
+          .maybeSingle();
+        if (profile?.role === 'client' || profile?.role === 'admin') {
+          console.log(`ShopifyLanding: Already authenticated (${initialSession.user.email}), skipping SSO`);
+          setStatus('Already logged in! Redirecting...');
+          await new Promise(r => setTimeout(r, 500));
+          window.location.href = profile.role === 'admin' ? '/admin' : '/client';
+          return;
+        }
+      }
+
+      // Not logged in (or no valid profile) — sign out any stale session and proceed
       setStatus('Preparing your account...');
       await supabase.auth.signOut();
       const url = new URL(window.location.href);
@@ -64,7 +107,9 @@ export default function ShopifyLanding() {
 
       console.log(`ShopifyLanding: Found installation:`, installation);
 
-      if (installation?.installation_status === 'active' && installation?.shop_email && !installation.shop_email.endsWith('@shopify.com')) {
+      // Generate magic link immediately if installation exists and is active
+      // (even if enrichment hasn't updated with real email yet)
+      if (installation?.installation_status === 'active' && installation?.shop_email) {
         const email = installation.shop_email;
         const clientId = installation.client_id;
 
@@ -75,14 +120,18 @@ export default function ShopifyLanding() {
         // Call our edge function to create user + generate magic link server-side
         const res = await fetch(`${SUPABASE_URL}/functions/v1/shopify-merchant-login`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: supabaseAnonKey,
+            Authorization: `Bearer ${supabaseAnonKey}`,
+          },
           body: JSON.stringify({
             shop_domain: shop,
             email,
             client_id: clientId,
             shop_name: installation.shop_name,
             shop_owner: installation.shop_owner,
-            redirect_to: `${window.location.origin}/auth/shopify-callback?shop=${shop}&client_id=${clientId}`,
+            redirect_to: `${window.location.origin}/auth/shopify-callback?shop=${shop}${clientId ? `&client_id=${clientId}` : ''}`,
           })
         });
 
@@ -109,9 +158,8 @@ export default function ShopifyLanding() {
     }
 
     // Installation not found yet — may be a race condition right after OAuth
-    // Wait up to 12 seconds with retries to give background enrichment time to complete.
+    // Wait up to 12 seconds for the store installation record to be created
     console.log(`ShopifyLanding: Installation not found for ${shop}. Retrying...`);
-    let foundInstallation: any = null;
     for (let i = 0; i < 12; i++) {
       setStatus(`Connecting to ${shop}... (${i + 1}/12)`);
       await new Promise(r => setTimeout(r, 1000));
@@ -121,25 +169,12 @@ export default function ShopifyLanding() {
           .select('client_id, shop_email, shop_name, shop_owner, installation_status')
           .eq('shop_domain', shop)
           .maybeSingle();
-        if (retryInstallation && retryInstallation.installation_status === 'active') {
-          foundInstallation = retryInstallation;
-          if (!retryInstallation.shop_email.endsWith('@shopify.com')) {
-            console.log(`ShopifyLanding: Found installation with real email on retry ${i + 1}`);
-            window.location.reload();
-            return;
-          }
+        if (retryInstallation?.installation_status === 'active') {
+          console.log(`ShopifyLanding: Installation found on retry ${i + 1}, reloading page`);
+          window.location.reload();
+          return;
         }
       } catch (_) {}
-    }
-
-    // After 12s:
-    // - If we found an installation record (even with fake email), the store IS installed.
-    //   Don't re-trigger OAuth (causes infinite loop). Go to login instead.
-    // - If there is truly no record, trigger OAuth to install for the first time.
-    if (foundInstallation) {
-      console.log(`ShopifyLanding: Store installed but enrichment pending. Sending to login.`);
-      navigate(`/login?shop=${shop}&from=shopify&pending=true`);
-      return;
     }
 
     // Truly no installation — trigger OAuth install flow
@@ -152,7 +187,7 @@ export default function ShopifyLanding() {
 
     const redirectUri = `${SUPABASE_URL}/functions/v1/shopify-oauth-callback`;
     const state = btoa(JSON.stringify({ app_url: window.location.origin, ts: Date.now() }));
-    const oauthUrl = `https://${shop}/admin/oauth/authorize?client_id=${SHOPIFY_API_KEY}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+    const oauthUrl = `https://${shop}/admin/oauth/authorize?client_id=${SHOPIFY_API_KEY}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
     window.location.href = oauthUrl;
   }
 

@@ -19,6 +19,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const DASHBOARD_URL_ENV = Deno.env.get('DASHBOARD_URL')?.trim() || '';
+const APP_URL_ENV = Deno.env.get('APP_URL')?.trim() || '';
+const ALLOWED_APP_URLS = (Deno.env.get('ALLOWED_APP_URLS') || '').split(',').map((item) => item.trim()).filter(Boolean);
+const DEFAULT_ALLOWED_APP_URLS = ['https://app.goself.in', 'https://dev.app.goself.in'];
+
 const WEBHOOK_TOPICS = [
   'orders/create',
   'orders/updated',
@@ -49,25 +54,52 @@ Deno.serve(async (req: Request) => {
   const code = url.searchParams.get('code');
   const shop = url.searchParams.get('shop');
   const state = url.searchParams.get('state');
-  const rawDashboardUrl = Deno.env.get('DASHBOARD_URL') ?? '';
-  const dashboardUrl = (rawDashboardUrl && !rawDashboardUrl.includes('netlify.app'))
-    ? rawDashboardUrl
-    : 'https://app.goself.in';
+  const rawDashboardUrl = Deno.env.get('DASHBOARD_URL')?.trim() || '';
+  let stateAppUrl = '';
+
+  // Check if this is called from frontend (has auth headers)
+  const isFromFrontend = req.headers.get('authorization') || req.headers.get('apikey');
 
   if (!code || !shop) {
+    if (isFromFrontend) {
+      return new Response(JSON.stringify({ error: 'Missing required parameters' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     return new Response('Missing required parameters', { status: 400 });
   }
 
-  // Verify Shopify HMAC signature to ensure the request is authentic
   const shopifySecret = Deno.env.get('SHOPIFY_API_SECRET');
-  if (shopifySecret) {
-    const hmacValid = await verifyShopifyHmac(url, shopifySecret);
-    if (!hmacValid) {
-      console.error('HMAC verification failed — rejecting request from', shop);
-      return new Response('Unauthorized', { status: 401 });
+  if (!shopifySecret) {
+    console.error('SHOPIFY_API_SECRET is not configured');
+    if (isFromFrontend) {
+      return new Response(JSON.stringify({
+        error: 'Missing Shopify API secret',
+        shop,
+        message: 'Server configuration error'
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
-  } else {
-    console.warn('SHOPIFY_API_SECRET not set — skipping HMAC verification');
+    return new Response('Server misconfiguration', { status: 500 });
+  }
+
+  const hmacValid = await verifyShopifyHmac(url, shopifySecret);
+  if (!hmacValid) {
+    console.error('HMAC verification failed — rejecting request from', shop);
+    if (isFromFrontend) {
+      return new Response(JSON.stringify({
+        error: 'Invalid request signature',
+        shop,
+        message: 'Security validation failed'
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    return new Response('Unauthorized', { status: 401 });
   }
 
   console.log(`OAuth callback received from ${shop}`);
@@ -77,12 +109,20 @@ Deno.serve(async (req: Request) => {
     let stateData: any = {};
     if (state) {
       try {
-        stateData = JSON.parse(atob(state));
+        const normalizedState = decodeURIComponent(state.replace(/ /g, '+'));
+        stateData = JSON.parse(atob(normalizedState));
+        stateAppUrl = stateData.app_url || '';
       } catch (e) {
         console.warn('Invalid state parameter:', e);
       }
     }
 
+    const safeDashboardUrl = resolveSafeDashboardUrl(rawDashboardUrl, stateAppUrl);
+    if (!safeDashboardUrl) {
+      console.error('No safe dashboard redirect target available. Check DASHBOARD_URL, APP_URL, or ALLOWED_APP_URLS.');
+      return new Response('Server misconfiguration', { status: 500 });
+    }
+    const dashboardUrl = safeDashboardUrl;
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -92,6 +132,16 @@ Deno.serve(async (req: Request) => {
 
     if (!SHOPIFY_API_KEY || !SHOPIFY_API_SECRET) {
       console.error('Missing Shopify API credentials');
+      if (isFromFrontend) {
+        return new Response(JSON.stringify({
+          error: 'Missing Shopify API credentials',
+          shop,
+          message: 'Server configuration error'
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
       return new Response(null, {
         status: 302,
         headers: { 'Location': `${dashboardUrl}/?shop=${shop}&error=missing_credentials` }
@@ -123,6 +173,38 @@ Deno.serve(async (req: Request) => {
       console.log(`Token exchange successful for ${shop}`);
     } catch (err) {
       clearTimeout(tokenTimeout);
+      // Double-invocation guard: Shopify (or the edge runtime) sometimes calls this
+      // callback twice with the same single-use code. The first call succeeds and
+      // saves the installation. The second call fails here because the code is already
+      // consumed. If an active installation already exists, just redirect to the
+      // dashboard — no need to show an error.
+      try {
+        const { data: existingInstall } = await supabase
+          .from('store_installations')
+          .select('id')
+          .eq('shop_domain', shop)
+          .eq('installation_status', 'active')
+          .maybeSingle();
+        if (existingInstall) {
+          console.log(`Token exchange failed but active installation exists for ${shop} — redirecting to dashboard (double-invoke guard)`);
+          const redirectUrl = `${dashboardUrl}/?shop=${shop}`;
+          if (isFromFrontend) {
+            return new Response(JSON.stringify({
+              success: true,
+              redirect: redirectUrl,
+              shop,
+              message: 'Installation already exists'
+            }), {
+              status: 200,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+          }
+          return new Response(null, {
+            status: 302,
+            headers: { 'Location': redirectUrl }
+          });
+        }
+      } catch (_) { /* ignore fallback errors */ }
       throw err;
     }
 
@@ -336,15 +418,34 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log(`OAuth complete, redirecting to: ${redirectUrl}`);
+    if (isFromFrontend) {
+      return new Response(JSON.stringify({
+        success: true,
+        redirect: redirectUrl,
+        shop,
+        message: 'Installation completed successfully'
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     return redirectResponse;
 
   } catch (error: any) {
     console.error('OAuth callback error:', error);
     // Redirect to ShopifyLanding with error — NOT to a ProtectedRoute page
-    const errorDashboardUrl = (Deno.env.get('DASHBOARD_URL') && !Deno.env.get('DASHBOARD_URL')!.includes('netlify.app'))
-      ? Deno.env.get('DASHBOARD_URL')!
-      : 'https://app.goself.in';
+    const errorDashboardUrl = stateAppUrl || rawDashboardUrl || 'https://app.goself.in';
     const errorUrl = `${errorDashboardUrl}/?shop=${shop}&error=oauth_failed&message=${encodeURIComponent(error?.message || 'Unknown error')}`;
+    if (isFromFrontend) {
+      return new Response(JSON.stringify({
+        error: error?.message || 'Unknown error',
+        shop,
+        message: 'Installation failed'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     return new Response(null, {
       status: 302,
       headers: { 'Location': errorUrl }
@@ -498,6 +599,33 @@ async function installDefaultPlugins(
   } else {
     console.log(`Installed ${pluginInserts.length} default plugins`);
   }
+}
+
+function normalizeOrigin(url?: string): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (!['https:', 'http:'].includes(parsed.protocol)) return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+function resolveSafeDashboardUrl(rawDashboardUrl?: string, stateAppUrl?: string): string | null {
+  const allowedOrigins = [DASHBOARD_URL_ENV, APP_URL_ENV, ...ALLOWED_APP_URLS, ...DEFAULT_ALLOWED_APP_URLS]
+    .map(normalizeOrigin)
+    .filter((origin): origin is string => Boolean(origin));
+
+  const candidates = [rawDashboardUrl, stateAppUrl, DASHBOARD_URL_ENV, APP_URL_ENV];
+  for (const candidate of candidates) {
+    const origin = normalizeOrigin(candidate);
+    if (origin && allowedOrigins.includes(origin) && candidate) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 async function verifyShopifyHmac(url: URL, secret: string): Promise<boolean> {

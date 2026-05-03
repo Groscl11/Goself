@@ -18,8 +18,35 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
-const SHOPIFY_SCOPES = 'read_orders,read_customers,read_products';
+const SHOPIFY_SCOPES = 'read_customers,read_orders,read_discounts,write_discounts';
 const CALLBACK_URL = `${Deno.env.get('SUPABASE_URL')}/functions/v1/shopify-oauth-callback`;
+const APP_URL_ENV = Deno.env.get('APP_URL')?.trim() || '';
+const ALLOWED_APP_URLS = (Deno.env.get('ALLOWED_APP_URLS') || '').split(',').map((item) => item.trim()).filter(Boolean);
+
+function normalizeOrigin(url?: string): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (!['https:', 'http:'].includes(parsed.protocol)) return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+function resolveSafeAppUrl(appUrl?: string): string | null {
+  const allowedOrigins = [APP_URL_ENV, ...ALLOWED_APP_URLS]
+    .map(normalizeOrigin)
+    .filter((origin): origin is string => Boolean(origin));
+
+  if (!appUrl) return null;
+  const origin = normalizeOrigin(appUrl);
+  if (origin && allowedOrigins.includes(origin)) {
+    return appUrl;
+  }
+
+  return null;
+}
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -97,10 +124,11 @@ serve(async (req: Request) => {
     }
 
     // Generate state parameter for CSRF protection
+    const safeAppUrl = resolveSafeAppUrl(app_url) || APP_URL_ENV || 'http://localhost:5173';
     const state = btoa(JSON.stringify({
       client_id,
       user_id,
-      app_url: app_url || 'http://localhost:5173',
+      app_url: safeAppUrl,
       timestamp: Date.now(),
       nonce: crypto.randomUUID()
     }));
