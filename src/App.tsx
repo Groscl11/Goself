@@ -78,7 +78,6 @@ import { ReferralAnalytics } from './pages/admin/ReferralAnalytics';
 import { ClientSubscriptionManager } from './pages/admin/ClientSubscriptionManager';
 import { FeatureFlagPanel } from './pages/admin/FeatureFlagPanel';
 import { PlanBilling } from './pages/client/PlanBilling';
-import Onboarding from './pages/client/Onboarding';
 import AdminBilling from './pages/admin/AdminBilling';
 import { BrandSettings } from './pages/brand/BrandSettings';
 import { LoyaltyMembers } from './pages/client/LoyaltyMembers';
@@ -173,7 +172,7 @@ function App() {
           <Route path="/admin/global-users" element={<RoleBasedRoute allowedRoles={['admin']}><GlobalUsers /></RoleBasedRoute>} />
           <Route path="/admin/referral-analytics" element={<RoleBasedRoute allowedRoles={['admin']}><ReferralAnalytics /></RoleBasedRoute>} />
           <Route path="/admin/billing" element={<RoleBasedRoute allowedRoles={['admin']}><AdminBilling /></RoleBasedRoute>} />
-          <Route path="/client/onboarding" element={<RoleBasedRoute allowedRoles={['client']}><Onboarding /></RoleBasedRoute>} />
+          <Route path="/client/onboarding" element={<Navigate to="/client" replace />} />
           <Route path="/client" element={<RoleBasedRoute allowedRoles={['client']}><ClientDashboard /></RoleBasedRoute>} />
           <Route path="/client/programs" element={<RoleBasedRoute allowedRoles={['client']}><MembershipManagement /></RoleBasedRoute>} />
           <Route path="/client/programs/new" element={<RoleBasedRoute allowedRoles={['client']}><CreateMembershipProgram /></RoleBasedRoute>} />

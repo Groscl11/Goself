@@ -9,6 +9,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { clientMenuItems } from './clientMenuItems';
+import { OnboardingModal } from '../../components/onboarding/OnboardingModal';
 
 interface DashboardStats {
   totalMembers: number;
@@ -23,6 +24,12 @@ interface ClientInfo {
   slug: string;
   registration_enabled: boolean;
   onboarding_completed: boolean;
+  logo_url: string;
+  primary_color: string;
+  contact_email: string;
+  contact_phone: string;
+  website_url: string;
+  industry: string;
 }
 
 export function ClientDashboard() {
@@ -35,6 +42,7 @@ export function ClientDashboard() {
     totalReferrals: 0,
   });
   const [clientInfo, setClientInfo] = useState<ClientInfo | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [loading, setLoading] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
   useEffect(() => {
@@ -49,13 +57,14 @@ export function ClientDashboard() {
     try {
       const { data } = await supabase
         .from('clients')
-        .select('id, name, slug, registration_enabled, onboarding_completed')
+        .select('id, name, slug, registration_enabled, onboarding_completed, logo_url, primary_color, contact_email, contact_phone, website_url, industry')
         .eq('id', profile.client_id)
         .maybeSingle();
       if (data) {
         setClientInfo(data);
+        // Show onboarding popup if not yet completed — stays on dashboard, no redirect.
         if (!data.onboarding_completed) {
-          navigate('/client/onboarding', { replace: true });
+          setShowOnboarding(true);
         }
       }
     } catch (error) {
@@ -187,6 +196,25 @@ export function ClientDashboard() {
 
   return (
     <DashboardLayout menuItems={clientMenuItems} title="GoSelf">
+      {/* Onboarding popup — shown only when onboarding_completed = false */}
+      {showOnboarding && clientInfo && (
+        <OnboardingModal
+          clientId={clientInfo.id}
+          initialData={{
+            name: clientInfo.name || '',
+            logo_url: clientInfo.logo_url || '',
+            primary_color: clientInfo.primary_color || '#7c3aed',
+            contact_email: clientInfo.contact_email || profile?.email || '',
+            contact_phone: clientInfo.contact_phone || '',
+            website_url: clientInfo.website_url || '',
+            industry: clientInfo.industry || '',
+          }}
+          onComplete={() => {
+            setShowOnboarding(false);
+            setClientInfo((prev) => prev ? { ...prev, onboarding_completed: true } : prev);
+          }}
+        />
+      )}
       <div className="max-w-6xl mx-auto space-y-8">
 
         {/* ── Header ── */}
