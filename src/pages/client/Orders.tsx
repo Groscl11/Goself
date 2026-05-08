@@ -178,7 +178,7 @@ export function Orders() {
         return {
           id: o.id,
           shopify_order_id: o.shopify_order_id,
-          order_number: o.order_number || o.shopify_order_id,
+          order_number: (o.order_number || o.shopify_order_id).replace(/^#+/, ''),
           customer_email: o.customer_email || '',
           customer_phone: o.customer_phone || null,
           total_price: o.total_price || 0,
