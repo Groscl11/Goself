@@ -4,15 +4,15 @@
  * Flow:
  * 1. shopify-session-login → magic link → Supabase /verify → 303
  * 2. Browser lands here: /auth/shopify-callback?shop=...&client_id=...#access_token=...
- * 3. Supabase processes hash/code and fires SIGNED_IN
- * 4. We upsert the profile, then watch AuthContext until profile is loaded,
- *    then navigate to /client.
+ * 3. Supabase fires SIGNED_OUT (if switching users) then SIGNED_IN
+ * 4. We upsert the profile, track the expected userId, then wait for AuthContext
+ *    to load that specific user's profile before navigating to /client.
  *
- * Navigation is driven by AuthContext profile state (not a fixed timer) so
- * it is immune to timing races between auth events and profile loads.
+ * Navigation is only triggered when AuthContext profile.id matches the
+ * authenticated userId — immune to SIGNED_OUT→SIGNED_IN race conditions.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -24,27 +24,47 @@ export default function ShopifyCallback() {
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Setting up your Goself dashboard...');
-  const [authComplete, setAuthComplete] = useState(false);
+  // Track the specific userId we authenticated as — only navigate when AuthContext
+  // profile matches this exact user (prevents false positives during user switching).
+  const [expectedUserId, setExpectedUserId] = useState<string | null>(null);
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const shop = searchParams.get('shop');
   const clientId = searchParams.get('client_id');
 
-  // Navigate once auth + profile upsert are done AND AuthContext has loaded the profile
+  // Navigate only when AuthContext confirms the correct user's profile is loaded.
   useEffect(() => {
-    if (!authComplete) return;
-    if (loading) return; // still fetching profile — wait
+    if (!expectedUserId) return;
+    if (loading) return;
 
-    if (profile) {
+    if (profile && profile.id === expectedUserId) {
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
       navigate('/client', { replace: true });
-    } else {
-      // Auth succeeded but profile is still null — shouldn't happen, but fallback gracefully
-      setStatus('error');
-      setMessage('Could not load your profile. Please log in manually.');
-      setTimeout(() => {
-        navigate(`/login?shop=${shop}&from=shopify`, { replace: true });
-      }, 2000);
     }
-  }, [authComplete, loading, profile]);
+    // If profile is null or mismatched (e.g. SIGNED_OUT transient state),
+    // do nothing — wait for the SIGNED_IN profile to load.
+    // The error timer below handles the genuine timeout case.
+  }, [expectedUserId, loading, profile]);
+
+  // Start an error fallback timer once we know who the user should be.
+  useEffect(() => {
+    if (!expectedUserId) return;
+
+    errorTimerRef.current = setTimeout(() => {
+      // If profile still not loaded after 10s, give up gracefully.
+      if (!profile || profile.id !== expectedUserId) {
+        setStatus('error');
+        setMessage('Could not load your profile. Please log in manually.');
+        setTimeout(() => {
+          navigate(`/login?shop=${shop}&from=shopify`, { replace: true });
+        }, 2000);
+      }
+    }, 10000);
+
+    return () => {
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    };
+  }, [expectedUserId]);
 
   useEffect(() => {
     handleSSOCallback();
@@ -52,25 +72,14 @@ export default function ShopifyCallback() {
 
   async function handleSSOCallback() {
     try {
-      setMessage('Verifying your Shopify credentials...');
-
-      // Supabase may have already processed the URL hash/code by the time this runs
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) throw error;
-
-      if (session?.user) {
-        await completeLogin(session.user.id, session.user.email!);
-        return;
-      }
-
-      // Session not ready yet — wait for auth event (implicit hash OR PKCE code exchange)
       setMessage('Authenticating with Shopify...');
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
-          // Handle INITIAL_SESSION too: PKCE exchange may complete before this listener
-          // is registered, causing INITIAL_SESSION (not SIGNED_IN) to fire first.
+          // Skip transient SIGNED_OUT — a SIGNED_IN will follow when switching users.
+          if (event === 'SIGNED_OUT') return;
+
           if (
             (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') &&
             session?.user
@@ -81,6 +90,19 @@ export default function ShopifyCallback() {
           }
         }
       );
+
+      // Check if session already exists (INITIAL_SESSION may have fired before
+      // the listener above was registered).
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) throw error;
+
+      if (session?.user) {
+        // Session already established — listener may have missed INITIAL_SESSION.
+        // Call completeLogin directly; the listener will unsubscribe on the next event.
+        subscription.unsubscribe();
+        await completeLogin(session.user.id, session.user.email!);
+        return;
+      }
 
       timeoutId = setTimeout(() => {
         subscription.unsubscribe();
@@ -105,7 +127,6 @@ export default function ShopifyCallback() {
     setMessage('Loading your merchant profile...');
 
     try {
-      // Upsert profile (server-side already did this, but belt-and-suspenders)
       await supabase
         .from('profiles')
         .upsert({
@@ -115,7 +136,6 @@ export default function ShopifyCallback() {
           ...(clientId ? { client_id: clientId } : {}),
         }, { onConflict: 'id', ignoreDuplicates: false });
 
-      // Link auth_user_id in store_users (was null before first SSO login)
       await supabase
         .from('store_users')
         .update({ auth_user_id: userId, last_login_at: new Date().toISOString() })
@@ -125,13 +145,13 @@ export default function ShopifyCallback() {
       setStatus('success');
       setMessage('Welcome! Redirecting to your dashboard...');
 
-      // Signal: let the useEffect above drive navigation once AuthContext profile loads
-      setAuthComplete(true);
+      // Signal which user we expect — the useEffect above drives navigation
+      // only when AuthContext confirms this user's profile is loaded.
+      setExpectedUserId(userId);
 
     } catch (err) {
       console.error('Profile sync error:', err);
-      // Even on error, attempt navigation — profile may still be loaded
-      setAuthComplete(true);
+      setExpectedUserId(userId); // still attempt navigation
     }
   }
 
