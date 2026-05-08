@@ -2,29 +2,49 @@
  * ShopifyCallback — SSO landing page
  *
  * Flow:
- * 1. ShopifyLanding calls shopify-merchant-login → gets magic link
- * 2. Magic link redirects here: /auth/shopify-callback?shop=...&client_id=...#access_token=...
- * 3. Supabase processes the hash and fires SIGNED_IN
- * 4. We wait for session, then hard-redirect to /client dashboard
+ * 1. shopify-session-login → magic link → Supabase /verify → 303
+ * 2. Browser lands here: /auth/shopify-callback?shop=...&client_id=...#access_token=...
+ * 3. Supabase processes hash/code and fires SIGNED_IN
+ * 4. We upsert the profile, then watch AuthContext until profile is loaded,
+ *    then navigate to /client.
  *
- * IMPORTANT: Use window.location.href (hard redirect) not navigate() so that
- * AuthContext re-initializes from scratch with the session already set.
- * If we use navigate(), AuthContext may still be loading the profile and
- * ProtectedRoute sees profile=null → bounces back to /login.
+ * Navigation is driven by AuthContext profile state (not a fixed timer) so
+ * it is immune to timing races between auth events and profile loads.
  */
 
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function ShopifyCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { profile, loading } = useAuth();
+
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Setting up your Goself dashboard...');
+  const [authComplete, setAuthComplete] = useState(false);
 
   const shop = searchParams.get('shop');
   const clientId = searchParams.get('client_id');
+
+  // Navigate once auth + profile upsert are done AND AuthContext has loaded the profile
+  useEffect(() => {
+    if (!authComplete) return;
+    if (loading) return; // still fetching profile — wait
+
+    if (profile) {
+      navigate('/client', { replace: true });
+    } else {
+      // Auth succeeded but profile is still null — shouldn't happen, but fallback gracefully
+      setStatus('error');
+      setMessage('Could not load your profile. Please log in manually.');
+      setTimeout(() => {
+        navigate(`/login?shop=${shop}&from=shopify`, { replace: true });
+      }, 2000);
+    }
+  }, [authComplete, loading, profile]);
 
   useEffect(() => {
     handleSSOCallback();
@@ -34,10 +54,8 @@ export default function ShopifyCallback() {
     try {
       setMessage('Verifying your Shopify credentials...');
 
-      // Supabase magic link puts the session in the URL hash automatically.
-      // Try getSession first — it may already be set if Supabase processed the hash.
+      // Supabase may have already processed the URL hash/code by the time this runs
       const { data: { session }, error } = await supabase.auth.getSession();
-
       if (error) throw error;
 
       if (session?.user) {
@@ -45,13 +63,18 @@ export default function ShopifyCallback() {
         return;
       }
 
-      // Session not ready yet — wait for SIGNED_IN event from magic link hash processing
+      // Session not ready yet — wait for auth event (implicit hash OR PKCE code exchange)
       setMessage('Authenticating with Shopify...');
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
-          if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+          // Handle INITIAL_SESSION too: PKCE exchange may complete before this listener
+          // is registered, causing INITIAL_SESSION (not SIGNED_IN) to fire first.
+          if (
+            (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') &&
+            session?.user
+          ) {
             if (timeoutId) clearTimeout(timeoutId);
             subscription.unsubscribe();
             await completeLogin(session.user.id, session.user.email!);
@@ -59,7 +82,6 @@ export default function ShopifyCallback() {
         }
       );
 
-      // Timeout fallback after 12 seconds
       timeoutId = setTimeout(() => {
         subscription.unsubscribe();
         setStatus('error');
@@ -83,6 +105,7 @@ export default function ShopifyCallback() {
     setMessage('Loading your merchant profile...');
 
     try {
+      // Upsert profile (server-side already did this, but belt-and-suspenders)
       await supabase
         .from('profiles')
         .upsert({
@@ -92,20 +115,23 @@ export default function ShopifyCallback() {
           ...(clientId ? { client_id: clientId } : {}),
         }, { onConflict: 'id', ignoreDuplicates: false });
 
+      // Link auth_user_id in store_users (was null before first SSO login)
+      await supabase
+        .from('store_users')
+        .update({ auth_user_id: userId, last_login_at: new Date().toISOString() })
+        .eq('email', email)
+        .is('auth_user_id', null);
+
       setStatus('success');
       setMessage('Welcome! Redirecting to your dashboard...');
 
-      await new Promise(r => setTimeout(r, 800));
-
-      // Use navigate() (SPA navigation) so AuthProvider stays mounted and keeps
-      // the already-established session. Hard redirect (window.location.href)
-      // causes AuthContext to reinitialize and creates a race where
-      // INITIAL_SESSION fires null before getSession() resolves → /login bounce.
-      navigate('/client', { replace: true });
+      // Signal: let the useEffect above drive navigation once AuthContext profile loads
+      setAuthComplete(true);
 
     } catch (err) {
       console.error('Profile sync error:', err);
-      navigate('/client', { replace: true });
+      // Even on error, attempt navigation — profile may still be loaded
+      setAuthComplete(true);
     }
   }
 
