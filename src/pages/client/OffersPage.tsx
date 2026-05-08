@@ -49,8 +49,20 @@ export default function OffersPage() {
   const { profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const clientId = profile?.client_id ?? '';
-  const shopDomain = (profile as any)?.shop_domain ?? '';
   const brandId = profile?.brand_id ?? '';
+  const [shopDomain, setShopDomain] = useState('');
+
+  // Load shop_domain from store_installations (not stored on profile)
+  useEffect(() => {
+    if (!clientId) return;
+    supabase
+      .from('store_installations')
+      .select('shop_domain')
+      .eq('client_id', clientId)
+      .eq('installation_status', 'active')
+      .maybeSingle()
+      .then(({ data }) => { if (data?.shop_domain) setShopDomain(data.shop_domain); });
+  }, [clientId]);
  
   const activeTab = (searchParams.get('tab') as TabId) || 'store';
   const setTab = (t: TabId) => setSearchParams({ tab: t }, { replace: true });
