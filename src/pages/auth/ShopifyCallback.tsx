@@ -4,12 +4,15 @@
  * Flow:
  * 1. shopify-session-login → magic link → Supabase /verify → 303
  * 2. Browser lands here: /auth/shopify-callback?shop=...&client_id=...#access_token=...
- * 3. Supabase fires SIGNED_OUT (if switching users) then SIGNED_IN
- * 4. We upsert the profile, track the expected userId, then wait for AuthContext
- *    to load that specific user's profile before navigating to /client.
  *
- * Navigation is only triggered when AuthContext profile.id matches the
- * authenticated userId — immune to SIGNED_OUT→SIGNED_IN race conditions.
+ * Auth approach (handles all timing races):
+ * - Capture the hash tokens synchronously at mount time (before Supabase async-clears the hash)
+ * - Call setSession() directly with the captured tokens — this always fires SIGNED_IN
+ * - If no hash tokens (Supabase cleared the hash before mount), fall back to getSession()
+ *   or onAuthStateChange with both INITIAL_SESSION and SIGNED_IN accepted
+ *
+ * Navigation is only triggered when AuthContext profile.id === the authenticated userId,
+ * which is immune to SIGNED_OUT→SIGNED_IN race conditions during user switching.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -24,34 +27,38 @@ export default function ShopifyCallback() {
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Setting up your Goself dashboard...');
-  // Track the specific userId we authenticated as — only navigate when AuthContext
-  // profile matches this exact user (prevents false positives during user switching).
   const [expectedUserId, setExpectedUserId] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const shop = searchParams.get('shop');
   const clientId = searchParams.get('client_id');
 
+  // Capture hash tokens synchronously at mount time — before Supabase's async
+  // _initialize() clears them. This is the most reliable way to get them.
+  const [hashTokens] = useState(() => {
+    const params = new URLSearchParams(window.location.hash.substring(1));
+    return {
+      accessToken: params.get('access_token'),
+      refreshToken: params.get('refresh_token'),
+    };
+  });
+
   // Navigate only when AuthContext confirms the correct user's profile is loaded.
   useEffect(() => {
     if (!expectedUserId) return;
     if (loading) return;
-
     if (profile && profile.id === expectedUserId) {
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
       navigate('/client', { replace: true });
     }
-    // If profile is null or mismatched (e.g. SIGNED_OUT transient state),
-    // do nothing — wait for the SIGNED_IN profile to load.
-    // The error timer below handles the genuine timeout case.
+    // If profile is null or mismatched (transient SIGNED_OUT state), wait.
   }, [expectedUserId, loading, profile]);
 
-  // Start an error fallback timer once we know who the user should be.
+  // Start error fallback timer once we know which user to expect.
   useEffect(() => {
     if (!expectedUserId) return;
 
     errorTimerRef.current = setTimeout(() => {
-      // If profile still not loaded after 10s, give up gracefully.
       if (!profile || profile.id !== expectedUserId) {
         setStatus('error');
         setMessage('Could not load your profile. Please log in manually.');
@@ -71,20 +78,45 @@ export default function ShopifyCallback() {
   }, []);
 
   async function handleSSOCallback() {
+    setMessage('Verifying your Shopify credentials...');
+
     try {
+      // ── Path A: hash tokens captured at mount ──────────────────────────────
+      // setSession() explicitly sets the new session and fires SIGNED_IN,
+      // bypassing all onAuthStateChange timing uncertainty.
+      if (hashTokens.accessToken && hashTokens.refreshToken) {
+        const { data: { session }, error } = await supabase.auth.setSession({
+          access_token: hashTokens.accessToken,
+          refresh_token: hashTokens.refreshToken,
+        });
+        if (error) throw error;
+        if (session?.user) {
+          await completeLogin(session.user.id, session.user.email!);
+          return;
+        }
+      }
+
+      // ── Path B: hash was cleared before mount (Supabase processed it first) ─
+      // The session is already established — getSession() returns it directly.
+      const { data: { session: existingSession } } = await supabase.auth.getSession();
+      if (existingSession?.user) {
+        await completeLogin(existingSession.user.id, existingSession.user.email!);
+        return;
+      }
+
+      // ── Path C: session not yet established — wait for auth events ──────────
+      // Accepts both INITIAL_SESSION (hash processed during init) and SIGNED_IN.
       setMessage('Authenticating with Shopify...');
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      let called = false;
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
-          // Only act on SIGNED_IN — this is always fired by the magic link for the
-          // correct new user. INITIAL_SESSION fires with the EXISTING (possibly
-          // different) session and must be ignored, or we'd call completeLogin with
-          // the wrong userId before the magic link hash is even processed.
-          // SIGNED_OUT fires transiently when switching users — also ignore.
-          if (event !== 'SIGNED_IN') return;
-          if (!session?.user) return;
+          if (called) return;
+          if (!session?.user || event === 'SIGNED_OUT') return;
+          if (event !== 'INITIAL_SESSION' && event !== 'SIGNED_IN') return;
 
+          called = true;
           if (timeoutId) clearTimeout(timeoutId);
           subscription.unsubscribe();
           await completeLogin(session.user.id, session.user.email!);
@@ -92,6 +124,8 @@ export default function ShopifyCallback() {
       );
 
       timeoutId = setTimeout(() => {
+        if (called) return;
+        called = true;
         subscription.unsubscribe();
         setStatus('error');
         setMessage('Authentication timed out. Please log in manually.');
@@ -131,14 +165,11 @@ export default function ShopifyCallback() {
 
       setStatus('success');
       setMessage('Welcome! Redirecting to your dashboard...');
-
-      // Signal which user we expect — the useEffect above drives navigation
-      // only when AuthContext confirms this user's profile is loaded.
       setExpectedUserId(userId);
 
     } catch (err) {
       console.error('Profile sync error:', err);
-      setExpectedUserId(userId); // still attempt navigation
+      setExpectedUserId(userId);
     }
   }
 
