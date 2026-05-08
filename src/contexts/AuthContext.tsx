@@ -48,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
+          setLoading(true); // keep spinner while profile is being fetched
           await loadProfile(session.user.id);
         } else {
           setProfile(null);
