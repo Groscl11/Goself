@@ -77,32 +77,19 @@ export default function ShopifyCallback() {
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
-          // Skip transient SIGNED_OUT — a SIGNED_IN will follow when switching users.
-          if (event === 'SIGNED_OUT') return;
+          // Only act on SIGNED_IN — this is always fired by the magic link for the
+          // correct new user. INITIAL_SESSION fires with the EXISTING (possibly
+          // different) session and must be ignored, or we'd call completeLogin with
+          // the wrong userId before the magic link hash is even processed.
+          // SIGNED_OUT fires transiently when switching users — also ignore.
+          if (event !== 'SIGNED_IN') return;
+          if (!session?.user) return;
 
-          if (
-            (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') &&
-            session?.user
-          ) {
-            if (timeoutId) clearTimeout(timeoutId);
-            subscription.unsubscribe();
-            await completeLogin(session.user.id, session.user.email!);
-          }
+          if (timeoutId) clearTimeout(timeoutId);
+          subscription.unsubscribe();
+          await completeLogin(session.user.id, session.user.email!);
         }
       );
-
-      // Check if session already exists (INITIAL_SESSION may have fired before
-      // the listener above was registered).
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) throw error;
-
-      if (session?.user) {
-        // Session already established — listener may have missed INITIAL_SESSION.
-        // Call completeLogin directly; the listener will unsubscribe on the next event.
-        subscription.unsubscribe();
-        await completeLogin(session.user.id, session.user.email!);
-        return;
-      }
 
       timeoutId = setTimeout(() => {
         subscription.unsubscribe();
