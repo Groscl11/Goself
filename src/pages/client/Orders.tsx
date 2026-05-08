@@ -1,580 +1,837 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { ShoppingBag, Search, Filter, ExternalLink, Calendar, DollarSign, User, Tag, Gift, Zap, CreditCard, Package } from 'lucide-react';
+import {
+  ShoppingBag, Search, DollarSign, Zap, Gift, ChevronLeft, ChevronRight,
+  ChevronUp, ChevronDown, ChevronsUpDown, X, Tag, Star, Package,
+  Download, ExternalLink,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { clientMenuItems } from './clientMenuItems';
 import { formatCurrency } from '../../lib/currency';
 
-interface OrderData {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface DiscountCode {
+  code: string;
+  amount: string;
+  type: string;
+}
+
+interface LineItem {
+  title: string;
+  name?: string;
+  quantity: number;
+  price: string;
+  sku?: string;
+  variant_title?: string;
+}
+
+interface OrderRow {
   id: string;
-  order_id: string;
+  shopify_order_id: string;
   order_number: string;
   customer_email: string;
-  customer_phone: string;
+  customer_phone: string | null;
   total_price: number;
   currency: string;
-  payment_method: string;
-  order_status: string;
-  financial_status: string;
-  fulfillment_status: string;
-  order_data: any;
+  payment_method: string | null;
+  order_status: string | null;
+  financial_status: string | null;
+  fulfillment_status: string | null;
   processed_at: string;
   created_at: string;
+  order_data: any;
+  // enriched
+  member_name: string | null;
+  member_id: string | null;
+  points_earned: number;
+  discount_total: number;
+  subtotal_price: number;
+  discount_codes: DiscountCode[];
+  line_items: LineItem[];
+  item_count: number;
+  city: string | null;
 }
 
-interface EnrichedOrder extends OrderData {
-  triggered_campaigns: string[];
-  triggered_memberships: string[];
-  member_name: string | null;
+type SortKey = keyof Pick<
+  OrderRow,
+  'order_number' | 'customer_email' | 'total_price' | 'discount_total' | 'points_earned' | 'processed_at' | 'financial_status' | 'fulfillment_status' | 'item_count'
+>;
+type SortDir = 'asc' | 'desc';
+
+const PAGE_SIZE = 25;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function statusBadge(status: string | null, type: 'financial' | 'fulfillment' | 'order') {
+  const s = (status || '').toLowerCase();
+  const map: Record<string, string> = {
+    paid: 'bg-green-100 text-green-800',
+    refunded: 'bg-red-100 text-red-800',
+    partially_refunded: 'bg-orange-100 text-orange-800',
+    pending: 'bg-yellow-100 text-yellow-800',
+    voided: 'bg-gray-100 text-gray-600',
+    fulfilled: 'bg-blue-100 text-blue-800',
+    partial: 'bg-sky-100 text-sky-800',
+    unfulfilled: 'bg-gray-100 text-gray-600',
+    cancelled: 'bg-red-100 text-red-800',
+  };
+  const cls = map[s] || 'bg-gray-100 text-gray-600';
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap ${cls}`}>
+      {(status || '—').replace(/_/g, ' ').toUpperCase()}
+    </span>
+  );
 }
+
+function SortIcon({ col, sort }: { col: SortKey; sort: { key: SortKey; dir: SortDir } | null }) {
+  if (!sort || sort.key !== col) return <ChevronsUpDown className="w-3.5 h-3.5 text-gray-400 inline ml-1" />;
+  return sort.dir === 'asc'
+    ? <ChevronUp className="w-3.5 h-3.5 text-blue-600 inline ml-1" />
+    : <ChevronDown className="w-3.5 h-3.5 text-blue-600 inline ml-1" />;
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export function Orders() {
-  const [orders, setOrders] = useState<EnrichedOrder[]>([]);
+  const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState<string>('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterDate, setFilterDate] = useState('all');
-  const [selectedOrder, setSelectedOrder] = useState<EnrichedOrder | null>(null);
 
-  useEffect(() => {
-    loadClientId();
-  }, []);
+  // filters
+  const [search, setSearch] = useState('');
+  const [dateFilter, setDateFilter] = useState('all');
+  const [financialFilter, setFinancialFilter] = useState('all');
+  const [fulfillmentFilter, setFulfillmentFilter] = useState('all');
+  const [couponFilter, setCouponFilter] = useState('all'); // all | with | without
 
-  useEffect(() => {
-    if (clientId) {
-      loadOrders();
-    }
-  }, [clientId]);
+  // sort
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>({
+    key: 'processed_at',
+    dir: 'desc',
+  });
+
+  // pagination
+  const [page, setPage] = useState(1);
+
+  // detail modal
+  const [selected, setSelected] = useState<OrderRow | null>(null);
+
+  // ── Load ──────────────────────────────────────────────────────────────────
+
+  useEffect(() => { loadClientId(); }, []);
+  useEffect(() => { if (clientId) loadOrders(); }, [clientId]);
 
   const loadClientId = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('client_id')
-        .eq('id', user.id)
-        .single();
-
-      if (error) throw error;
-      if (profile?.client_id) {
-        setClientId(profile.client_id);
-      }
-    } catch (error) {
-      console.error('Error loading client ID:', error);
-    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: profile } = await supabase
+      .from('profiles').select('client_id').eq('id', user.id).single();
+    if (profile?.client_id) setClientId(profile.client_id);
   };
 
   const loadOrders = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-
-      const { data: ordersData, error: ordersError } = await supabase
+      const { data: raw } = await supabase
         .from('shopify_orders')
         .select('*')
         .eq('client_id', clientId)
-        .order('created_at', { ascending: false });
+        .order('processed_at', { ascending: false });
 
-      if (ordersError) throw ordersError;
+      if (!raw) { setOrders([]); return; }
 
-      const enrichedOrders = await Promise.all(
-        (ordersData || []).map(async (order) => {
-          const enriched: EnrichedOrder = {
-            ...order,
-            triggered_campaigns: [],
-            triggered_memberships: [],
-            member_name: null,
-          };
+      // Batch-load points per order
+      const orderIds = raw.map((o) => o.shopify_order_id);
+      const { data: txns } = await supabase
+        .from('loyalty_points_transactions')
+        .select('reference_id, points_amount')
+        .in('reference_id', orderIds)
+        .eq('transaction_type', 'earned');
 
-          const { data: member } = await supabase
-            .from('member_users')
-            .select('id, first_name, last_name')
-            .eq('email', order.customer_email)
-            .maybeSingle();
+      const pointsMap: Record<string, number> = {};
+      (txns || []).forEach((t) => {
+        pointsMap[t.reference_id] = (pointsMap[t.reference_id] || 0) + t.points_amount;
+      });
 
-          if (member) {
-            enriched.member_name = `${member.first_name} ${member.last_name}`.trim() || 'Unknown';
+      // Batch-load member names by email
+      const emails = [...new Set(raw.map((o) => o.customer_email).filter(Boolean))];
+      const { data: members } = await supabase
+        .from('member_users')
+        .select('id, email, full_name')
+        .eq('client_id', clientId)
+        .in('email', emails);
 
-            const { data: enrollments } = await supabase
-              .from('member_program_enrollments')
-              .select('program_id, membership_programs(name)')
-              .eq('member_id', member.id)
-              .gte('enrollment_date', order.created_at);
+      const memberMap: Record<string, { id: string; name: string }> = {};
+      (members || []).forEach((m) => {
+        memberMap[m.email] = { id: m.id, name: m.full_name || m.email };
+      });
 
-            if (enrollments && enrollments.length > 0) {
-              enriched.triggered_memberships = enrollments
-                .map((e: any) => e.membership_programs?.name)
-                .filter(Boolean);
-            }
+      const enriched: OrderRow[] = raw.map((o) => {
+        const od = o.order_data || {};
+        const discountCodes: DiscountCode[] = od.discount_codes || [];
+        const lineItems: LineItem[] = od.line_items || [];
+        const memberInfo = memberMap[o.customer_email] || null;
 
-            const { data: campaigns } = await supabase
-              .from('campaign_executions')
-              .select('campaign_id, campaigns(name)')
-              .eq('member_id', member.id)
-              .gte('executed_at', order.created_at);
+        return {
+          id: o.id,
+          shopify_order_id: o.shopify_order_id,
+          order_number: o.order_number || o.shopify_order_id,
+          customer_email: o.customer_email || '',
+          customer_phone: o.customer_phone || null,
+          total_price: o.total_price || 0,
+          currency: o.currency || 'INR',
+          payment_method: o.payment_method || null,
+          order_status: o.order_status || null,
+          financial_status: o.financial_status || null,
+          fulfillment_status: o.fulfillment_status || null,
+          processed_at: o.processed_at || o.created_at,
+          created_at: o.created_at,
+          order_data: od,
+          member_name: memberInfo?.name || null,
+          member_id: memberInfo?.id || null,
+          points_earned: pointsMap[o.shopify_order_id] || 0,
+          discount_total: parseFloat(od.total_discounts || '0'),
+          subtotal_price: parseFloat(od.subtotal_price || o.total_price || '0'),
+          discount_codes: discountCodes,
+          line_items: lineItems,
+          item_count: lineItems.reduce((s: number, i: LineItem) => s + (i.quantity || 1), 0),
+          city: od.shipping_address?.city || od.billing_address?.city || null,
+        };
+      });
 
-            if (campaigns && campaigns.length > 0) {
-              enriched.triggered_campaigns = campaigns
-                .map((c: any) => c.campaigns?.name)
-                .filter(Boolean);
-            }
-          }
-
-          return enriched;
-        })
-      );
-
-      setOrders(enrichedOrders);
-    } catch (error) {
-      console.error('Error loading orders:', error);
+      setOrders(enriched);
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredOrders = orders.filter((order) => {
-    const matchesSearch =
-      order.customer_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customer_phone?.includes(searchTerm);
+  // ── Filter + Sort ──────────────────────────────────────────────────────────
 
-    let matchesDate = true;
-    if (filterDate !== 'all') {
-      const orderDate = new Date(order.created_at);
-      const now = new Date();
-      const daysDiff = (now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
+  const filtered = useMemo(() => {
+    let list = orders.filter((o) => {
+      const q = search.toLowerCase();
+      const matchSearch =
+        !q ||
+        o.customer_email.toLowerCase().includes(q) ||
+        o.order_number.toLowerCase().includes(q) ||
+        (o.customer_phone || '').includes(q) ||
+        (o.member_name || '').toLowerCase().includes(q) ||
+        o.discount_codes.some((d) => d.code.toLowerCase().includes(q));
 
-      switch (filterDate) {
-        case 'today':
-          matchesDate = daysDiff < 1;
-          break;
-        case 'week':
-          matchesDate = daysDiff < 7;
-          break;
-        case 'month':
-          matchesDate = daysDiff < 30;
-          break;
+      let matchDate = true;
+      if (dateFilter !== 'all') {
+        const diff =
+          (Date.now() - new Date(o.processed_at).getTime()) / 86_400_000;
+        matchDate =
+          dateFilter === 'today' ? diff < 1 :
+          dateFilter === 'week' ? diff < 7 :
+          dateFilter === 'month' ? diff < 30 : true;
       }
+
+      const matchFinancial =
+        financialFilter === 'all' || (o.financial_status || '') === financialFilter;
+      const matchFulfillment =
+        fulfillmentFilter === 'all' || (o.fulfillment_status || 'unfulfilled') === fulfillmentFilter;
+      const matchCoupon =
+        couponFilter === 'all' ||
+        (couponFilter === 'with' && o.discount_codes.length > 0) ||
+        (couponFilter === 'without' && o.discount_codes.length === 0);
+
+      return matchSearch && matchDate && matchFinancial && matchFulfillment && matchCoupon;
+    });
+
+    if (sort) {
+      list = [...list].sort((a, b) => {
+        const av = a[sort.key] as any;
+        const bv = b[sort.key] as any;
+        const cmp =
+          typeof av === 'string' ? av.localeCompare(bv) :
+          (av ?? 0) < (bv ?? 0) ? -1 : (av ?? 0) > (bv ?? 0) ? 1 : 0;
+        return sort.dir === 'asc' ? cmp : -cmp;
+      });
     }
 
-    return matchesSearch && matchesDate;
-  });
+    return list;
+  }, [orders, search, dateFilter, financialFilter, fulfillmentFilter, couponFilter, sort]);
 
-  const stats = {
-    totalOrders: orders.length,
-    totalRevenue: orders.reduce((sum, order) => sum + (order.total_price || 0), 0),
-    withCampaigns: orders.filter((o) => o.triggered_campaigns.length > 0).length,
-    withMemberships: orders.filter((o) => o.triggered_memberships.length > 0).length,
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageOrders = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const toggleSort = (key: SortKey) => {
+    setSort((prev) =>
+      prev?.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: 'asc' }
+    );
+    setPage(1);
   };
+
+  // Reset page when filters change
+  useEffect(() => { setPage(1); }, [search, dateFilter, financialFilter, fulfillmentFilter, couponFilter]);
+
+  // ── Stats ──────────────────────────────────────────────────────────────────
+
+  const stats = useMemo(() => ({
+    total: filtered.length,
+    revenue: filtered.reduce((s, o) => s + o.total_price, 0),
+    discounted: filtered.filter((o) => o.discount_codes.length > 0).length,
+    points: filtered.reduce((s, o) => s + o.points_earned, 0),
+    currency: orders[0]?.currency || 'INR',
+  }), [filtered, orders]);
+
+  // ── CSV export ─────────────────────────────────────────────────────────────
+
+  const exportCSV = () => {
+    const headers = [
+      'Order #', 'Date', 'Customer Email', 'Customer Phone', 'Member Name',
+      'Items', 'Subtotal', 'Discount', 'Coupon Codes', 'Total', 'Currency',
+      'Payment', 'Financial Status', 'Fulfillment Status', 'Points Earned', 'City',
+    ];
+    const rows = filtered.map((o) => [
+      o.order_number,
+      new Date(o.processed_at).toLocaleDateString(),
+      o.customer_email,
+      o.customer_phone || '',
+      o.member_name || '',
+      o.item_count,
+      o.subtotal_price.toFixed(2),
+      o.discount_total.toFixed(2),
+      o.discount_codes.map((d) => d.code).join('; '),
+      o.total_price.toFixed(2),
+      o.currency,
+      o.payment_method || '',
+      o.financial_status || '',
+      o.fulfillment_status || '',
+      o.points_earned,
+      o.city || '',
+    ]);
+    const csv = [headers, ...rows]
+      .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'orders.csv'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  const th = (label: string, key?: SortKey) => (
+    <th
+      className={`px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap ${key ? 'cursor-pointer select-none hover:text-gray-800' : ''}`}
+      onClick={key ? () => toggleSort(key) : undefined}
+    >
+      {label}{key && <SortIcon col={key} sort={sort} />}
+    </th>
+  );
 
   return (
     <DashboardLayout menuItems={clientMenuItems} title="Orders">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Orders & Transactions</h1>
-          <p className="text-gray-600 mt-2">
-            View orders from your integrated e-commerce platforms and track triggered campaigns
-          </p>
+      <div className="max-w-full mx-auto">
+
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Orders & Transactions</h1>
+            <p className="text-gray-500 text-sm mt-1">
+              All orders from your integrated Shopify store
+            </p>
+          </div>
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Total Orders</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{stats.totalOrders}</p>
-                </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <ShoppingBag className="w-6 h-6 text-blue-600" />
-                </div>
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {[
+            { label: 'Matching Orders', value: stats.total, icon: ShoppingBag, color: 'blue' },
+            { label: 'Total Revenue', value: formatCurrency(stats.revenue, stats.currency), icon: DollarSign, color: 'green' },
+            { label: 'With Coupons', value: stats.discounted, icon: Tag, color: 'orange' },
+            { label: 'Points Awarded', value: stats.points.toLocaleString(), icon: Star, color: 'purple' },
+          ].map(({ label, value, icon: Icon, color }) => (
+            <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-${color}-100`}>
+                <Icon className={`w-5 h-5 text-${color}-600`} />
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Total Revenue</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    {formatCurrency(stats.totalRevenue, orders[0]?.currency || 'USD')}
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                  <DollarSign className="w-6 h-6 text-green-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Campaign Triggers</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{stats.withCampaigns}</p>
-                </div>
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <Zap className="w-6 h-6 text-purple-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Enrollments</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{stats.withMemberships}</p>
-                </div>
-                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                  <Gift className="w-6 h-6 text-orange-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <CardTitle>Recent Orders</CardTitle>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input
-                    type="text"
-                    placeholder="Search by email, order #..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-64"
-                  />
-                </div>
-                <select
-                  value={filterDate}
-                  onChange={(e) => setFilterDate(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="all">All Time</option>
-                  <option value="today">Today</option>
-                  <option value="week">This Week</option>
-                  <option value="month">This Month</option>
-                </select>
+              <div>
+                <p className="text-xs text-gray-500">{label}</p>
+                <p className="text-xl font-bold text-gray-900">{value}</p>
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="text-center py-12">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <p className="mt-2 text-gray-600">Loading orders...</p>
-              </div>
-            ) : filteredOrders.length === 0 ? (
-              <div className="text-center py-12">
-                <ShoppingBag className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600">No orders found</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  {orders.length === 0
-                    ? 'Orders will appear here once your integration is active'
-                    : 'Try adjusting your search or filters'}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredOrders.map((order) => (
-                  <div
-                    key={order.id}
-                    className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors cursor-pointer"
-                    onClick={() => setSelectedOrder(order)}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="font-semibold text-gray-900">
-                            Order #{order.order_number}
-                          </h3>
-                          <span className="text-sm text-gray-500">
-                            {new Date(order.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                          <div className="flex items-center gap-1">
-                            <User className="w-4 h-4" />
-                            {order.customer_email}
-                          </div>
-                          {order.customer_phone && (
-                            <div className="flex items-center gap-1">
-                              <span>{order.customer_phone}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-1">
-                            <span className="font-semibold text-gray-900">
-                              {formatCurrency(order.total_price || 0, order.currency)}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <CreditCard className="w-4 h-4" />
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              order.payment_method === 'cod'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : order.payment_method === 'prepaid'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {order.payment_method ? order.payment_method.toUpperCase() : 'UNKNOWN'}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Package className="w-4 h-4" />
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              order.order_status === 'fulfilled'
-                                ? 'bg-green-100 text-green-800'
-                                : order.order_status === 'pending' || !order.order_status
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {(order.order_status || 'PENDING').toUpperCase()}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+          ))}
+        </div>
 
-                    {(order.triggered_campaigns.length > 0 ||
-                      order.triggered_memberships.length > 0) && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <div className="flex flex-wrap gap-2">
-                          {order.triggered_memberships.length > 0 && (
-                            <div className="flex items-center gap-2">
-                              <Gift className="w-4 h-4 text-orange-600" />
-                              <span className="text-sm text-gray-700">Memberships:</span>
-                              {order.triggered_memberships.map((membership, idx) => (
-                                <span
-                                  key={idx}
-                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-50 text-orange-700"
-                                >
-                                  {membership}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {order.triggered_campaigns.length > 0 && (
-                            <div className="flex items-center gap-2">
-                              <Zap className="w-4 h-4 text-purple-600" />
-                              <span className="text-sm text-gray-700">Campaigns:</span>
-                              {order.triggered_campaigns.map((campaign, idx) => (
-                                <span
-                                  key={idx}
-                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700"
-                                >
-                                  {campaign}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {order.member_name && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <Tag className="w-4 h-4" />
-                          <span>Member: {order.member_name}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+        {/* Filters */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-52">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search order #, email, coupon…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 pr-4 py-2 w-full border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2">
+                <X className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
+              </button>
             )}
-          </CardContent>
-        </Card>
+          </div>
+
+          <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+          </select>
+
+          <select value={financialFilter} onChange={(e) => setFinancialFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            <option value="all">All Payment Status</option>
+            <option value="paid">Paid</option>
+            <option value="pending">Pending</option>
+            <option value="refunded">Refunded</option>
+            <option value="partially_refunded">Partially Refunded</option>
+            <option value="voided">Voided</option>
+          </select>
+
+          <select value={fulfillmentFilter} onChange={(e) => setFulfillmentFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            <option value="all">All Fulfillment</option>
+            <option value="fulfilled">Fulfilled</option>
+            <option value="partial">Partial</option>
+            <option value="unfulfilled">Unfulfilled</option>
+          </select>
+
+          <select value={couponFilter} onChange={(e) => setCouponFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            <option value="all">All Coupons</option>
+            <option value="with">With Coupon</option>
+            <option value="without">No Coupon</option>
+          </select>
+
+          {(search || dateFilter !== 'all' || financialFilter !== 'all' || fulfillmentFilter !== 'all' || couponFilter !== 'all') && (
+            <button
+              onClick={() => { setSearch(''); setDateFilter('all'); setFinancialFilter('all'); setFulfillmentFilter('all'); setCouponFilter('all'); }}
+              className="flex items-center gap-1 px-3 py-2 text-sm text-red-600 hover:text-red-800 border border-red-200 rounded-lg hover:bg-red-50"
+            >
+              <X className="w-3.5 h-3.5" /> Clear
+            </button>
+          )}
+        </div>
+
+        {/* Table */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {loading ? (
+            <div className="py-20 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3" />
+              <p className="text-gray-500 text-sm">Loading orders…</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="py-20 text-center">
+              <ShoppingBag className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-600 font-medium">No orders found</p>
+              <p className="text-sm text-gray-400 mt-1">Try adjusting your filters</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50 sticky top-0 z-10">
+                  <tr>
+                    {th('Order #', 'order_number')}
+                    {th('Date', 'processed_at')}
+                    {th('Customer', 'customer_email')}
+                    {th('Member')}
+                    {th('Items', 'item_count')}
+                    {th('Subtotal')}
+                    {th('Discount', 'discount_total')}
+                    {th('Coupon Code')}
+                    {th('Total', 'total_price')}
+                    {th('Payment')}
+                    {th('Financial', 'financial_status')}
+                    {th('Fulfillment', 'fulfillment_status')}
+                    {th('Points', 'points_earned')}
+                    {th('City')}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
+                  {pageOrders.map((order) => (
+                    <tr
+                      key={order.id}
+                      className="hover:bg-blue-50 cursor-pointer transition-colors text-sm"
+                      onClick={() => setSelected(order)}
+                    >
+                      {/* Order # */}
+                      <td className="px-3 py-3 font-medium text-blue-700 whitespace-nowrap">
+                        #{order.order_number}
+                      </td>
+
+                      {/* Date */}
+                      <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
+                        {new Date(order.processed_at).toLocaleDateString('en-IN', {
+                          day: '2-digit', month: 'short', year: 'numeric',
+                        })}
+                        <div className="text-xs text-gray-400">
+                          {new Date(order.processed_at).toLocaleTimeString('en-IN', {
+                            hour: '2-digit', minute: '2-digit',
+                          })}
+                        </div>
+                      </td>
+
+                      {/* Customer */}
+                      <td className="px-3 py-3 max-w-48">
+                        <p className="text-gray-900 truncate">{order.customer_email}</p>
+                        {order.customer_phone && (
+                          <p className="text-xs text-gray-400">{order.customer_phone}</p>
+                        )}
+                      </td>
+
+                      {/* Member */}
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {order.member_name ? (
+                          <span className="inline-flex items-center gap-1 text-green-700 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                            {order.member_name}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </td>
+
+                      {/* Items */}
+                      <td className="px-3 py-3 text-center text-gray-700 font-medium">
+                        {order.item_count}
+                        {order.line_items.length > 0 && (
+                          <div className="text-xs text-gray-400">
+                            {order.line_items.length} SKU{order.line_items.length !== 1 ? 's' : ''}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Subtotal */}
+                      <td className="px-3 py-3 text-gray-700 whitespace-nowrap">
+                        {formatCurrency(order.subtotal_price, order.currency)}
+                      </td>
+
+                      {/* Discount */}
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {order.discount_total > 0 ? (
+                          <span className="text-red-600 font-medium">
+                            −{formatCurrency(order.discount_total, order.currency)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </td>
+
+                      {/* Coupon Code */}
+                      <td className="px-3 py-3">
+                        {order.discount_codes.length > 0 ? (
+                          <div className="flex flex-col gap-1">
+                            {order.discount_codes.map((d, i) => (
+                              <span key={i} className="inline-block bg-orange-50 text-orange-700 border border-orange-200 rounded px-2 py-0.5 text-xs font-mono font-semibold whitespace-nowrap">
+                                {d.code}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </td>
+
+                      {/* Total */}
+                      <td className="px-3 py-3 font-semibold text-gray-900 whitespace-nowrap">
+                        {formatCurrency(order.total_price, order.currency)}
+                      </td>
+
+                      {/* Payment */}
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs font-medium uppercase">
+                          {order.payment_method || '—'}
+                        </span>
+                      </td>
+
+                      {/* Financial status */}
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {statusBadge(order.financial_status, 'financial')}
+                      </td>
+
+                      {/* Fulfillment status */}
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {statusBadge(order.fulfillment_status || 'unfulfilled', 'fulfillment')}
+                      </td>
+
+                      {/* Points */}
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {order.points_earned > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-purple-700 font-semibold">
+                            <Star className="w-3 h-3 fill-purple-500 text-purple-500" />
+                            {order.points_earned}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </td>
+
+                      {/* City */}
+                      <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap">
+                        {order.city || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {!loading && filtered.length > 0 && (
+            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
+              <p className="text-sm text-gray-500">
+                Showing{' '}
+                <span className="font-medium text-gray-800">
+                  {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)}
+                </span>{' '}
+                of <span className="font-medium text-gray-800">{filtered.length}</span> orders
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(1)}
+                  disabled={page === 1}
+                  className="px-2 py-1.5 rounded text-sm text-gray-500 hover:bg-white hover:border hover:border-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  «
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="p-1.5 rounded text-sm text-gray-500 hover:bg-white hover:border hover:border-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
+                  let p: number;
+                  if (totalPages <= 7) p = i + 1;
+                  else if (page <= 4) p = i + 1;
+                  else if (page >= totalPages - 3) p = totalPages - 6 + i;
+                  else p = page - 3 + i;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p)}
+                      className={`w-8 h-8 rounded text-sm font-medium transition-colors ${
+                        p === page
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-600 hover:bg-white hover:border hover:border-gray-200'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="p-1.5 rounded text-sm text-gray-500 hover:bg-white hover:border hover:border-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setPage(totalPages)}
+                  disabled={page === totalPages}
+                  className="px-2 py-1.5 rounded text-sm text-gray-500 hover:bg-white hover:border hover:border-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  »
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {selectedOrder && (
+      {/* ── Detail Modal ─────────────────────────────────────────────────────── */}
+      {selected && (
         <div
-          className="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedOrder(null)}
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelected(null)}
         >
           <div
-            className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6 border-b">
-              <h2 className="text-2xl font-bold text-gray-900">
-                Order #{selectedOrder.order_number}
-              </h2>
-              <p className="text-gray-600 mt-1">
-                {new Date(selectedOrder.created_at).toLocaleString()}
-              </p>
+            {/* Modal header */}
+            <div className="p-6 border-b flex items-start justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Order #{selected.order_number}</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {new Date(selected.processed_at).toLocaleString('en-IN')}
+                </p>
+              </div>
+              <button onClick={() => setSelected(null)} className="p-2 rounded-lg hover:bg-gray-100">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
             </div>
 
             <div className="p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Customer Information</h3>
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <span className="text-gray-600">Email:</span>
-                      <p className="font-medium text-gray-900">{selectedOrder.customer_email}</p>
-                    </div>
-                    {selectedOrder.customer_phone && (
-                      <div>
-                        <span className="text-gray-600">Phone:</span>
-                        <p className="font-medium text-gray-900">{selectedOrder.customer_phone}</p>
-                      </div>
-                    )}
-                    {selectedOrder.member_name && (
-                      <div>
-                        <span className="text-gray-600">Member:</span>
-                        <p className="font-medium text-gray-900">{selectedOrder.member_name}</p>
-                      </div>
-                    )}
+              {/* Status row */}
+              <div className="flex flex-wrap gap-2">
+                {statusBadge(selected.financial_status, 'financial')}
+                {statusBadge(selected.fulfillment_status || 'unfulfilled', 'fulfillment')}
+                {selected.payment_method && (
+                  <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs font-semibold uppercase">
+                    {selected.payment_method}
+                  </span>
+                )}
+              </div>
+
+              {/* Customer + Order info grid */}
+              <div className="grid grid-cols-2 gap-6 text-sm">
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-gray-700 text-xs uppercase tracking-wider">Customer</h3>
+                  <div>
+                    <p className="text-gray-500 text-xs">Email</p>
+                    <p className="font-medium text-gray-900">{selected.customer_email}</p>
                   </div>
+                  {selected.customer_phone && (
+                    <div>
+                      <p className="text-gray-500 text-xs">Phone</p>
+                      <p className="font-medium text-gray-900">{selected.customer_phone}</p>
+                    </div>
+                  )}
+                  {selected.member_name && (
+                    <div>
+                      <p className="text-gray-500 text-xs">Member</p>
+                      <p className="font-medium text-green-700">{selected.member_name}</p>
+                    </div>
+                  )}
+                  {selected.city && (
+                    <div>
+                      <p className="text-gray-500 text-xs">City</p>
+                      <p className="font-medium text-gray-900">{selected.city}</p>
+                    </div>
+                  )}
                 </div>
 
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Order Details</h3>
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <span className="text-gray-600">Order ID:</span>
-                      <p className="font-medium text-gray-900">{selectedOrder.order_id}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Total:</span>
-                      <p className="font-medium text-gray-900">
-                        {formatCurrency(selectedOrder.total_price || 0, selectedOrder.currency)}
-                      </p>
-                    </div>
-                    {selectedOrder.payment_method && (
-                      <div>
-                        <span className="text-gray-600">Payment Method:</span>
-                        <p className="font-medium text-gray-900">
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                            selectedOrder.payment_method === 'cod'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : selectedOrder.payment_method === 'prepaid'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {selectedOrder.payment_method.toUpperCase()}
-                          </span>
-                        </p>
-                      </div>
-                    )}
-                    {selectedOrder.financial_status && (
-                      <div>
-                        <span className="text-gray-600">Financial Status:</span>
-                        <p className="font-medium text-gray-900">
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                            selectedOrder.financial_status === 'paid'
-                              ? 'bg-green-100 text-green-800'
-                              : selectedOrder.financial_status === 'pending'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {selectedOrder.financial_status}
-                          </span>
-                        </p>
-                      </div>
-                    )}
-                    {selectedOrder.fulfillment_status && (
-                      <div>
-                        <span className="text-gray-600">Fulfillment Status:</span>
-                        <p className="font-medium text-gray-900">
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                            selectedOrder.fulfillment_status === 'fulfilled'
-                              ? 'bg-green-100 text-green-800'
-                              : selectedOrder.fulfillment_status === 'partial'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {selectedOrder.fulfillment_status || 'pending'}
-                          </span>
-                        </p>
-                      </div>
-                    )}
-                    <div>
-                      <span className="text-gray-600">Processed:</span>
-                      <p className="font-medium text-gray-900">
-                        {new Date(selectedOrder.processed_at).toLocaleString()}
-                      </p>
-                    </div>
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-gray-700 text-xs uppercase tracking-wider">Financials</h3>
+                  <div>
+                    <p className="text-gray-500 text-xs">Subtotal</p>
+                    <p className="font-medium text-gray-900">{formatCurrency(selected.subtotal_price, selected.currency)}</p>
                   </div>
+                  {selected.discount_total > 0 && (
+                    <div>
+                      <p className="text-gray-500 text-xs">Discount</p>
+                      <p className="font-medium text-red-600">−{formatCurrency(selected.discount_total, selected.currency)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-gray-500 text-xs">Order Total</p>
+                    <p className="text-lg font-bold text-gray-900">{formatCurrency(selected.total_price, selected.currency)}</p>
+                  </div>
+                  {selected.points_earned > 0 && (
+                    <div>
+                      <p className="text-gray-500 text-xs">Points Earned</p>
+                      <p className="font-semibold text-purple-700 flex items-center gap-1">
+                        <Star className="w-4 h-4 fill-purple-500 text-purple-500" />
+                        {selected.points_earned} pts
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {selectedOrder.triggered_memberships.length > 0 && (
+              {/* Coupon codes */}
+              {selected.discount_codes.length > 0 && (
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <Gift className="w-5 h-5 text-orange-600" />
-                    Triggered Memberships
-                  </h3>
+                  <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">Coupons Applied</h3>
                   <div className="flex flex-wrap gap-2">
-                    {selectedOrder.triggered_memberships.map((membership, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-orange-50 text-orange-700 border border-orange-200"
-                      >
-                        {membership}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedOrder.triggered_campaigns.length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-purple-600" />
-                    Triggered Campaigns
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedOrder.triggered_campaigns.map((campaign, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-50 text-purple-700 border border-purple-200"
-                      >
-                        {campaign}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedOrder.order_data?.line_items && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Items</h3>
-                  <div className="space-y-2">
-                    {selectedOrder.order_data.line_items.map((item: any, idx: number) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                      >
-                        <div>
-                          <p className="font-medium text-gray-900">{item.title || item.name}</p>
-                          <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
-                        </div>
-                        <p className="font-semibold text-gray-900">
-                          {formatCurrency(parseFloat(item.price) || 0, selectedOrder.currency)}
+                    {selected.discount_codes.map((d, i) => (
+                      <div key={i} className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                        <p className="font-mono font-bold text-orange-800 text-sm">{d.code}</p>
+                        <p className="text-xs text-orange-600 mt-0.5">
+                          −{formatCurrency(parseFloat(d.amount), selected.currency)} · {d.type?.replace(/_/g, ' ')}
                         </p>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Line items */}
+              {selected.line_items.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                    Items ({selected.item_count} units)
+                  </h3>
+                  <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
+                    {selected.line_items.map((item, i) => (
+                      <div key={i} className="flex items-center justify-between px-4 py-3 bg-white hover:bg-gray-50">
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm">{item.title || item.name}</p>
+                          {item.variant_title && item.variant_title !== 'Default Title' && (
+                            <p className="text-xs text-gray-400">{item.variant_title}</p>
+                          )}
+                          {item.sku && <p className="text-xs text-gray-400 font-mono">SKU: {item.sku}</p>}
+                        </div>
+                        <div className="text-right ml-4">
+                          <p className="font-semibold text-gray-900 text-sm">
+                            {formatCurrency(parseFloat(item.price) * item.quantity, selected.currency)}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {formatCurrency(parseFloat(item.price), selected.currency)} × {item.quantity}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Shipping address */}
+              {selected.order_data?.shipping_address && (
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">Shipping Address</h3>
+                  <div className="text-sm text-gray-600 bg-gray-50 rounded-xl px-4 py-3">
+                    {[
+                      selected.order_data.shipping_address.name,
+                      selected.order_data.shipping_address.address1,
+                      selected.order_data.shipping_address.address2,
+                      [selected.order_data.shipping_address.city, selected.order_data.shipping_address.province_code].filter(Boolean).join(', '),
+                      [selected.order_data.shipping_address.zip, selected.order_data.shipping_address.country].filter(Boolean).join(' · '),
+                    ].filter(Boolean).map((line, i) => <p key={i}>{line}</p>)}
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="p-6 border-t">
-              <Button variant="secondary" onClick={() => setSelectedOrder(null)} className="w-full">
+            <div className="p-4 border-t flex gap-3">
+              <button
+                onClick={() => setSelected(null)}
+                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
                 Close
-              </Button>
+              </button>
+              {selected.order_data?.order_status_url && (
+                <a
+                  href={selected.order_data.order_status_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700"
+                >
+                  <ExternalLink className="w-4 h-4" /> View on Shopify
+                </a>
+              )}
             </div>
           </div>
         </div>
