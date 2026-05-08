@@ -46,9 +46,6 @@ import { Integrations } from './pages/client/Integrations';
 import { Reports } from './pages/client/Reports';
 import { MessageTemplates } from './pages/client/MessageTemplates';
 import CommunicationLogs from './pages/client/CommunicationLogs';
-import { Suspense, lazy } from 'react';
-// ...existing code...
-const CampaignsPage = lazy(() => import('./pages/client/CampaignsPage'));
 import CampaignTriggerLogs from './pages/client/CampaignTriggerLogs';
 import { Settings as ClientSettings } from './pages/client/Settings';
 import { Orders } from './pages/client/Orders';
@@ -92,6 +89,7 @@ import { AdminBrandRedemptions } from './pages/admin/AdminBrandRedemptions';
 
 const OffersPage = lazy(() => import('./pages/client/OffersPage'));
 const LoyaltyProgramPage = lazy(() => import('./pages/client/LoyaltyProgramPage'));
+const CampaignsPage = lazy(() => import('./pages/client/CampaignsPage'));
 
 function DashboardRouter() {
   const { profile, loading } = useAuth();
