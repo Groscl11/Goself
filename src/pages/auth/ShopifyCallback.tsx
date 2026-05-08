@@ -14,11 +14,12 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
 export default function ShopifyCallback() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Setting up your Goself dashboard...');
 
@@ -64,7 +65,7 @@ export default function ShopifyCallback() {
         setStatus('error');
         setMessage('Authentication timed out. Please log in manually.');
         setTimeout(() => {
-          window.location.href = `/login?shop=${shop}&from=shopify`;
+          navigate(`/login?shop=${shop}&from=shopify`, { replace: true });
         }, 2000);
       }, 12000);
 
@@ -73,7 +74,7 @@ export default function ShopifyCallback() {
       setStatus('error');
       setMessage('Something went wrong. Redirecting to login...');
       setTimeout(() => {
-        window.location.href = `/login?shop=${shop}&from=shopify`;
+        navigate(`/login?shop=${shop}&from=shopify`, { replace: true });
       }, 2000);
     }
   }
@@ -82,8 +83,6 @@ export default function ShopifyCallback() {
     setMessage('Loading your merchant profile...');
 
     try {
-      // Profile was created server-side by shopify-merchant-login.
-      // Upsert here as a safety net in case the server-side creation failed.
       await supabase
         .from('profiles')
         .upsert({
@@ -96,17 +95,17 @@ export default function ShopifyCallback() {
       setStatus('success');
       setMessage('Welcome! Redirecting to your dashboard...');
 
-      // Small delay so merchant sees the success state
       await new Promise(r => setTimeout(r, 800));
 
-      // Hard redirect — forces AuthContext to re-initialize with session already set.
-      // DO NOT use navigate() here: ProtectedRoute would see profile=null mid-load → /login.
-      window.location.href = '/client';
+      // Use navigate() (SPA navigation) so AuthProvider stays mounted and keeps
+      // the already-established session. Hard redirect (window.location.href)
+      // causes AuthContext to reinitialize and creates a race where
+      // INITIAL_SESSION fires null before getSession() resolves → /login bounce.
+      navigate('/client', { replace: true });
 
     } catch (err) {
       console.error('Profile sync error:', err);
-      // Even on error, hard redirect — profile exists server-side, AuthContext will load it
-      window.location.href = '/client';
+      navigate('/client', { replace: true });
     }
   }
 
