@@ -37,6 +37,14 @@ export default function ShopifyLanding() {
 
   async function handleShopifyLanding() {
     if (!shop) {
+      // Supabase sometimes redirects the magic link to the site root instead
+      // of /auth/shopify-callback when that URL isn't in the redirect allowlist.
+      // Detect the hash token and forward to the correct handler with a full
+      // page reload so Supabase's _initialize() processes the token fresh.
+      if (window.location.hash.includes('access_token=')) {
+        window.location.replace('/auth/shopify-callback' + window.location.hash);
+        return;
+      }
       navigate('/login');
       return;
     }
