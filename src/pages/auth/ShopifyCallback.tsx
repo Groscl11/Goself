@@ -6,14 +6,14 @@
  * 2. Browser lands here: /auth/shopify-callback?shop=...&client_id=...#access_token=...
  *
  * Auth approach:
- * - Capture hash tokens synchronously at mount (before Supabase async-clears the hash)
- * - Call setSession() with captured tokens to establish the session in localStorage
- * - Fall back to getSession() if Supabase already processed the hash before mount
- * - Fall back to onAuthStateChange if neither worked
- * - After session is confirmed: upsert profile + store_users, then
- *   window.location.replace('/client') — a full page reload so AuthContext
- *   reads the session from localStorage fresh, exactly like email/password login.
- *   No React state timing races.
+ * Supabase's _initialize() automatically detects #access_token in the URL hash
+ * and establishes the session in localStorage. We register onAuthStateChange
+ * SYNCHRONOUSLY in useEffect (before any awaits) so we never miss the SIGNED_IN
+ * or INITIAL_SESSION event. We also call getSession() immediately as a fallback
+ * in case _initialize() already completed before our listener was registered.
+ *
+ * Once we have a valid session → upsert profile + store_users →
+ * window.location.replace('/client') for a clean page load.
  */
 
 import { useEffect, useState } from 'react';
@@ -28,111 +28,78 @@ export default function ShopifyCallback() {
   const shop = searchParams.get('shop');
   const clientId = searchParams.get('client_id');
 
-  // Capture hash tokens synchronously at mount — before Supabase's async
-  // _initialize() clears them via window.history.replaceState.
-  const [hashTokens] = useState(() => {
-    const params = new URLSearchParams(window.location.hash.substring(1));
-    return {
-      accessToken: params.get('access_token'),
-      refreshToken: params.get('refresh_token'),
-    };
-  });
-
   useEffect(() => {
-    handleSSOCallback();
-  }, []);
+    let done = false;
 
-  async function handleSSOCallback() {
-    setMessage('Verifying your Shopify credentials...');
-
-    try {
-      let userId: string | null = null;
-      let userEmail: string | null = null;
-
-      // ── Path A: hash tokens captured at mount ──────────────────────────────
-      if (hashTokens.accessToken && hashTokens.refreshToken) {
-        const { data: { session }, error } = await supabase.auth.setSession({
-          access_token: hashTokens.accessToken,
-          refresh_token: hashTokens.refreshToken,
-        });
-        if (error) throw error;
-        if (session?.user) {
-          userId = session.user.id;
-          userEmail = session.user.email!;
-        }
-      }
-
-      // ── Path B: Supabase already processed the hash before mount ───────────
-      if (!userId) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          userId = session.user.id;
-          userEmail = session.user.email!;
-        }
-      }
-
-      // ── Path C: wait for auth state change ─────────────────────────────────
-      if (!userId) {
-        setMessage('Authenticating with Shopify...');
-
-        const result = await new Promise<{ id: string; email: string } | null>((resolve) => {
-          let called = false;
-
-          const timeoutId = setTimeout(() => {
-            if (!called) { called = true; subscription.unsubscribe(); resolve(null); }
-          }, 12000);
-
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            (_event, session) => {
-              if (called) return;
-              if (!session?.user || _event === 'SIGNED_OUT') return;
-              if (_event !== 'INITIAL_SESSION' && _event !== 'SIGNED_IN') return;
-              called = true;
-              clearTimeout(timeoutId);
-              subscription.unsubscribe();
-              resolve({ id: session.user.id, email: session.user.email! });
-            }
-          );
-        });
-
-        if (result) {
-          userId = result.id;
-          userEmail = result.email;
-        }
-      }
-
-      if (!userId || !userEmail) {
-        throw new Error('Authentication timed out. Could not establish session.');
-      }
-
-      await completeLogin(userId, userEmail);
-
-    } catch (err: any) {
-      console.error('[ShopifyCallback] SSO error:', err);
-      setStatus('error');
-      setMessage('Something went wrong. Redirecting to login...');
-      setTimeout(() => {
-        window.location.replace(`/login?shop=${encodeURIComponent(shop || '')}&from=shopify`);
-      }, 2000);
+    async function processSession(userId: string, email: string) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      subscription.unsubscribe();
+      await completeLogin(userId, email);
     }
-  }
+
+    // ── 1. Register listener SYNCHRONOUSLY before any awaits ─────────────────
+    // This ensures we catch SIGNED_IN / INITIAL_SESSION even if _initialize()
+    // fires them before the component had a chance to subscribe.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (done || !session?.user) return;
+        if (event !== 'SIGNED_IN' && event !== 'INITIAL_SESSION') return;
+        await processSession(session.user.id, session.user.email!);
+      }
+    );
+
+    // ── 2. getSession() fallback ──────────────────────────────────────────────
+    // If _initialize() already finished processing the hash before our listener
+    // was registered, SIGNED_IN already fired. getSession() will return the
+    // session that's now in localStorage.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user && !done) {
+        processSession(session.user.id, session.user.email!);
+      }
+    });
+
+    // ── 3. Timeout fallback ───────────────────────────────────────────────────
+    const timer = setTimeout(() => {
+      if (!done) {
+        done = true;
+        subscription.unsubscribe();
+        setStatus('error');
+        setMessage('Authentication timed out. Please log in manually.');
+        setTimeout(() => {
+          window.location.replace(
+            `/login?shop=${encodeURIComponent(shop || '')}&from=shopify`
+          );
+        }, 2000);
+      }
+    }, 15000);
+
+    return () => {
+      done = true;
+      clearTimeout(timer);
+      subscription.unsubscribe();
+    };
+  }, []);
 
   async function completeLogin(userId: string, email: string) {
     setMessage('Loading your merchant profile...');
 
     try {
-      // Upsert profile client-side (edge function already did this server-side,
-      // this is a safety net in case the server-side upsert was missed)
+      // Safety-net upsert — edge function already did this server-side
       await supabase
         .from('profiles')
-        .upsert({
-          id: userId,
-          email,
-          role: 'client',
-          ...(clientId ? { client_id: clientId } : {}),
-        }, { onConflict: 'id', ignoreDuplicates: false });
+        .upsert(
+          {
+            id: userId,
+            email,
+            role: 'client',
+            ...(clientId ? { client_id: clientId } : {}),
+          },
+          { onConflict: 'id', ignoreDuplicates: false }
+        );
 
-      // Link store_users row to this auth session
+      // Link store_users to this auth session
       await supabase
         .from('store_users')
         .update({ auth_user_id: userId, last_login_at: new Date().toISOString() })
@@ -140,12 +107,12 @@ export default function ShopifyCallback() {
         .is('auth_user_id', null);
 
     } catch (err) {
-      // Non-fatal — edge function already upserted the profile server-side
+      // Non-fatal — profile was already upserted server-side by the edge function
       console.warn('[ShopifyCallback] Profile sync warning:', err);
     }
 
-    // Session is now in localStorage. Do a full page replace to /client so
-    // AuthContext reads it fresh on load — no React state timing races.
+    // Session is in localStorage. Full page replace → AuthContext reads it
+    // fresh on load, exactly like email/password login. No React timing races.
     setStatus('success');
     setMessage('Welcome! Redirecting to your dashboard...');
     setTimeout(() => {
