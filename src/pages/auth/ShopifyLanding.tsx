@@ -37,13 +37,28 @@ export default function ShopifyLanding() {
 
   async function handleShopifyLanding() {
     if (!shop) {
-      // Supabase sometimes redirects the magic link to the site root instead
-      // of /auth/shopify-callback when that URL isn't in the redirect allowlist.
-      // Detect the hash token and forward to the correct handler with a full
-      // page reload so Supabase's _initialize() processes the token fresh.
-      if (window.location.hash.includes('access_token=')) {
-        window.location.replace('/auth/shopify-callback' + window.location.hash);
-        return;
+      // No Shopify shop param. Supabase may have redirected the magic link to
+      // the site root (instead of /auth/shopify-callback) because that URL
+      // wasn't in the project's redirect allowlist. By the time this runs,
+      // _initialize() has already processed the hash token and stored the
+      // session in localStorage — so we check the session directly.
+      setStatus('Checking your session...');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, client_id')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        if (profile?.role === 'client') {
+          setStatus('Welcome! Redirecting to your dashboard...');
+          window.location.replace('/client');
+          return;
+        }
+        if (profile?.role === 'admin') {
+          window.location.replace('/admin');
+          return;
+        }
       }
       navigate('/login');
       return;
