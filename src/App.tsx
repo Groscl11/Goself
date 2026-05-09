@@ -85,6 +85,7 @@ import { BrandRedemptions } from './pages/client/BrandRedemptions';
 import { ReferFriend } from './pages/member/ReferFriend';
 import { StoreInstallations } from './pages/admin/StoreInstallations';
 import { AdminBrandRedemptions } from './pages/admin/AdminBrandRedemptions';
+import { AdminBrandAssociations } from './pages/admin/AdminBrandAssociations';
 
 const OffersPage = lazy(() => import('./pages/client/OffersPage'));
 const LoyaltyProgramPage = lazy(() => import('./pages/client/LoyaltyProgramPage'));
@@ -152,6 +153,7 @@ function App() {
           <Route path="/admin/brands/new" element={<RoleBasedRoute allowedRoles={['admin']}><BrandForm /></RoleBasedRoute>} />
           <Route path="/admin/brands/:id" element={<RoleBasedRoute allowedRoles={['admin']}><BrandDetail /></RoleBasedRoute>} />
           <Route path="/admin/brands/:id/edit" element={<RoleBasedRoute allowedRoles={['admin']}><BrandForm /></RoleBasedRoute>} />
+          <Route path="/admin/brand-associations" element={<RoleBasedRoute allowedRoles={['admin']}><AdminBrandAssociations /></RoleBasedRoute>} />
           <Route path="/admin/clients" element={<RoleBasedRoute allowedRoles={['admin']}><AdminClients /></RoleBasedRoute>} />
           <Route path="/admin/clients/new" element={<RoleBasedRoute allowedRoles={['admin']}><ClientForm /></RoleBasedRoute>} />
           <Route path="/admin/clients/:id" element={<RoleBasedRoute allowedRoles={['admin']}><ClientDetail /></RoleBasedRoute>} />

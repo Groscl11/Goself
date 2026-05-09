@@ -6,7 +6,8 @@ import { Button } from '../../components/ui/Button';
 import {
   Save, Building2, Mail, Palette, LogOut, User, MessageSquare,
   Webhook, Info, Bell, Lock, Upload, Check, Eye, EyeOff,
-  Image as ImageIcon, Type, Sliders, Globe, Phone, Clock,
+  Image as ImageIcon, Type, Sliders, Globe, Phone, Clock, Award,
+  AlertCircle, ExternalLink, RefreshCw,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,7 +15,7 @@ import { clientMenuItems } from './clientMenuItems';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type TabId = 'organization' | 'branding' | 'communications' | 'notifications' | 'security';
+type TabId = 'organization' | 'branding' | 'communications' | 'notifications' | 'security' | 'brand';
 
 interface CommunicationSettings {
   provider: 'internal' | 'external';
@@ -67,6 +68,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'communications', label: 'Communications', icon: <MessageSquare className="w-4 h-4" /> },
   { id: 'notifications',  label: 'Notifications',  icon: <Bell className="w-4 h-4" /> },
   { id: 'security',       label: 'Security',       icon: <Lock className="w-4 h-4" /> },
+  { id: 'brand',          label: 'Brand',          icon: <Award className="w-4 h-4" /> },
 ];
 
 const FONTS = [
@@ -152,6 +154,18 @@ export function Settings() {
   const [logoUploadError, setLogoUploadError]   = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Brand association state ──────────────────────────────────────────────
+  const [brandAssoc, setBrandAssoc] = useState<{
+    id: string; status: string; submitted_name: string; submitted_url: string | null;
+    proof_notes: string | null; rejection_reason: string | null; brand_id: string | null;
+    created_at: string;
+  } | null>(null);
+  const [brandLoading, setBrandLoading]   = useState(false);
+  const [brandSaving, setBrandSaving]     = useState(false);
+  const [brandSuccess, setBrandSuccess]   = useState(false);
+  const [brandError, setBrandError]       = useState<string | null>(null);
+  const [brandForm, setBrandForm]         = useState({ submitted_name: '', submitted_url: '', proof_notes: '' });
+
   const [pwData, setPwData]         = useState({ newPw: '', confirm: '' });
   const [showPw, setShowPw]         = useState(false);
   const [pwError, setPwError]       = useState<string | null>(null);
@@ -184,6 +198,31 @@ export function Settings() {
   }, [formData.branding_settings.font_heading, formData.branding_settings.font_body]);
 
   useEffect(() => { loadSettings(); }, []);
+
+  // Load the client's latest brand association when tab is opened
+  useEffect(() => {
+    if (activeTab !== 'brand' || !clientId) return;
+    setBrandLoading(true);
+    supabase
+      .from('client_brand_associations')
+      .select('id, status, submitted_name, submitted_url, proof_notes, rejection_reason, brand_id, created_at')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        setBrandAssoc(data ?? null);
+        if (!data) {
+          // Pre-fill form from org data
+          setBrandForm(f => ({
+            ...f,
+            submitted_name: formData.name,
+            submitted_url:  formData.website_url,
+          }));
+        }
+        setBrandLoading(false);
+      });
+  }, [activeTab, clientId]);
 
   const loadSettings = async () => {
     try {
@@ -292,6 +331,44 @@ export function Settings() {
     }
   };
 
+  const handleBrandSubmit = async () => {
+    if (!clientId) return;
+    setBrandError(null);
+    if (!brandForm.submitted_name.trim()) { setBrandError('Brand name is required'); return; }
+    setBrandSaving(true);
+    const payload = {
+      client_id:      clientId,
+      submitted_name: brandForm.submitted_name.trim(),
+      submitted_url:  brandForm.submitted_url.trim() || null,
+      proof_notes:    brandForm.proof_notes.trim() || null,
+      status:         'pending',
+    };
+    let err: any;
+    if (brandAssoc?.status === 'rejected') {
+      // Re-submit: update existing row back to pending
+      const res = await supabase
+        .from('client_brand_associations')
+        .update({ ...payload, rejection_reason: null, reviewed_at: null })
+        .eq('id', brandAssoc.id)
+        .select('id, status, submitted_name, submitted_url, proof_notes, rejection_reason, brand_id, created_at')
+        .single();
+      err = res.error;
+      if (!err) setBrandAssoc(res.data);
+    } else {
+      const res = await supabase
+        .from('client_brand_associations')
+        .insert(payload)
+        .select('id, status, submitted_name, submitted_url, proof_notes, rejection_reason, brand_id, created_at')
+        .single();
+      err = res.error;
+      if (!err) setBrandAssoc(res.data);
+    }
+    setBrandSaving(false);
+    if (err) { setBrandError(err.message); return; }
+    setBrandSuccess(true);
+    setTimeout(() => setBrandSuccess(false), 4000);
+  };
+
   const inputCls    = 'w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white';
   const setBranding = (patch: Partial<BrandingSettings>) =>
     setFormData(p => ({ ...p, branding_settings: { ...p.branding_settings, ...patch } }));
@@ -343,7 +420,7 @@ export function Settings() {
         </div>
 
         {/* Save bar */}
-        {activeTab !== 'security' && (
+        {activeTab !== 'security' && activeTab !== 'brand' && (
           <div className="flex items-center justify-between mb-5">
             <div className="h-5">
               {saveSuccess && (
@@ -855,6 +932,148 @@ export function Settings() {
                 </Button>
               </CardContent>
             </Card>
+          </div>
+        )}
+
+        {/* ── BRAND ── */}
+        {activeTab === 'brand' && (
+          <div className="space-y-6">
+            {brandLoading ? (
+              <div className="flex items-center justify-center min-h-48">
+                <div className="inline-block animate-spin rounded-full h-7 w-7 border-b-2 border-blue-600" />
+              </div>
+            ) : (
+              <>
+                {/* Status banner when a submission exists */}
+                {brandAssoc && (
+                  <div className={`rounded-xl border p-4 flex items-start gap-3 ${
+                    brandAssoc.status === 'approved'
+                      ? 'bg-green-50 border-green-200'
+                      : brandAssoc.status === 'rejected'
+                      ? 'bg-red-50 border-red-200'
+                      : 'bg-yellow-50 border-yellow-200'
+                  }`}>
+                    {brandAssoc.status === 'approved' ? (
+                      <Check className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                    ) : brandAssoc.status === 'rejected' ? (
+                      <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <RefreshCw className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0 animate-spin" style={{ animationDuration: '3s' }} />
+                    )}
+                    <div className="min-w-0">
+                      <p className={`font-semibold text-sm ${
+                        brandAssoc.status === 'approved' ? 'text-green-800'
+                        : brandAssoc.status === 'rejected' ? 'text-red-700'
+                        : 'text-yellow-800'
+                      }`}>
+                        {brandAssoc.status === 'approved'
+                          ? 'Brand association approved'
+                          : brandAssoc.status === 'rejected'
+                          ? 'Brand association rejected'
+                          : 'Brand association pending review'}
+                      </p>
+                      <p className="text-xs mt-0.5 text-gray-600">
+                        Submitted: <strong>{brandAssoc.submitted_name}</strong>
+                        {brandAssoc.submitted_url && (
+                          <> · <a href={brandAssoc.submitted_url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-0.5 text-blue-600 hover:underline">
+                            {brandAssoc.submitted_url} <ExternalLink className="w-3 h-3" />
+                          </a></>
+                        )}
+                      </p>
+                      {brandAssoc.status === 'rejected' && brandAssoc.rejection_reason && (
+                        <p className="text-xs mt-1.5 text-red-700 bg-red-100 px-2 py-1 rounded">
+                          Reason: {brandAssoc.rejection_reason}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Show form only if no submission, or if rejected (allow re-submit) */}
+                {(!brandAssoc || brandAssoc.status === 'rejected') && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Award className="w-5 h-5" />
+                        {brandAssoc?.status === 'rejected' ? 'Re-submit Brand Claim' : 'Claim Your Brand'}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-800">
+                        Linking your brand lets our admin team officially associate your business with offers you create.
+                        Once approved, your brand profile will appear in the Goself brand directory.
+                      </div>
+
+                      {brandSuccess && (
+                        <p className="flex items-center gap-1.5 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-lg border border-green-200">
+                          <Check className="w-4 h-4" /> Submission sent — we'll review it shortly.
+                        </p>
+                      )}
+                      {brandError && (
+                        <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200">{brandError}</p>
+                      )}
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                          Brand / Business Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={brandForm.submitted_name}
+                          onChange={e => setBrandForm(f => ({ ...f, submitted_name: e.target.value }))}
+                          className={inputCls}
+                          placeholder="Acme Corp"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                          <Globe className="w-4 h-4 inline mr-1 text-gray-400" />Brand Website URL
+                        </label>
+                        <input
+                          type="url"
+                          value={brandForm.submitted_url}
+                          onChange={e => setBrandForm(f => ({ ...f, submitted_url: e.target.value }))}
+                          className={inputCls}
+                          placeholder="https://acmecorp.com"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Proof / Notes</label>
+                        <textarea
+                          value={brandForm.proof_notes}
+                          onChange={e => setBrandForm(f => ({ ...f, proof_notes: e.target.value }))}
+                          rows={3}
+                          className={inputCls}
+                          placeholder="e.g. Our GST number is 29ABCDE1234F1Z5 · Shopify store: acme.myshopify.com"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Share any proof that helps us verify your ownership (GST, CIN, store URL, social handle, etc.)
+                        </p>
+                      </div>
+
+                      <Button onClick={handleBrandSubmit} disabled={brandSaving}>
+                        <Award className="w-4 h-4 mr-2" />
+                        {brandSaving ? 'Submitting…' : brandAssoc?.status === 'rejected' ? 'Re-submit Claim' : 'Submit Brand Claim'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* If approved, show the linked brand card */}
+                {brandAssoc?.status === 'approved' && brandAssoc.brand_id && (
+                  <Card>
+                    <CardContent className="pt-5">
+                      <p className="text-sm text-gray-500">
+                        Your brand is officially linked. Contact support if you need to update brand details.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
           </div>
         )}
 
