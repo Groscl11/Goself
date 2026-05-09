@@ -21,6 +21,9 @@ interface RewardPoolItem {
   image_url: string | null;
   category: string;
   coupon_type: 'generic' | 'unique';
+  offer_type: string | null;
+  reward_type: string | null;
+  discount_value: number | null;
   status: string;
   expiry_date: string | null;
   available_vouchers: number;
@@ -143,7 +146,7 @@ export function CampaignRuleWizard() {
     const { data: rewardsData } = await supabase.from('rewards').select(`
       id, title, description, value_description, image_url, category,
       coupon_type, status, expiry_date, owner_client_id, available_codes,
-      offer_type,
+      offer_type, reward_type, discount_value,
       brands ( id, name, logo_url )
     `)
       .or(`owner_client_id.eq.${clientId},offer_type.eq.marketplace_offer`)
@@ -159,6 +162,9 @@ export function CampaignRuleWizard() {
           id: r.id, title: r.title, description: r.description,
           value_description: r.value_description, image_url: r.image_url,
           category: r.category, coupon_type: r.coupon_type || 'unique',
+          offer_type: r.offer_type ?? null,
+          reward_type: r.reward_type ?? null,
+          discount_value: r.discount_value ?? null,
           status: r.status, expiry_date: r.expiry_date,
           available_vouchers: r.available_codes ?? 0,
           brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,

@@ -7,15 +7,17 @@
  * Layout:
  *   ┌─ Sticky header: ← Back | title | N selected | Done ─────────┐
  *   │  Full-width search bar                                        │
- *   │  Filter chips: Brand | Type | Coupon (horizontally scrollable)│
+ *   │  Filter chips: Source | Coupon | Brand dropdown               │
  *   │  "Showing X of Y rewards"                                     │
  *   ├─ Scrollable flat list ────────────────────────────────────────┤
- *   │  □ [img] Title   Brand · value_desc   N avail  [badge]        │
+ *   │  □ [img] Title   [Source badge] [Coupon badge]                │
+ *   │         Brand · Discount value                                │
+ *   │         Expiry: DD MMM YYYY · N avail / Unlimited             │
  *   └─ Sticky bottom: selected chips + Clear all ──────────────────┘
  */
 
-import { useState, useMemo } from 'react';
-import { X, Search, Check, Gift, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useMemo, ElementType } from 'react';
+import { X, Search, Check, Gift, ChevronDown, ChevronUp, Store, Users, Globe } from 'lucide-react';
 
 export interface RewardPoolItem {
   id: string;
@@ -25,9 +27,12 @@ export interface RewardPoolItem {
   image_url: string | null;
   category: string;
   coupon_type: 'generic' | 'unique';
+  offer_type: string | null;        // store_offer | partner_offer | marketplace_offer
+  reward_type: string | null;       // flat_discount | percentage_discount | cashback | gift | general
+  discount_value: number | null;    // numeric value (percent or flat amount)
   status: string;
   expiry_date: string | null;
-  available_vouchers: number;
+  available_vouchers: number;       // 0 means unlimited for generic codes
   brand: { id: string; name: string; logo_url: string | null } | null;
 }
 
@@ -44,12 +49,12 @@ interface RewardPickerModalProps {
   onClose: () => void;
 }
 
-const REWARD_TYPES = [
-  { value: '', label: 'All Types' },
-  { value: 'discount', label: 'Discount' },
-  { value: 'cashback', label: 'Cashback' },
-  { value: 'gift', label: 'Gift' },
-  { value: 'general', label: 'General' },
+// Source (offer_type) filter options
+const SOURCE_FILTERS = [
+  { value: '', label: 'All Sources' },
+  { value: 'store_offer', label: 'Store Offers' },
+  { value: 'partner_offer', label: 'Partner Vouchers' },
+  { value: 'marketplace_offer', label: 'Marketplace' },
 ];
 
 const COUPON_TYPES = [
@@ -57,6 +62,45 @@ const COUPON_TYPES = [
   { value: 'generic', label: 'Generic' },
   { value: 'unique', label: 'Unique' },
 ];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatExpiry(dateStr: string | null): string {
+  if (!dateStr) return 'No expiry';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function isExpired(dateStr: string | null): boolean {
+  if (!dateStr) return false;
+  return new Date(dateStr) < new Date();
+}
+
+function formatDiscountLabel(reward: RewardPoolItem): string | null {
+  if (reward.reward_type === 'percentage_discount' && reward.discount_value) {
+    return `${reward.discount_value}% off`;
+  }
+  if (reward.reward_type === 'flat_discount' && reward.discount_value) {
+    return `₹${reward.discount_value} off`;
+  }
+  if (reward.value_description) return reward.value_description;
+  return null;
+}
+
+function getSourceConfig(offerType: string | null): { label: string; color: string; Icon: ElementType } {
+  switch (offerType) {
+    case 'store_offer':
+      return { label: 'Store', color: 'bg-blue-100 text-blue-700', Icon: Store };
+    case 'partner_offer':
+      return { label: 'Partner', color: 'bg-violet-100 text-violet-700', Icon: Users };
+    case 'marketplace_offer':
+      return { label: 'Marketplace', color: 'bg-emerald-100 text-emerald-700', Icon: Globe };
+    default:
+      return { label: 'Other', color: 'bg-gray-100 text-gray-600', Icon: Gift };
+  }
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function RewardPickerModal({
   rewards,
@@ -66,9 +110,9 @@ export function RewardPickerModal({
   onClose,
 }: RewardPickerModalProps) {
   const [search, setSearch] = useState('');
-  const [filterBrand, setFilterBrand] = useState('');
-  const [filterType, setFilterType] = useState('');
+  const [filterSource, setFilterSource] = useState('');
   const [filterCoupon, setFilterCoupon] = useState('');
+  const [filterBrand, setFilterBrand] = useState('');
   const [showBrandDropdown, setShowBrandDropdown] = useState(false);
   const [showSelectedPanel, setShowSelectedPanel] = useState(false);
 
@@ -78,21 +122,21 @@ export function RewardPickerModal({
     const q = search.toLowerCase();
     return rewards.filter(r => {
       if (q && !r.title.toLowerCase().includes(q) && !(r.brand?.name.toLowerCase().includes(q))) return false;
-      if (filterBrand && r.brand?.id !== filterBrand) return false;
-      if (filterType && r.category !== filterType) return false;
+      if (filterSource && r.offer_type !== filterSource) return false;
       if (filterCoupon && r.coupon_type !== filterCoupon) return false;
+      if (filterBrand && r.brand?.id !== filterBrand) return false;
       return true;
     });
-  }, [rewards, search, filterBrand, filterType, filterCoupon]);
+  }, [rewards, search, filterSource, filterCoupon, filterBrand]);
 
-  const activeFilterCount = [filterBrand, filterType, filterCoupon].filter(Boolean).length;
+  const activeFilterCount = [filterSource, filterCoupon, filterBrand].filter(Boolean).length;
   const selectedBrandName = brands.find(b => b.id === filterBrand)?.name;
 
   const clearAllFilters = () => {
     setSearch('');
-    setFilterBrand('');
-    setFilterType('');
+    setFilterSource('');
     setFilterCoupon('');
+    setFilterBrand('');
   };
 
   return (
@@ -145,9 +189,46 @@ export function RewardPickerModal({
           </div>
         </div>
 
-        {/* Filter chips */}
+        {/* Filter chips row */}
         <div className="px-4 pb-3 overflow-x-auto">
           <div className="flex items-center gap-2 min-w-max">
+
+            {/* Source / offer_type chips */}
+            {SOURCE_FILTERS.map(sf => (
+              <button
+                key={sf.value}
+                onClick={() => setFilterSource(sf.value)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  filterSource === sf.value
+                    ? 'bg-purple-600 text-white border-purple-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:border-purple-400'
+                }`}
+              >
+                {sf.label}
+              </button>
+            ))}
+
+            {/* Divider */}
+            <span className="w-px h-5 bg-gray-200" />
+
+            {/* Coupon type chips */}
+            {COUPON_TYPES.map(ct => (
+              <button
+                key={ct.value}
+                onClick={() => setFilterCoupon(ct.value)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  filterCoupon === ct.value
+                    ? 'bg-purple-600 text-white border-purple-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:border-purple-400'
+                }`}
+              >
+                {ct.label}
+              </button>
+            ))}
+
+            {/* Divider */}
+            <span className="w-px h-5 bg-gray-200" />
+
             {/* Brand — dropdown chip */}
             <div className="relative">
               <button
@@ -182,42 +263,6 @@ export function RewardPickerModal({
               )}
             </div>
 
-            {/* Divider */}
-            <span className="w-px h-5 bg-gray-200" />
-
-            {/* Reward type chips */}
-            {REWARD_TYPES.map(rt => (
-              <button
-                key={rt.value}
-                onClick={() => setFilterType(rt.value)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                  filterType === rt.value
-                    ? 'bg-purple-600 text-white border-purple-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-purple-400'
-                }`}
-              >
-                {rt.label}
-              </button>
-            ))}
-
-            {/* Divider */}
-            <span className="w-px h-5 bg-gray-200" />
-
-            {/* Coupon type chips */}
-            {COUPON_TYPES.map(ct => (
-              <button
-                key={ct.value}
-                onClick={() => setFilterCoupon(ct.value)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                  filterCoupon === ct.value
-                    ? 'bg-purple-600 text-white border-purple-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-purple-400'
-                }`}
-              >
-                {ct.label}
-              </button>
-            ))}
-
             {activeFilterCount > 0 && (
               <>
                 <span className="w-px h-5 bg-gray-200" />
@@ -233,7 +278,7 @@ export function RewardPickerModal({
           </div>
         </div>
 
-        {/* Result count */}
+        {/* Result count + select-all */}
         <div className="px-4 pb-2 flex items-center justify-between">
           <p className="text-xs text-gray-500">
             Showing <span className="font-medium text-gray-700">{filtered.length}</span> of{' '}
@@ -242,7 +287,6 @@ export function RewardPickerModal({
           {filtered.length > 0 && (
             <button
               onClick={() => {
-                // Select all currently visible rewards
                 filtered.forEach(r => {
                   if (!selectedSet.has(r.id)) onToggle(r);
                 });
@@ -267,21 +311,31 @@ export function RewardPickerModal({
           <ul className="divide-y divide-gray-100">
             {filtered.map(reward => {
               const isSelected = selectedSet.has(reward.id);
+              const expired = isExpired(reward.expiry_date);
+              const discountLabel = formatDiscountLabel(reward);
+              const expiryText = formatExpiry(reward.expiry_date);
+              const src = getSourceConfig(reward.offer_type);
+              const SrcIcon = src.Icon;
+              const isGeneric = reward.coupon_type === 'generic';
+              const availText = isGeneric ? 'Unlimited' : `${reward.available_vouchers} avail.`;
+
               return (
                 <li
                   key={reward.id}
                   onClick={() => onToggle(reward)}
-                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                    isSelected ? 'bg-purple-50 hover:bg-purple-100' : 'hover:bg-gray-50'
+                  className={`flex items-start gap-3 px-4 py-3.5 cursor-pointer transition-colors ${
+                    isSelected ? 'bg-purple-50 hover:bg-purple-100' : expired ? 'hover:bg-gray-50 opacity-60' : 'hover:bg-gray-50'
                   }`}
                 >
                   {/* Checkbox */}
-                  <div
-                    className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                      isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
-                    }`}
-                  >
-                    {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                  <div className="mt-0.5 flex-shrink-0">
+                    <div
+                      className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                        isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
+                      }`}
+                    >
+                      {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                    </div>
                   </div>
 
                   {/* Thumbnail */}
@@ -289,35 +343,51 @@ export function RewardPickerModal({
                     <img
                       src={reward.image_url}
                       alt=""
-                      className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-gray-100"
+                      className="w-11 h-11 rounded-lg object-cover flex-shrink-0 border border-gray-100 mt-0.5"
                     />
                   ) : (
-                    <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <Gift className="w-5 h-5 text-gray-400" />
                     </div>
                   )}
 
-                  {/* Info */}
+                  {/* Info block */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{reward.title}</p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {reward.brand?.name ?? 'No Brand'}
-                      {reward.value_description ? ` · ${reward.value_description}` : ''}
-                    </p>
-                  </div>
+                    {/* Title + source badge */}
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-900 truncate leading-snug">{reward.title}</p>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {/* Source badge */}
+                        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${src.color}`}>
+                          <SrcIcon className="w-2.5 h-2.5" />
+                          {src.label}
+                        </span>
+                        {/* Coupon type badge */}
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          isGeneric ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+                        }`}>
+                          {isGeneric ? 'Generic' : 'Unique'}
+                        </span>
+                      </div>
+                    </div>
 
-                  {/* Right badges */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs text-gray-400">{reward.available_vouchers} avail.</span>
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        reward.coupon_type === 'generic'
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : 'bg-green-100 text-green-700'
-                      }`}
-                    >
-                      {reward.coupon_type === 'generic' ? 'Generic' : 'Unique'}
-                    </span>
+                    {/* Brand + discount value */}
+                    <p className="text-xs text-gray-500 mt-0.5 truncate">
+                      {reward.brand?.name ?? 'No Brand'}
+                      {discountLabel && <span className="ml-1.5 font-semibold text-gray-700">· {discountLabel}</span>}
+                    </p>
+
+                    {/* Expiry + availability */}
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className={`text-[10px] font-medium ${expired ? 'text-red-500' : 'text-gray-400'}`}>
+                        {expired ? '⚠ Expired · ' : ''}
+                        {expiryText}
+                      </span>
+                      <span className="text-[10px] text-gray-300">·</span>
+                      <span className={`text-[10px] font-semibold ${isGeneric ? 'text-purple-600' : 'text-gray-500'}`}>
+                        {availText}
+                      </span>
+                    </div>
                   </div>
                 </li>
               );
