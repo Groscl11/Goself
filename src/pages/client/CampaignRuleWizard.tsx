@@ -147,7 +147,7 @@ export function CampaignRuleWizard() {
     const { data: brandsData } = await supabase.from('brands').select('id, name').eq('status', 'approved').order('name');
     if (brandsData) setAllBrands(brandsData);
 
-    const { data: rewardsData } = await supabase.from('rewards').select(`
+    const { data: rewardsData, error: rewardsError } = await supabase.from('rewards').select(`
       id, reward_id, title, description, value_description, image_url, category,
       coupon_type, status, expiry_date, owner_client_id, available_codes,
       offer_type, reward_type, discount_value, min_purchase_amount,
@@ -156,6 +156,10 @@ export function CampaignRuleWizard() {
     `)
       .or(`owner_client_id.eq.${clientId},offer_type.eq.marketplace_offer`)
       .or('expiry_date.is.null,expiry_date.gt.' + new Date().toISOString());
+
+    console.log('[DEBUG] clientId:', clientId);
+    console.log('[DEBUG] rewardsError:', rewardsError);
+    console.log('[DEBUG] rewardsData raw:', JSON.stringify(rewardsData?.[0], null, 2));
 
     if (rewardsData) {
       const items: RewardPoolItem[] = rewardsData
