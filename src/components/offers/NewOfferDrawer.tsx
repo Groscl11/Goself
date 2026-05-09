@@ -34,6 +34,23 @@ const REWARD_TYPES: { value: RewardType; label: string }[] = [
   { value: 'free_item',            label: 'Free item' },
 ];
 
+export const OFFER_CATEGORIES: { value: string; label: string }[] = [
+  { value: 'food_dining',        label: 'Food & Dining' },
+  { value: 'fashion_apparel',    label: 'Fashion & Apparel' },
+  { value: 'health_wellness',    label: 'Health & Wellness' },
+  { value: 'travel_hospitality', label: 'Travel & Hospitality' },
+  { value: 'entertainment',      label: 'Entertainment' },
+  { value: 'electronics',        label: 'Electronics' },
+  { value: 'beauty_grooming',    label: 'Beauty & Grooming' },
+  { value: 'home_living',        label: 'Home & Living' },
+  { value: 'education',          label: 'Education' },
+  { value: 'grocery',            label: 'Grocery' },
+  { value: 'automotive',         label: 'Automotive' },
+  { value: 'sports_fitness',     label: 'Sports & Fitness' },
+  { value: 'financial_services', label: 'Financial Services' },
+  { value: 'other',              label: 'Other' },
+];
+
 export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, onCreated, mode = 'store', editOffer }: NewOfferDrawerProps & { editOffer?: import('../../types/offers').Offer | null }) {
   const [flow, setFlow] = useState<Flow | null>(null);
   const [loading, setLoading] = useState(false);
@@ -55,6 +72,9 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     title: '',
     description: '',
     image_url: '',
+    offer_category: 'other',
+    offer_priority: '0',
+    starts_at: '',
     reward_type: 'flat_discount' as RewardType,
     discount_value: '',
     max_cap: '',
@@ -87,6 +107,9 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         title: editOffer.title ?? '',
         description: editOffer.description ?? '',
         image_url: editOffer.image_url ?? '',
+        offer_category: (editOffer as any).offer_category ?? 'other',
+        offer_priority: String((editOffer as any).offer_priority ?? 0),
+        starts_at: (editOffer as any).starts_at ? String((editOffer as any).starts_at).slice(0, 10) : '',
         reward_type: editOffer.reward_type as RewardType,
         discount_value: editOffer.discount_value != null ? String(editOffer.discount_value) : '',
         max_cap: editOffer.max_discount_value != null ? String(editOffer.max_discount_value) : '',
@@ -114,7 +137,8 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     setShopifySearch(''); setShopifyPicked(false); setShopifyFetched(false);
     setShopifyCreating(false);
     setForm({
-      title: '', description: '', image_url: '', reward_type: 'flat_discount', discount_value: '',
+      title: '', description: '', image_url: '', offer_category: 'other', offer_priority: '0',
+      starts_at: '', reward_type: 'flat_discount', discount_value: '',
       max_cap: '', min_purchase_amount: '', coupon_type: 'unique', generic_coupon_code: '',
       codes_count: '10', code_paste: '', valid_until: '',
       redemption_link: '', terms_conditions: '', steps_to_redeem: '',
@@ -200,10 +224,12 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         title: form.title.trim(),
         description: form.description.trim() || null,
         offer_type: mode === 'marketplace' ? 'marketplace_offer' : 'store_discount',
+        offer_category: form.offer_category || 'other',
+        offer_priority: Number(form.offer_priority) || 0,
+        starts_at: form.starts_at || null,
         code_source: codeSource,
         coupon_type: resolvedCouponType,
         generic_coupon_code: resolvedCouponType === 'generic' ? form.generic_coupon_code.trim() || null : null,
-        tracking_type: 'automatic',
         reward_type: form.reward_type,
         discount_value: form.discount_value ? Number(form.discount_value) : null,
         max_discount_value: form.max_cap ? Number(form.max_cap) : null,
@@ -234,12 +260,8 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         .from('rewards')
         .insert({
           ...rewardPayload,
-          currency: 'INR',
-          is_active: true,
           status: 'active',
-          is_marketplace: mode === 'marketplace',
           owner_client_id: clientId,
-          client_id: clientId,
           brand_id: brandId || null,
           redeems_at_shop_domain: mode === 'marketplace' ? null : shopDomain,
         })
@@ -503,6 +525,28 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
               <img src={form.image_url} alt="preview" className="mt-2 h-16 w-auto rounded-lg border border-gray-200 object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             )}
           </Field>
+
+          {/* Offer category */}
+          <Field label="Offer category">
+            <select value={form.offer_category} onChange={e => set('offer_category', e.target.value)} className="input-base">
+              {OFFER_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </Field>
+
+          {/* Offer priority + go-live date */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Priority (0 = normal)">
+              <input type="number" min={0} value={form.offer_priority}
+                onChange={e => set('offer_priority', e.target.value)}
+                placeholder="0"
+                className="input-base" />
+            </Field>
+            <Field label="Go-live date (optional)">
+              <input type="date" value={form.starts_at}
+                onChange={e => set('starts_at', e.target.value)}
+                className="input-base" />
+            </Field>
+          </div>
 
           {/* Reward type */}
           <Field label="Discount type *">

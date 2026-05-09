@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Drawer } from './Drawers';
 import { supabase } from '../../lib/supabase';
 import { uploadOfferCodesDirect } from '../../lib/offerCodes';
-import { AccessType, PARTNER_CATEGORIES } from '../../types/offers';
+import { AccessType } from '../../types/offers';
+import { OFFER_CATEGORIES } from './NewOfferDrawer';
+import { PartnerPickerField } from './PartnerPickerField';
 
 interface PartnerWizardProps {
   open: boolean;
@@ -25,10 +27,12 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   const [parsedCodes, setParsedCodes] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [partnerId, setPartnerId] = useState<string | null>(null);
+
   const [form, setForm] = useState({
     // Step 1
     partner_name: '',
-    category: 'Food & Drink',
+    offer_category: 'other',
     image_url: '',
     steps_to_redeem: '',
     redemption_link: '',
@@ -77,8 +81,9 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   function reset() {
     setStep(1); setLoading(false); setError(''); setSuccess('');
     setParsedCodes([]);
+    setPartnerId(null);
     setForm({
-      partner_name: '', category: 'Food & Drink', terms_conditions: '',
+      partner_name: '', offer_category: 'other', terms_conditions: '',
       image_url: '',
       steps_to_redeem: '', redemption_link: '',
       coupon_type: 'unique', generic_coupon_code: '', valid_until: '',
@@ -91,9 +96,10 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     if (!editTarget?.offer) return;
     const offer = editTarget.offer;
     const dist = editTarget.distribution;
+    setPartnerId(offer.partner_id ?? null);
     setForm({
       partner_name: (offer.title ?? '').split(' — ')[0] || '',
-      category: offer.tags?.[0] || 'Food & Drink',
+      offer_category: offer.offer_category || offer.tags?.[0] || 'other',
       image_url: offer.image_url ?? '',
       steps_to_redeem: offer.steps_to_redeem ?? offer.description ?? '',
       redemption_link: offer.redemption_link ?? '',
@@ -154,25 +160,26 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       const isEdit = Boolean(editTarget?.offer?.id);
       let offerId = editTarget?.offer?.id as string | undefined;
 
+      const categoryLabel = OFFER_CATEGORIES.find(c => c.value === form.offer_category)?.label ?? form.offer_category;
+
       const rewardPayload = {
-        title: `${form.partner_name} — ${form.category}`,
+        title: `${form.partner_name} — ${categoryLabel}`,
         description: form.steps_to_redeem || null,
         image_url: form.image_url.trim() || null,
         redemption_link: form.redemption_link || null,
         terms_conditions: form.terms_conditions || null,
+        steps_to_redeem: form.steps_to_redeem || null,
         offer_type: 'partner_voucher',
+        offer_category: form.offer_category,
         code_source: 'csv_uploaded',
         coupon_type: form.coupon_type,
         generic_coupon_code: form.coupon_type === 'generic' ? form.generic_coupon_code.trim() : null,
-        tracking_type: 'manual',
         reward_type: 'other',
-        currency: 'INR',
-        is_active: true,
         status: 'active',
         owner_client_id: clientId,
-        client_id: clientId,
+        partner_id: partnerId || null,
         valid_until: form.valid_until || null,
-        tags: [form.category],
+        tags: [form.offer_category],
       };
 
       if (isEdit && offerId) {
@@ -298,14 +305,25 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       {/* Step 1 — Partner details */}
       {step === 1 && (
         <div className="space-y-4">
-          <Field label="Partner / brand name *">
+          <Field label="Select existing partner (optional)">
+            <PartnerPickerField
+              value={partnerId}
+              clientId={clientId}
+              onChange={pid => {
+                setPartnerId(pid);
+                // if clearing selection, leave the form as-is
+              }}
+            />
+            <p className="text-[11px] text-gray-400 mt-1">Leave blank to create ad-hoc — or pick from your partner list above to link the voucher to a known partner.</p>
+          </Field>
+          <Field label="Display name for this offer *">
             <input value={form.partner_name} onChange={e => set('partner_name', e.target.value)}
               placeholder="e.g. CafeZ, Nike, BookMyShow"
               className="input-base" />
           </Field>
           <Field label="Category">
-            <select value={form.category} onChange={e => set('category', e.target.value)} className="input-base">
-              {PARTNER_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            <select value={form.offer_category} onChange={e => set('offer_category', e.target.value)} className="input-base">
+              {OFFER_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </Field>
           <Field label="Offer image URL (optional)">
@@ -453,7 +471,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Summary</p>
             <div className="text-sm text-gray-700 space-y-1">
               <div><span className="text-gray-500">Partner:</span> {form.partner_name}</div>
-              <div><span className="text-gray-500">Category:</span> {form.category}</div>
+              <div><span className="text-gray-500">Category:</span> {OFFER_CATEGORIES.find(c => c.value === form.offer_category)?.label ?? form.offer_category}</div>
               {form.redemption_link && <div><span className="text-gray-500">Redemption URL:</span> {form.redemption_link}</div>}
               <div><span className="text-gray-500">Codes:</span>{' '}
                 {form.coupon_type === 'generic'

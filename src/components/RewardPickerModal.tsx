@@ -21,9 +21,9 @@ export interface RewardPoolItem {
   reward_id: string | null;            // human-readable RWD-XXXXXXXX
   title: string;
   description: string;
-  value_description: string;
   image_url: string | null;
-  category: string;
+  offer_category: string | null;       // food_dining | fashion_apparel | … | other
+  offer_priority: number;              // higher = shows first
   coupon_type: 'generic' | 'unique';
   offer_type: string | null;           // store_discount | partner_voucher | marketplace_offer
   reward_type: string | null;          // flat_discount | percentage_discount | cashback | gift | general
@@ -32,7 +32,7 @@ export interface RewardPoolItem {
   terms_conditions: string | null;
   steps_to_redeem: string | null;
   status: string;
-  expiry_date: string | null;          // valid_until ?? expiry_date from DB
+  expiry_date: string | null;          // maps to valid_until from DB
   available_vouchers: number;
   brand: { id: string; name: string; logo_url: string | null } | null;
 }
@@ -54,6 +54,28 @@ const SOURCE_FILTERS = [
   { value: 'store_discount', label: 'Store Offers' },
   { value: 'partner_voucher', label: 'Partner Vouchers' },
   { value: 'marketplace_offer', label: 'Marketplace' },
+];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  food_dining:        'Food & Dining',
+  fashion_apparel:    'Fashion',
+  health_wellness:    'Health',
+  travel_hospitality: 'Travel',
+  entertainment:      'Entertainment',
+  electronics:        'Electronics',
+  beauty_grooming:    'Beauty',
+  home_living:        'Home',
+  education:          'Education',
+  grocery:            'Grocery',
+  automotive:         'Automotive',
+  sports_fitness:     'Sports',
+  financial_services: 'Finance',
+  other:              'Other',
+};
+
+const CATEGORY_FILTERS = [
+  { value: '', label: 'All Categories' },
+  ...Object.entries(CATEGORY_LABELS).map(([value, label]) => ({ value, label })),
 ];
 
 const COUPON_FILTERS = [
@@ -81,7 +103,7 @@ function formatDiscount(reward: RewardPoolItem): string {
     return `₹${reward.discount_value}`;
   if (reward.discount_value != null && reward.discount_value > 0)
     return `₹${reward.discount_value}`;
-  return reward.value_description || '—';
+  return '—';
 }
 
 function formatRewardType(rt: string | null): string {
@@ -178,7 +200,9 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
   const [filterSource, setFilterSource] = useState('');
   const [filterCoupon, setFilterCoupon] = useState('');
   const [filterBrand, setFilterBrand] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
   const [showBrandDropdown, setShowBrandDropdown] = useState(false);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showSelectedPanel, setShowSelectedPanel] = useState(false);
 
   const selectedSet = useMemo(() => new Set(selected.map(r => r.id)), [selected]);
@@ -190,16 +214,17 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
       if (filterSource && r.offer_type !== filterSource) return false;
       if (filterCoupon && r.coupon_type !== filterCoupon) return false;
       if (filterBrand && r.brand?.id !== filterBrand) return false;
+      if (filterCategory && r.offer_category !== filterCategory) return false;
       return true;
     });
-    // Sort: active first, expired pushed to bottom
+    // Sort: higher priority first, then active before expired
     return [
-      ...matching.filter(r => !formatExpiry(r.expiry_date).expired),
+      ...matching.filter(r => !formatExpiry(r.expiry_date).expired).sort((a, b) => (b.offer_priority ?? 0) - (a.offer_priority ?? 0)),
       ...matching.filter(r => formatExpiry(r.expiry_date).expired),
     ];
-  }, [rewards, search, filterSource, filterCoupon, filterBrand]);
+  }, [rewards, search, filterSource, filterCoupon, filterBrand, filterCategory]);
 
-  const activeFilterCount = [filterSource, filterCoupon, filterBrand].filter(Boolean).length;
+  const activeFilterCount = [filterSource, filterCoupon, filterBrand, filterCategory].filter(Boolean).length;
   const selectedBrandName = brands.find(b => b.id === filterBrand)?.name;
 
   const clearAllFilters = () => {
@@ -207,6 +232,7 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
     setFilterSource('');
     setFilterCoupon('');
     setFilterBrand('');
+    setFilterCategory('');
   };
 
   return (
@@ -303,6 +329,29 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
                     <button key={b.id} onClick={() => { setFilterBrand(b.id); setShowBrandDropdown(false); }}
                       className={`w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 ${filterBrand === b.id ? 'font-semibold text-purple-700 bg-purple-50' : 'text-gray-700'}`}>
                       {b.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <span className="w-px h-5 bg-gray-200 mx-1" />
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-0.5">Category</span>
+            <div className="relative">
+              <button onClick={() => setShowCategoryDropdown(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                  filterCategory
+                    ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-purple-400 hover:text-purple-600'
+                }`}>
+                {filterCategory ? (CATEGORY_LABELS[filterCategory] ?? filterCategory) : 'All Categories'}
+                {showCategoryDropdown ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+              {showCategoryDropdown && (
+                <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-xl border border-gray-200 shadow-xl z-20 max-h-64 overflow-y-auto">
+                  {CATEGORY_FILTERS.map(cf => (
+                    <button key={cf.value} onClick={() => { setFilterCategory(cf.value); setShowCategoryDropdown(false); }}
+                      className={`w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 ${filterCategory === cf.value ? 'font-semibold text-purple-700 bg-purple-50' : 'text-gray-700'} ${cf.value === '' ? 'border-b border-gray-100' : ''}`}>
+                      {cf.label}
                     </button>
                   ))}
                 </div>
