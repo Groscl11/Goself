@@ -15,6 +15,7 @@ import { RewardPickerModal } from '../../components/RewardPickerModal';
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface RewardPoolItem {
   id: string;
+  reward_id: string | null;
   title: string;
   description: string;
   value_description: string;
@@ -28,7 +29,7 @@ interface RewardPoolItem {
   terms_conditions: string | null;
   steps_to_redeem: string | null;
   status: string;
-  expiry_date: string | null;          // mapped from valid_until
+  expiry_date: string | null;
   available_vouchers: number;
   brand: { id: string; name: string; logo_url: string | null } | null;
 }
@@ -147,14 +148,14 @@ export function CampaignRuleWizard() {
     if (brandsData) setAllBrands(brandsData);
 
     const { data: rewardsData } = await supabase.from('rewards').select(`
-      id, title, description, value_description, image_url, category,
-      coupon_type, status, valid_until, owner_client_id, available_codes,
+      id, reward_id, title, description, value_description, image_url, category,
+      coupon_type, status, expiry_date, owner_client_id, available_codes,
       offer_type, reward_type, discount_value, min_purchase_amount,
       terms_conditions, steps_to_redeem,
       brands ( id, name, logo_url )
     `)
       .or(`owner_client_id.eq.${clientId},offer_type.eq.marketplace_offer`)
-      .or('valid_until.is.null,valid_until.gt.' + new Date().toISOString());
+      .or('expiry_date.is.null,expiry_date.gt.' + new Date().toISOString());
 
     if (rewardsData) {
       const items: RewardPoolItem[] = rewardsData
@@ -163,7 +164,9 @@ export function CampaignRuleWizard() {
         // Exclude unique rewards with no available codes
         .filter((r: any) => r.coupon_type !== 'unique' || (r.available_codes ?? 0) > 0)
         .map((r: any) => ({
-          id: r.id, title: r.title, description: r.description,
+          id: r.id,
+          reward_id: r.reward_id ?? null,
+          title: r.title, description: r.description,
           value_description: r.value_description, image_url: r.image_url,
           category: r.category, coupon_type: r.coupon_type || 'unique',
           offer_type: r.offer_type ?? null,
@@ -173,7 +176,7 @@ export function CampaignRuleWizard() {
           terms_conditions: r.terms_conditions ?? null,
           steps_to_redeem: r.steps_to_redeem ?? null,
           status: r.status,
-          expiry_date: r.valid_until ?? null,   // DB column is valid_until
+          expiry_date: r.expiry_date ?? null,
           available_vouchers: r.available_codes ?? 0,
           brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,
         }));

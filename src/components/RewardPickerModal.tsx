@@ -13,6 +13,7 @@ import {
 
 export interface RewardPoolItem {
   id: string;
+  reward_id: string | null;            // human-readable RWD-XXXXXXXX
   title: string;
   description: string;
   value_description: string;
@@ -26,7 +27,7 @@ export interface RewardPoolItem {
   terms_conditions: string | null;
   steps_to_redeem: string | null;
   status: string;
-  expiry_date: string | null;          // mapped from valid_until
+  expiry_date: string | null;          // maps to DB expiry_date column
   available_vouchers: number;
   brand: { id: string; name: string; logo_url: string | null } | null;
 }
@@ -456,10 +457,10 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
                     {/* Reward ID */}
                     <td className="px-3 py-3">
                       <span
-                        className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded select-all"
+                        className="text-[10px] font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded select-all whitespace-nowrap"
                         title={reward.id}
                       >
-                        {shortId(reward.id)}
+                        {reward.reward_id ?? shortId(reward.id)}
                       </span>
                     </td>
 
