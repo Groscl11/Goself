@@ -249,7 +249,7 @@ export function Settings() {
   // ── Profile completeness ──────────────────────────────────────────────────
   const completeness = useMemo(() => {
     const items = [
-      { label:'Organization name', done: !!formData.name.trim() },
+      { label:'Organization name',  done: !!formData.name.trim() },
       { label:'Industry',          done: !!formData.industry },
       { label:'Website URL',       done: !!formData.website_url.trim() },
       { label:'Logo',              done: !!formData.logo_url.trim() },
@@ -555,9 +555,10 @@ export function Settings() {
                 <SectionDivider label="Organization" />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div className="sm:col-span-2">
-                    <FieldGroup label="Brand Name" required>
+                    <FieldGroup label="Organization Name" required
+                      hint="Your trading / display name — shown to members in campaigns and the loyalty portal">
                       <input type="text" value={formData.name} className={inputCls}
-                        placeholder="Your brand / company name"
+                        placeholder="e.g. MediBuddy (the name your customers know you by)"
                         onChange={e => setField({ name: e.target.value })}/>
                     </FieldGroup>
                   </div>
@@ -757,10 +758,10 @@ export function Settings() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                           <div className="sm:col-span-2">
                             <FieldGroup label="Registered Name" required error={verErrors.registered_name}
-                              hint="Legal entity name as registered with MCA / government">
+                              hint="Legal entity name on your GST / MCA registration — may differ from your organization display name">
                               <input type="text" value={verForm.registered_name}
                                 onChange={e => setVer({ registered_name: e.target.value })}
-                                className={inputCls} placeholder="Acme Online Private Limited"/>
+                                className={inputCls} placeholder="e.g. DOC Online Surgicals Pvt Ltd"/>
                             </FieldGroup>
                           </div>
                         </div>
