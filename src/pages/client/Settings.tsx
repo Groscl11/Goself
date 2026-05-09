@@ -56,7 +56,7 @@ interface BrandAssoc {
 }
 
 interface VerificationForm {
-  registered_name: string; website_url: string; gst_number: string;
+  registered_name: string; gst_number: string;
   cin: string; pan: string; registered_address: string; additional_notes: string;
 }
 
@@ -127,13 +127,13 @@ const DEFAULT_NOTIFICATIONS: NotificationSettings = {
 };
 
 const EMPTY_VER: VerificationForm = {
-  registered_name:'', website_url:'', gst_number:'',
+  registered_name:'', gst_number:'',
   cin:'', pan:'', registered_address:'', additional_notes:'',
 };
 
-function parseProof(raw: string | null, name: string, url: string | null): VerificationForm {
-  try { const p = JSON.parse(raw ?? ''); return { ...EMPTY_VER, registered_name: name, website_url: url ?? '', ...p }; }
-  catch { return { ...EMPTY_VER, registered_name: name, website_url: url ?? '', additional_notes: raw ?? '' }; }
+function parseProof(raw: string | null, name: string): VerificationForm {
+  try { const p = JSON.parse(raw ?? ''); return { ...EMPTY_VER, registered_name: name, ...p }; }
+  catch { return { ...EMPTY_VER, registered_name: name, additional_notes: raw ?? '' }; }
 }
 
 // GST: 15-char alphanumeric, PAN: 10-char (loose validation — just length check)
@@ -317,9 +317,9 @@ export function Settings() {
       const assoc = assocRes.data as BrandAssoc|null;
       setBrandAssoc(assoc);
       if (assoc) {
-        setVerForm(parseProof(assoc.proof_notes, assoc.submitted_name, assoc.submitted_url));
+        setVerForm(parseProof(assoc.proof_notes, assoc.submitted_name));
       } else {
-        setVerForm(v => ({ ...v, registered_name: c.name, website_url: c.website_url || '' }));
+        setVerForm(v => ({ ...v, registered_name: c.name }));
       }
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
@@ -415,7 +415,7 @@ export function Settings() {
     const payload = {
       client_id:      clientId,
       submitted_name: verForm.registered_name.trim(),
-      submitted_url:  verForm.website_url.trim() || null,
+      submitted_url:  formData.website_url.trim() || null,
       proof_notes:    proofJson,
       status:         'pending',
     };
@@ -555,9 +555,9 @@ export function Settings() {
                 <SectionDivider label="Organization" />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div className="sm:col-span-2">
-                    <FieldGroup label="Organization Name" required>
+                    <FieldGroup label="Brand Name" required>
                       <input type="text" value={formData.name} className={inputCls}
-                        placeholder="Your company name"
+                        placeholder="Your brand / company name"
                         onChange={e => setField({ name: e.target.value })}/>
                     </FieldGroup>
                   </div>
@@ -761,16 +761,6 @@ export function Settings() {
                               <input type="text" value={verForm.registered_name}
                                 onChange={e => setVer({ registered_name: e.target.value })}
                                 className={inputCls} placeholder="Acme Online Private Limited"/>
-                            </FieldGroup>
-                          </div>
-                          <div className="sm:col-span-2">
-                            <FieldGroup label="Registered Website">
-                              <div className="relative">
-                                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300"/>
-                                <input type="url" value={verForm.website_url}
-                                  onChange={e => setVer({ website_url: e.target.value })}
-                                  className={inputCls+' pl-9'} placeholder="https://acmecorp.com"/>
-                              </div>
                             </FieldGroup>
                           </div>
                         </div>
