@@ -1,23 +1,15 @@
 /**
- * RewardPickerModal
+ * RewardPickerModal — Excel-style full-screen reward picker
  *
- * Full-screen overlay for browsing and selecting rewards to add to a
- * campaign's reward pool. Designed to handle 100+ rewards comfortably.
- *
- * Layout:
- *   ┌─ Sticky header: ← Back | title | N selected | Done ─────────┐
- *   │  Full-width search bar                                        │
- *   │  Filter chips: Source | Coupon | Brand dropdown               │
- *   │  "Showing X of Y rewards"                                     │
- *   ├─ Scrollable flat list ────────────────────────────────────────┤
- *   │  □ [img] Title   [Source badge] [Coupon badge]                │
- *   │         Brand · Discount value                                │
- *   │         Expiry: DD MMM YYYY · N avail / Unlimited             │
- *   └─ Sticky bottom: selected chips + Clear all ──────────────────┘
+ * Table columns:
+ *   □  Img  Title/Brand  Source  Type  Discount  Min Order  Expiry  Available  ID  [T&C]  [Steps]
  */
 
-import { useState, useMemo, ElementType } from 'react';
-import { X, Search, Check, Gift, ChevronDown, ChevronUp, Store, Users, Globe } from 'lucide-react';
+import { useState, useMemo, useRef, ElementType } from 'react';
+import {
+  X, Search, Check, Gift, ChevronDown, ChevronUp,
+  Store, Users, Globe, FileText, BookOpen, Info,
+} from 'lucide-react';
 
 export interface RewardPoolItem {
   id: string;
@@ -27,19 +19,19 @@ export interface RewardPoolItem {
   image_url: string | null;
   category: string;
   coupon_type: 'generic' | 'unique';
-  offer_type: string | null;        // store_offer | partner_offer | marketplace_offer
-  reward_type: string | null;       // flat_discount | percentage_discount | cashback | gift | general
-  discount_value: number | null;    // numeric value (percent or flat amount)
+  offer_type: string | null;           // store_discount | partner_voucher | marketplace_offer
+  reward_type: string | null;          // flat_discount | percentage_discount | cashback | gift | general
+  discount_value: number | null;
+  min_purchase_amount: number | null;
+  terms_conditions: string | null;
+  steps_to_redeem: string | null;
   status: string;
-  expiry_date: string | null;
-  available_vouchers: number;       // 0 means unlimited for generic codes
+  expiry_date: string | null;          // mapped from valid_until
+  available_vouchers: number;
   brand: { id: string; name: string; logo_url: string | null } | null;
 }
 
-interface BrandOption {
-  id: string;
-  name: string;
-}
+interface BrandOption { id: string; name: string; }
 
 interface RewardPickerModalProps {
   rewards: RewardPoolItem[];
@@ -49,66 +41,112 @@ interface RewardPickerModalProps {
   onClose: () => void;
 }
 
-// Source (offer_type) filter options
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const SOURCE_FILTERS = [
   { value: '', label: 'All Sources' },
-  { value: 'store_offer', label: 'Store Offers' },
-  { value: 'partner_offer', label: 'Partner Vouchers' },
+  { value: 'store_discount', label: 'Store Offers' },
+  { value: 'partner_voucher', label: 'Partner Vouchers' },
   { value: 'marketplace_offer', label: 'Marketplace' },
 ];
 
-const COUPON_TYPES = [
+const COUPON_FILTERS = [
   { value: '', label: 'Any Code' },
   { value: 'generic', label: 'Generic' },
   { value: 'unique', label: 'Unique' },
 ];
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatExpiry(dateStr: string | null): string {
-  if (!dateStr) return 'No expiry';
+function formatExpiry(dateStr: string | null): { text: string; expired: boolean } {
+  if (!dateStr) return { text: 'No expiry', expired: false };
   const d = new Date(dateStr);
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const expired = d < new Date();
+  return {
+    text: d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+    expired,
+  };
 }
 
-function isExpired(dateStr: string | null): boolean {
-  if (!dateStr) return false;
-  return new Date(dateStr) < new Date();
-}
-
-function formatDiscountLabel(reward: RewardPoolItem): string | null {
-  if (reward.reward_type === 'percentage_discount' && reward.discount_value) {
+function formatDiscount(reward: RewardPoolItem): string {
+  if (reward.reward_type === 'percentage_discount' && reward.discount_value != null) {
     return `${reward.discount_value}% off`;
   }
-  if (reward.reward_type === 'flat_discount' && reward.discount_value) {
-    return `₹${reward.discount_value} off`;
+  if (reward.reward_type === 'flat_discount' && reward.discount_value != null) {
+    return `₹${reward.discount_value}`;
   }
-  if (reward.value_description) return reward.value_description;
-  return null;
+  if (reward.discount_value != null && reward.discount_value > 0) return `₹${reward.discount_value}`;
+  return reward.value_description || '—';
 }
 
-function getSourceConfig(offerType: string | null): { label: string; color: string; Icon: ElementType } {
+function formatRewardType(rt: string | null): string {
+  switch (rt) {
+    case 'flat_discount':       return 'Flat Discount';
+    case 'percentage_discount': return 'Percentage';
+    case 'cashback':            return 'Cashback';
+    case 'gift':                return 'Gift';
+    case 'general':             return 'General';
+    default:                    return rt ?? '—';
+  }
+}
+
+function getSourceConfig(offerType: string | null): { label: string; color: string; dot: string; Icon: ElementType } {
   switch (offerType) {
-    case 'store_offer':
-      return { label: 'Store', color: 'bg-blue-100 text-blue-700', Icon: Store };
-    case 'partner_offer':
-      return { label: 'Partner', color: 'bg-violet-100 text-violet-700', Icon: Users };
+    case 'store_discount':
+      return { label: 'Store', color: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500', Icon: Store };
+    case 'partner_voucher':
+      return { label: 'Partner', color: 'bg-violet-50 text-violet-700 border-violet-200', dot: 'bg-violet-500', Icon: Users };
     case 'marketplace_offer':
-      return { label: 'Marketplace', color: 'bg-emerald-100 text-emerald-700', Icon: Globe };
+      return { label: 'Market', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500', Icon: Globe };
     default:
-      return { label: 'Other', color: 'bg-gray-100 text-gray-600', Icon: Gift };
+      return { label: offerType ?? 'Other', color: 'bg-gray-50 text-gray-600 border-gray-200', dot: 'bg-gray-400', Icon: Gift };
   }
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+function shortId(id: string): string {
+  return id.length > 8 ? '…' + id.slice(-8) : id;
+}
 
-export function RewardPickerModal({
-  rewards,
-  brands,
-  selected,
-  onToggle,
-  onClose,
-}: RewardPickerModalProps) {
+// ── Tooltip component ─────────────────────────────────────────────────────────
+
+function Tooltip({ content, icon: Icon, label, color }: { content: string | null; icon: ElementType; label: string; color: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  if (!content) {
+    return (
+      <div className="w-6 h-6 flex items-center justify-center opacity-20 cursor-not-allowed">
+        <Icon className="w-3.5 h-3.5 text-gray-400" />
+      </div>
+    );
+  }
+  return (
+    <div
+      ref={ref}
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        className={`w-6 h-6 flex items-center justify-center rounded-full border transition-colors ${color}`}
+        title={label}
+      >
+        <Icon className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 bottom-7 z-50 w-64 bg-gray-900 text-white text-[11px] leading-relaxed rounded-lg p-3 shadow-xl pointer-events-none">
+          <p className="font-semibold text-gray-300 mb-1">{label}</p>
+          <p className="whitespace-pre-wrap">{content}</p>
+          <div className="absolute bottom-[-4px] right-3 w-2 h-2 bg-gray-900 rotate-45" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose }: RewardPickerModalProps) {
   const [search, setSearch] = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [filterCoupon, setFilterCoupon] = useState('');
@@ -140,113 +178,115 @@ export function RewardPickerModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-white flex flex-col">
-      {/* ── Sticky header ── */}
+    <div className="fixed inset-0 z-[60] bg-gray-50 flex flex-col">
+
+      {/* ── Top bar ── */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm">
-        <div className="flex items-center gap-3 px-4 py-3">
+        {/* Header row */}
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100">
           <button
             onClick={onClose}
-            className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 font-medium"
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 font-medium transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back
           </button>
-          <div className="flex-1">
-            <h2 className="text-base font-semibold text-gray-900">Select Rewards for Pool</h2>
-          </div>
+          <div className="w-px h-5 bg-gray-200" />
+          <h2 className="text-base font-bold text-gray-900 flex-1">Select Rewards for Pool</h2>
           {selected.length > 0 && (
-            <span className="px-2.5 py-1 bg-purple-100 text-purple-700 text-sm font-medium rounded-full">
+            <span className="px-3 py-1 bg-purple-100 text-purple-700 text-sm font-semibold rounded-full">
               {selected.length} selected
             </span>
           )}
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
+            className="px-5 py-1.5 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
           >
             Done
           </button>
         </div>
 
         {/* Search bar */}
-        <div className="px-4 pb-3">
-          <div className="relative">
+        <div className="px-5 py-2.5">
+          <div className="relative max-w-xl">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search rewards by name or brand..."
+              placeholder="Search by reward name or brand..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={e => setSearch(e.target.value)}
               autoFocus
-              className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
             />
             {search && (
-              <button onClick={() => setSearch('')} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
+              <button onClick={() => setSearch('')} className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600">
                 <X className="w-4 h-4" />
               </button>
             )}
           </div>
         </div>
 
-        {/* Filter chips row */}
-        <div className="px-4 pb-3 overflow-x-auto">
+        {/* Filters row */}
+        <div className="px-5 pb-2.5 overflow-x-auto">
           <div className="flex items-center gap-2 min-w-max">
 
-            {/* Source / offer_type chips */}
+            {/* Source chips */}
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-0.5">Source</span>
             {SOURCE_FILTERS.map(sf => (
               <button
                 key={sf.value}
                 onClick={() => setFilterSource(sf.value)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
                   filterSource === sf.value
-                    ? 'bg-purple-600 text-white border-purple-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-purple-400'
+                    ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-purple-400 hover:text-purple-600'
                 }`}
               >
                 {sf.label}
               </button>
             ))}
 
-            {/* Divider */}
-            <span className="w-px h-5 bg-gray-200" />
+            <span className="w-px h-5 bg-gray-200 mx-1" />
 
-            {/* Coupon type chips */}
-            {COUPON_TYPES.map(ct => (
+            {/* Coupon chips */}
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-0.5">Code</span>
+            {COUPON_FILTERS.map(cf => (
               <button
-                key={ct.value}
-                onClick={() => setFilterCoupon(ct.value)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                  filterCoupon === ct.value
-                    ? 'bg-purple-600 text-white border-purple-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-purple-400'
+                key={cf.value}
+                onClick={() => setFilterCoupon(cf.value)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                  filterCoupon === cf.value
+                    ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-purple-400 hover:text-purple-600'
                 }`}
               >
-                {ct.label}
+                {cf.label}
               </button>
             ))}
 
-            {/* Divider */}
-            <span className="w-px h-5 bg-gray-200" />
+            <span className="w-px h-5 bg-gray-200 mx-1" />
 
-            {/* Brand — dropdown chip */}
+            {/* Brand dropdown */}
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-0.5">Brand</span>
             <div className="relative">
               <button
                 onClick={() => setShowBrandDropdown(v => !v)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
                   filterBrand
-                    ? 'bg-purple-600 text-white border-purple-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-purple-400'
+                    ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-purple-400 hover:text-purple-600'
                 }`}
               >
                 {filterBrand ? selectedBrandName : 'All Brands'}
                 {showBrandDropdown ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               </button>
               {showBrandDropdown && (
-                <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg border border-gray-200 shadow-lg z-10 max-h-52 overflow-y-auto">
+                <div className="absolute top-full left-0 mt-1 w-52 bg-white rounded-xl border border-gray-200 shadow-xl z-20 max-h-56 overflow-y-auto">
                   <button
                     onClick={() => { setFilterBrand(''); setShowBrandDropdown(false); }}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${!filterBrand ? 'font-medium text-purple-700' : ''}`}
+                    className={`w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 border-b border-gray-100 ${!filterBrand ? 'font-semibold text-purple-700' : 'text-gray-700'}`}
                   >
                     All Brands
                   </button>
@@ -254,7 +294,7 @@ export function RewardPickerModal({
                     <button
                       key={b.id}
                       onClick={() => { setFilterBrand(b.id); setShowBrandDropdown(false); }}
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${filterBrand === b.id ? 'font-medium text-purple-700 bg-purple-50' : ''}`}
+                      className={`w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 ${filterBrand === b.id ? 'font-semibold text-purple-700 bg-purple-50' : 'text-gray-700'}`}
                     >
                       {b.name}
                     </button>
@@ -265,10 +305,10 @@ export function RewardPickerModal({
 
             {activeFilterCount > 0 && (
               <>
-                <span className="w-px h-5 bg-gray-200" />
+                <span className="w-px h-5 bg-gray-200 mx-1" />
                 <button
                   onClick={clearAllFilters}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 transition-colors"
                 >
                   <X className="w-3 h-3" />
                   Clear filters
@@ -277,171 +317,231 @@ export function RewardPickerModal({
             )}
           </div>
         </div>
-
-        {/* Result count + select-all */}
-        <div className="px-4 pb-2 flex items-center justify-between">
-          <p className="text-xs text-gray-500">
-            Showing <span className="font-medium text-gray-700">{filtered.length}</span> of{' '}
-            <span className="font-medium text-gray-700">{rewards.length}</span> rewards
-          </p>
-          {filtered.length > 0 && (
-            <button
-              onClick={() => {
-                filtered.forEach(r => {
-                  if (!selectedSet.has(r.id)) onToggle(r);
-                });
-              }}
-              className="text-xs text-purple-600 hover:text-purple-800 font-medium"
-            >
-              Select all {filtered.length > 1 ? `${filtered.length} ` : ''}shown
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* ── Scrollable list ── */}
-      <div className="flex-1 overflow-y-auto">
+      {/* ── Table ── */}
+      <div className="flex-1 overflow-auto">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-            <Gift className="w-10 h-10 mb-3 opacity-40" />
-            <p className="text-sm font-medium">No rewards match your filters</p>
+            <Gift className="w-10 h-10 mb-3 opacity-30" />
+            <p className="text-sm font-semibold">No rewards match your filters</p>
             <button onClick={clearAllFilters} className="mt-2 text-xs text-purple-600 hover:underline">Clear all filters</button>
           </div>
         ) : (
-          <ul className="divide-y divide-gray-100">
-            {filtered.map(reward => {
-              const isSelected = selectedSet.has(reward.id);
-              const expired = isExpired(reward.expiry_date);
-              const discountLabel = formatDiscountLabel(reward);
-              const expiryText = formatExpiry(reward.expiry_date);
-              const src = getSourceConfig(reward.offer_type);
-              const SrcIcon = src.Icon;
-              const isGeneric = reward.coupon_type === 'generic';
-              const availText = isGeneric ? 'Unlimited' : `${reward.available_vouchers} avail.`;
+          <table className="w-full min-w-[1100px] border-collapse">
+            {/* Column headers */}
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-gray-100 border-b border-gray-200">
+                <th className="w-10 px-3 py-2.5">
+                  {/* bulk-select-all */}
+                  <button
+                    onClick={() => filtered.forEach(r => { if (!selectedSet.has(r.id)) onToggle(r); })}
+                    className="w-4 h-4 rounded border-2 border-gray-400 hover:border-purple-500 transition-colors block mx-auto"
+                    title="Select all shown"
+                  />
+                </th>
+                <th className="w-10 px-2 py-2.5" />
+                <th className="px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Reward</th>
+                <th className="w-28 px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Source</th>
+                <th className="w-32 px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Reward Type</th>
+                <th className="w-24 px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Discount</th>
+                <th className="w-28 px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Min Order</th>
+                <th className="w-28 px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Expiry</th>
+                <th className="w-24 px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Available</th>
+                <th className="w-24 px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Reward ID</th>
+                <th className="w-14 px-3 py-2.5 text-center text-[11px] font-bold text-gray-500 uppercase tracking-wider">T&C</th>
+                <th className="w-14 px-3 py-2.5 text-center text-[11px] font-bold text-gray-500 uppercase tracking-wider">Steps</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {filtered.map((reward, idx) => {
+                const isSelected = selectedSet.has(reward.id);
+                const expiry = formatExpiry(reward.expiry_date);
+                const src = getSourceConfig(reward.offer_type);
+                const SrcIcon = src.Icon;
+                const isGeneric = reward.coupon_type === 'generic';
+                const discountLabel = formatDiscount(reward);
+                const typeLabel = formatRewardType(reward.reward_type);
+                const minOrder = reward.min_purchase_amount && reward.min_purchase_amount > 0
+                  ? `₹${reward.min_purchase_amount}`
+                  : '—';
 
-              return (
-                <li
-                  key={reward.id}
-                  onClick={() => onToggle(reward)}
-                  className={`flex items-start gap-3 px-4 py-3.5 cursor-pointer transition-colors ${
-                    isSelected ? 'bg-purple-50 hover:bg-purple-100' : expired ? 'hover:bg-gray-50 opacity-60' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  {/* Checkbox */}
-                  <div className="mt-0.5 flex-shrink-0">
-                    <div
-                      className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                        isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
-                      }`}
-                    >
-                      {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
-                    </div>
-                  </div>
+                return (
+                  <tr
+                    key={reward.id}
+                    onClick={() => onToggle(reward)}
+                    className={`cursor-pointer transition-colors group ${
+                      isSelected
+                        ? 'bg-purple-50 hover:bg-purple-100'
+                        : idx % 2 === 0
+                          ? 'bg-white hover:bg-gray-50'
+                          : 'bg-gray-50/60 hover:bg-gray-100'
+                    } ${expiry.expired ? 'opacity-55' : ''}`}
+                  >
+                    {/* Checkbox */}
+                    <td className="px-3 py-3" onClick={e => { e.stopPropagation(); onToggle(reward); }}>
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center mx-auto transition-colors ${
+                        isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300 group-hover:border-purple-400'
+                      }`}>
+                        {isSelected && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                      </div>
+                    </td>
 
-                  {/* Thumbnail */}
-                  {reward.image_url ? (
-                    <img
-                      src={reward.image_url}
-                      alt=""
-                      className="w-11 h-11 rounded-lg object-cover flex-shrink-0 border border-gray-100 mt-0.5"
-                    />
-                  ) : (
-                    <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Gift className="w-5 h-5 text-gray-400" />
-                    </div>
-                  )}
+                    {/* Thumbnail */}
+                    <td className="px-2 py-3">
+                      {reward.image_url ? (
+                        <img src={reward.image_url} alt="" className="w-8 h-8 rounded-md object-cover border border-gray-100" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                          <Gift className="w-4 h-4 text-gray-400" />
+                        </div>
+                      )}
+                    </td>
 
-                  {/* Info block */}
-                  <div className="flex-1 min-w-0">
-                    {/* Title + source badge */}
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-gray-900 truncate leading-snug">{reward.title}</p>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        {/* Source badge */}
-                        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${src.color}`}>
-                          <SrcIcon className="w-2.5 h-2.5" />
-                          {src.label}
-                        </span>
-                        {/* Coupon type badge */}
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          isGeneric ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+                    {/* Title + Brand + coupon badge */}
+                    <td className="px-3 py-3 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate leading-snug">{reward.title}</p>
+                          <p className="text-xs text-gray-400 truncate">{reward.brand?.name ?? 'No Brand'}</p>
+                        </div>
+                        <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                          isGeneric
+                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            : 'bg-green-50 text-green-700 border-green-200'
                         }`}>
                           {isGeneric ? 'Generic' : 'Unique'}
                         </span>
                       </div>
-                    </div>
+                    </td>
 
-                    {/* Brand + discount value */}
-                    <p className="text-xs text-gray-500 mt-0.5 truncate">
-                      {reward.brand?.name ?? 'No Brand'}
-                      {discountLabel && <span className="ml-1.5 font-semibold text-gray-700">· {discountLabel}</span>}
-                    </p>
+                    {/* Source */}
+                    <td className="px-3 py-3">
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border ${src.color}`}>
+                        <SrcIcon className="w-3 h-3" />
+                        {src.label}
+                      </span>
+                    </td>
 
-                    {/* Expiry + availability */}
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className={`text-[10px] font-medium ${expired ? 'text-red-500' : 'text-gray-400'}`}>
-                        {expired ? '⚠ Expired · ' : ''}
-                        {expiryText}
+                    {/* Reward Type */}
+                    <td className="px-3 py-3">
+                      <span className="text-xs text-gray-700 font-medium">{typeLabel}</span>
+                    </td>
+
+                    {/* Discount */}
+                    <td className="px-3 py-3">
+                      <span className="text-xs font-bold text-gray-900">{discountLabel}</span>
+                    </td>
+
+                    {/* Min Order */}
+                    <td className="px-3 py-3">
+                      <span className="text-xs text-gray-600">{minOrder}</span>
+                    </td>
+
+                    {/* Expiry */}
+                    <td className="px-3 py-3">
+                      <span className={`text-xs font-medium ${expiry.expired ? 'text-red-500' : expiry.text === 'No expiry' ? 'text-gray-400' : 'text-gray-700'}`}>
+                        {expiry.expired && '⚠ '}
+                        {expiry.text}
                       </span>
-                      <span className="text-[10px] text-gray-300">·</span>
-                      <span className={`text-[10px] font-semibold ${isGeneric ? 'text-purple-600' : 'text-gray-500'}`}>
-                        {availText}
+                    </td>
+
+                    {/* Availability */}
+                    <td className="px-3 py-3">
+                      <span className={`text-xs font-semibold ${isGeneric ? 'text-purple-600' : 'text-gray-700'}`}>
+                        {isGeneric ? 'Unlimited' : `${reward.available_vouchers}`}
                       </span>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                    </td>
+
+                    {/* Reward ID */}
+                    <td className="px-3 py-3">
+                      <span
+                        className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded select-all"
+                        title={reward.id}
+                      >
+                        {shortId(reward.id)}
+                      </span>
+                    </td>
+
+                    {/* T&C tooltip */}
+                    <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
+                      <Tooltip
+                        content={reward.terms_conditions}
+                        icon={FileText}
+                        label="Terms & Conditions"
+                        color={reward.terms_conditions
+                          ? 'border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100'
+                          : 'border-gray-200 bg-gray-50 text-gray-400'}
+                      />
+                    </td>
+
+                    {/* Steps tooltip */}
+                    <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
+                      <Tooltip
+                        content={reward.steps_to_redeem}
+                        icon={BookOpen}
+                        label="Steps to Redeem"
+                        color={reward.steps_to_redeem
+                          ? 'border-green-200 bg-green-50 text-green-600 hover:bg-green-100'
+                          : 'border-gray-200 bg-gray-50 text-gray-400'}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 
-      {/* ── Sticky selected panel ── */}
-      {selected.length > 0 && (
-        <div className="flex-shrink-0 border-t border-gray-200 bg-white shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
-          <button
-            onClick={() => setShowSelectedPanel(v => !v)}
-            className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            <span className="flex items-center gap-2">
-              <span className="w-5 h-5 bg-purple-600 text-white text-xs rounded-full flex items-center justify-center font-bold">
+      {/* ── Status bar ── */}
+      <div className="flex-shrink-0 bg-white border-t border-gray-200 px-5 py-2 flex items-center justify-between">
+        <p className="text-xs text-gray-500">
+          Showing <span className="font-semibold text-gray-800">{filtered.length}</span> of{' '}
+          <span className="font-semibold text-gray-800">{rewards.length}</span> rewards
+          {activeFilterCount > 0 && (
+            <button onClick={clearAllFilters} className="ml-2 text-purple-600 hover:underline">Clear filters</button>
+          )}
+        </p>
+
+        {/* Selected chips panel */}
+        {selected.length > 0 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSelectedPanel(v => !v)}
+              className="flex items-center gap-1.5 text-sm font-semibold text-gray-700"
+            >
+              <span className="w-5 h-5 bg-purple-600 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
                 {selected.length}
               </span>
-              Selected rewards
-            </span>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  selected.forEach(r => onToggle(r));
-                }}
-                className="text-xs text-red-500 hover:text-red-700 font-medium"
-              >
-                Clear all
-              </button>
-              {showSelectedPanel ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
-            </div>
-          </button>
+              {showSelectedPanel ? 'Hide selected' : 'Show selected'}
+              {showSelectedPanel ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronUp className="w-3.5 h-3.5 text-gray-400" />}
+            </button>
+            <button
+              onClick={() => selected.forEach(r => onToggle(r))}
+              className="text-xs text-red-500 hover:text-red-700 font-medium ml-2"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+      </div>
 
-          {showSelectedPanel && (
-            <div className="px-4 pb-3 flex flex-wrap gap-2 max-h-28 overflow-y-auto">
-              {selected.map(r => (
-                <span
-                  key={r.id}
-                  className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-100 text-purple-800 text-xs rounded-full max-w-[200px]"
-                >
-                  <span className="truncate">{r.title}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); onToggle(r); }}
-                    className="flex-shrink-0 hover:text-purple-900"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
+      {/* Selected chips expanded */}
+      {selected.length > 0 && showSelectedPanel && (
+        <div className="flex-shrink-0 bg-purple-50 border-t border-purple-100 px-5 py-2.5 flex flex-wrap gap-2 max-h-24 overflow-y-auto">
+          {selected.map(r => (
+            <span key={r.id} className="flex items-center gap-1.5 px-2.5 py-1 bg-white text-purple-800 text-xs rounded-full border border-purple-200 shadow-sm max-w-[220px]">
+              <span className="truncate">{r.title}</span>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); onToggle(r); }}
+                className="flex-shrink-0 text-purple-400 hover:text-purple-700"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
         </div>
       )}
     </div>
