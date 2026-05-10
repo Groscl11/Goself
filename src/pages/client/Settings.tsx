@@ -754,14 +754,28 @@ export function Settings() {
                     /* Verification form — show if not submitted or rejected */
                     (!brandAssoc || brandAssoc.status === 'rejected') && (
                       <div className="space-y-5">
+                        {/* Directory name callout */}
+                        <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4">
+                          <Award className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                          <div className="text-sm">
+                            <p className="font-medium text-blue-800">
+                              Your brand will appear in the Goself directory as:&nbsp;
+                              <span className="font-bold">{formData.name || '—'}</span>
+                            </p>
+                            <p className="text-blue-600 text-xs mt-0.5">
+                              The Registered Name below is only used for legal identity verification — it is never shown publicly.
+                            </p>
+                          </div>
+                        </div>
+
                         {/* Entity details */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                           <div className="sm:col-span-2">
                             <FieldGroup label="Registered Name" required error={verErrors.registered_name}
-                              hint="Legal entity name on your GST / MCA registration — may differ from your organization display name">
+                              hint="Legal entity name on your GST / MCA registration — may differ from your display name">
                               <input type="text" value={verForm.registered_name}
                                 onChange={e => setVer({ registered_name: e.target.value })}
-                                className={inputCls} placeholder="e.g. DOC Online Surgicals Pvt Ltd"/>
+                                className={inputCls} placeholder="e.g. Seaturtle Private Limited"/>
                             </FieldGroup>
                           </div>
                         </div>

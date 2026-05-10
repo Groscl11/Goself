@@ -117,7 +117,8 @@ export function AdminBrandAssociations() {
     setReviewing(row);
     setAction(act);
     setSelectedBrandId(row.brand_id ?? '');
-    setBrandSearch('');
+    // Pre-fill search with trading name so admin immediately sees the matching brand
+    setBrandSearch(row.client?.name ?? '');
     setRejectionReason('');
     setDrawerError(null);
   }
@@ -134,20 +135,27 @@ export function AdminBrandAssociations() {
 
     let brandId = selectedBrandId || null;
 
-    // If no existing brand chosen, create a new brand from submission data
+    // If no existing brand chosen, create a new brand.
+    // brands.name = trading/display name (clients.name e.g. "Zouk")
+    // The legal entity name (e.g. "Seaturtle Private Limited") is preserved in
+    // client_brand_associations.submitted_name as the verification audit trail.
     if (!brandId) {
+      const tradingName = reviewing.client?.name ?? reviewing.submitted_name;
       const { data: newBrand, error: bErr } = await supabase
         .from('brands')
         .insert({
-          name:        reviewing.submitted_name,
+          name:        tradingName,
           website_url: reviewing.submitted_url || null,
+          description: reviewing.submitted_name !== tradingName
+            ? `Legal entity: ${reviewing.submitted_name}`
+            : null,
           status:      'approved',
         })
         .select('id')
         .single();
       if (bErr) { setDrawerError(bErr.message); return; }
       brandId = newBrand!.id;
-      setBrands(prev => [...prev, { id: brandId!, name: reviewing.submitted_name, logo_url: null, status: 'approved' }]);
+      setBrands(prev => [...prev, { id: brandId!, name: tradingName, logo_url: null, status: 'approved' }]);
     } else {
       // Ensure chosen brand is approved
       await supabase.from('brands').update({ status: 'approved' }).eq('id', brandId);
@@ -264,8 +272,8 @@ export function AdminBrandAssociations() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50">
-                    <th className="text-left px-4 py-3 font-medium text-gray-500">Client</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-500">Submitted Name</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500">Trading Name</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500">Legal Entity</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-500">Website</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-500">Proof Notes</th>
                     <th className="text-center px-4 py-3 font-medium text-gray-500">Status</th>
@@ -390,11 +398,11 @@ export function AdminBrandAssociations() {
               {/* Submission details */}
               <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Client</span>
-                  <span className="font-medium text-gray-900">{reviewing.client?.name}</span>
+                  <span className="text-gray-500">Trading / Brand name</span>
+                  <span className="font-semibold text-gray-900">{reviewing.client?.name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Submitted name</span>
+                  <span className="text-gray-500">Legal entity name</span>
                   <span className="font-medium text-gray-900">{reviewing.submitted_name}</span>
                 </div>
                 {reviewing.submitted_url && (
