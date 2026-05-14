@@ -243,6 +243,78 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
 
       if (editOffer) {
         // ── UPDATE existing offer ──────────────────────────────────────────
+        const mktStatus = (editOffer as any).marketplace_status as string | undefined;
+
+        if (editOffer.offer_type === 'marketplace_offer' && mktStatus === 'approved') {
+          // Approved marketplace offer: do NOT touch the live row.
+          // Build diff of only changed fields and submit as an edit request.
+          const editableKeys = [
+            'title', 'description', 'image_url', 'offer_category', 'reward_type',
+            'discount_value', 'max_discount_value', 'min_purchase_amount',
+            'coupon_type', 'generic_coupon_code', 'valid_until',
+            'redemption_link', 'terms_conditions', 'steps_to_redeem',
+          ] as const;
+          const changedFields: Record<string, any> = {};
+          for (const key of editableKeys) {
+            const newVal = (rewardPayload as any)[key] ?? null;
+            const oldVal = (editOffer as any)[key] ?? null;
+            const normalise = (v: any) => (v === '' || v === undefined ? null : v);
+            if (normalise(newVal) !== normalise(oldVal)) {
+              changedFields[key] = newVal;
+            }
+          }
+          if (Object.keys(changedFields).length === 0) {
+            setError('No changes detected.');
+            setLoading(false);
+            return;
+          }
+          // Upsert: if there's already a pending request for this offer+client, replace it
+          const { data: existing } = await supabase
+            .from('rewards_edit_requests')
+            .select('id')
+            .eq('reward_id', editOffer.id)
+            .eq('requesting_client_id', clientId)
+            .eq('status', 'pending')
+            .maybeSingle();
+
+          if (existing) {
+            await supabase
+              .from('rewards_edit_requests')
+              .update({ proposed_changes: changedFields, updated_at: new Date().toISOString() })
+              .eq('id', existing.id);
+          } else {
+            await supabase.from('rewards_edit_requests').insert({
+              reward_id: editOffer.id,
+              requesting_client_id: clientId,
+              proposed_changes: changedFields,
+              status: 'pending',
+            });
+          }
+          setSuccess('Edit request submitted for admin review. The live offer is unchanged until approved.');
+          setTimeout(() => { onCreated(); handleClose(); }, 2000);
+          setLoading(false);
+          return;
+        }
+
+        if (editOffer.offer_type === 'marketplace_offer' && (mktStatus === 'pending' || mktStatus === 'rejected')) {
+          // Pending/rejected: direct update + reset to pending for re-review
+          const { error: updErr } = await supabase
+            .from('rewards')
+            .update({
+              ...rewardPayload,
+              marketplace_status: 'pending',
+              marketplace_rejection_reason: null,
+              marketplace_submitted_at: new Date().toISOString(),
+            })
+            .eq('id', editOffer.id);
+          if (updErr) throw updErr;
+          setSuccess('Changes saved and resubmitted for admin review.');
+          setTimeout(() => { onCreated(); handleClose(); }, 1800);
+          setLoading(false);
+          return;
+        }
+
+        // Non-marketplace offer: normal update
         const { error: updErr } = await supabase
           .from('rewards')
           .update(rewardPayload)
@@ -256,14 +328,20 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
 
       // ── CREATE new offer ───────────────────────────────────────────────
       // 1. Insert reward row
+      const isMarketplace = mode === 'marketplace';
       const { data: reward, error: rwErr } = await supabase
         .from('rewards')
         .insert({
           ...rewardPayload,
-          status: 'active',
+          // Marketplace offers start as draft+pending until admin approves
+          status: isMarketplace ? 'draft' : 'active',
+          ...(isMarketplace ? {
+            marketplace_status: 'pending',
+            marketplace_submitted_at: new Date().toISOString(),
+          } : {}),
           owner_client_id: clientId,
           brand_id: brandId || null,
-          redeems_at_shop_domain: mode === 'marketplace' ? null : shopDomain,
+          redeems_at_shop_domain: isMarketplace ? null : shopDomain,
         })
         .select('id')
         .single();
@@ -326,7 +404,9 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         is_active: true,
       });
 
-      setSuccess('Offer created. Set a points cost in the Distribution & Points tab.');
+      setSuccess(isMarketplace
+        ? 'Submitted for admin review. Your offer will appear on the marketplace once approved.'
+        : 'Offer created. Set a points cost in the Distribution & Points tab.');
       setTimeout(() => { onCreated(); handleClose(); }, 1800);
     } catch (e: any) {
       setError(e.message ?? 'Something went wrong');

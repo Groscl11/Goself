@@ -1,4 +1,4 @@
-import { LayoutDashboard, Building2, Award, Gift, Users, Settings, BarChart3, Ticket, Zap, ShoppingCart, Store, Layers, RefreshCw, GitBranch, Globe, TrendingUp, CreditCard, BadgeCheck } from 'lucide-react';
+import { LayoutDashboard, Building2, Award, Gift, Users, Settings, BarChart3, Ticket, Zap, ShoppingCart, Store, Layers, RefreshCw, GitBranch, Globe, TrendingUp, CreditCard, BadgeCheck, ShieldCheck } from 'lucide-react';
 
 export const adminMenuItems = [
   {
@@ -30,6 +30,11 @@ export const adminMenuItems = [
     label: 'Rewards',
     path: '/admin/rewards',
     icon: <Gift className="w-5 h-5" />,
+  },
+  {
+    label: 'Marketplace Approvals',
+    path: '/admin/marketplace-approvals',
+    icon: <ShieldCheck className="w-5 h-5" />,
   },
   {
     label: 'Reward Allocations',

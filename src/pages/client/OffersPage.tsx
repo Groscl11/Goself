@@ -204,27 +204,14 @@ export default function OffersPage() {
   const fetchSubmissions = useCallback(async () => {
     if (!clientId) return;
     setSubmissionsLoading(true);
-    // Fetch own marketplace submissions: either flag set OR offer_type matches
-    const { data: byType, error: e1 } = await supabase
+    const { data, error } = await supabase
       .from('rewards')
-      .select('*, offer_distributions(id, distributing_client_id, current_issuances)')
+      .select('*, offer_distributions(id, distributing_client_id, current_issuances), marketplace_status, marketplace_rejection_reason, marketplace_submitted_at')
       .eq('owner_client_id', clientId)
       .eq('offer_type', 'marketplace_offer')
       .order('created_at', { ascending: false });
-    if (e1) console.error('fetchSubmissions byType error:', e1);
-    // byFlag query now uses offer_type since is_marketplace column does not exist
-    const { data: byFlag, error: e2 } = await supabase
-      .from('rewards')
-      .select('*, offer_distributions(id, distributing_client_id, current_issuances)')
-      .eq('owner_client_id', clientId)
-      .eq('offer_type', 'marketplace_offer')
-      .order('created_at', { ascending: false });
-    if (e2) console.error('fetchSubmissions byFlag error:', e2);
-    // Merge and deduplicate by id — byType and byFlag now return same rows, dedupe handles it
-    const all = [...(byType ?? []), ...(byFlag ?? [])];
-    const seen = new Set<string>();
-    const merged = all.filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; });
-    setSubmissions(merged);
+    if (error) console.error('fetchSubmissions error:', error);
+    setSubmissions(data ?? []);
     setSubmissionsLoading(false);
   }, [clientId]);
  
@@ -296,6 +283,8 @@ export default function OffersPage() {
   today.setHours(0, 0, 0, 0);
 
   const mktFiltered = mktOffers.filter(o => {
+    // Only show admin-approved offers on browse tab (belt-and-suspenders: RLS handles DB side)
+    if ((o as any).marketplace_status && (o as any).marketplace_status !== 'approved') return false;
     // Hide expired offers from browse list
     if (o.valid_until && new Date(o.valid_until) < today) return false;
     // Hide out-of-stock unique offers when toggle is on
@@ -714,11 +703,13 @@ export default function OffersPage() {
                             offer={offer}
                             distribution={null}
                             showSource
-                            sourceLabel={<span className="text-xs text-purple-600 font-medium">Listed on marketplace</span>}
+                            sourceLabel={<MarketplaceStatusBadge offer={offer} />}
                             actions={
                               <>
                                 <Btn onClick={() => setCodesDrawer(offer)}>Manage Codes</Btn>
-                                <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>Edit</Btn>
+                                <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>
+                                  {(offer as any).marketplace_status === 'approved' ? 'Request Edit' : 'Edit & Resubmit'}
+                                </Btn>
                                 <MoreMenu offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} />
                               </>
                             }
@@ -906,6 +897,26 @@ export default function OffersPage() {
   );
 }
  
+// ─── Marketplace status badge ─────────────────────────────────────────────────
+function MarketplaceStatusBadge({ offer }: { offer: Offer }) {
+  const status = (offer as any).marketplace_status as string | undefined;
+  const reason = (offer as any).marketplace_rejection_reason as string | undefined;
+  if (!status || status === 'approved') {
+    return <span className="text-xs text-purple-600 font-medium">✓ Live on marketplace</span>;
+  }
+  if (status === 'pending') {
+    return <span className="text-xs text-amber-600 font-medium">⏳ Pending admin review</span>;
+  }
+  if (status === 'rejected') {
+    return (
+      <span className="text-xs text-red-600 font-medium" title={reason ?? ''}>
+        ✕ Rejected{reason ? `: ${reason.slice(0, 60)}${reason.length > 60 ? '…' : ''}` : ''}
+      </span>
+    );
+  }
+  return null;
+}
+
 // ─── Filter row ───────────────────────────────────────────────────────────────
 function FilterRow({ filters, active, onChange }: {
   filters: { id: string; label: string }[];
@@ -1005,9 +1016,22 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
  
   async function toggleMarketplace() {
     const nowMarketplace = offer.offer_type !== 'marketplace_offer';
-    await supabase.from('rewards').update({
-      offer_type: nowMarketplace ? 'marketplace_offer' : 'store_discount',
-    }).eq('id', offer.id);
+    if (nowMarketplace) {
+      // Submit path: set pending, keep status = draft until admin approves
+      await supabase.from('rewards').update({
+        offer_type: 'marketplace_offer',
+        marketplace_status: 'pending',
+        marketplace_submitted_at: new Date().toISOString(),
+        status: 'draft',
+      }).eq('id', offer.id);
+    } else {
+      // Unlist path: clear marketplace columns
+      await supabase.from('rewards').update({
+        offer_type: 'store_discount',
+        marketplace_status: null,
+        marketplace_rejection_reason: null,
+      }).eq('id', offer.id);
+    }
     setOpen(false);
     onRefresh();
   }

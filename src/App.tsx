@@ -86,6 +86,7 @@ import { ReferFriend } from './pages/member/ReferFriend';
 import { StoreInstallations } from './pages/admin/StoreInstallations';
 import { AdminBrandRedemptions } from './pages/admin/AdminBrandRedemptions';
 import { AdminBrandAssociations } from './pages/admin/AdminBrandAssociations';
+import { AdminMarketplaceApprovals } from './pages/admin/AdminMarketplaceApprovals';
 
 const OffersPage = lazy(() => import('./pages/client/OffersPage'));
 const LoyaltyProgramPage = lazy(() => import('./pages/client/LoyaltyProgramPage'));
@@ -169,6 +170,7 @@ function App() {
           <Route path="/admin/global-users" element={<RoleBasedRoute allowedRoles={['admin']}><GlobalUsers /></RoleBasedRoute>} />
           <Route path="/admin/referral-analytics" element={<RoleBasedRoute allowedRoles={['admin']}><ReferralAnalytics /></RoleBasedRoute>} />
           <Route path="/admin/billing" element={<RoleBasedRoute allowedRoles={['admin']}><AdminBilling /></RoleBasedRoute>} />
+          <Route path="/admin/marketplace-approvals" element={<RoleBasedRoute allowedRoles={['admin']}><AdminMarketplaceApprovals /></RoleBasedRoute>} />
           <Route path="/client/onboarding" element={<Navigate to="/client" replace />} />
           <Route path="/client" element={<RoleBasedRoute allowedRoles={['client']}><ClientDashboard /></RoleBasedRoute>} />
           <Route path="/client/programs" element={<RoleBasedRoute allowedRoles={['client']}><MembershipManagement /></RoleBasedRoute>} />
