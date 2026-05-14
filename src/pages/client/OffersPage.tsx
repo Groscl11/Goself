@@ -89,6 +89,8 @@ export default function OffersPage() {
   const MKT_PAGE_SIZE = 15;
   const [submissions, setSubmissions] = useState<Offer[]>([]);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
+  // Map of offer_id → pending edit request id (for approved offers with an in-flight edit)
+  const [pendingEditMap, setPendingEditMap] = useState<Record<string, string>>({});
  
   // Distribution state
   const [distributions, setDistributions] = useState<OfferDistribution[]>([]);
@@ -204,14 +206,25 @@ export default function OffersPage() {
   const fetchSubmissions = useCallback(async () => {
     if (!clientId) return;
     setSubmissionsLoading(true);
-    const { data, error } = await supabase
-      .from('rewards')
-      .select('*, offer_distributions(id, distributing_client_id, current_issuances), marketplace_status, marketplace_rejection_reason, marketplace_submitted_at')
-      .eq('owner_client_id', clientId)
-      .eq('offer_type', 'marketplace_offer')
-      .order('created_at', { ascending: false });
+    const [{ data, error }, { data: editReqs }] = await Promise.all([
+      supabase
+        .from('rewards')
+        .select('*, offer_distributions(id, distributing_client_id, current_issuances), marketplace_status, marketplace_rejection_reason, marketplace_submitted_at')
+        .eq('owner_client_id', clientId)
+        .eq('offer_type', 'marketplace_offer')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('rewards_edit_requests')
+        .select('id, reward_id')
+        .eq('requesting_client_id', clientId)
+        .eq('status', 'pending'),
+    ]);
     if (error) console.error('fetchSubmissions error:', error);
     setSubmissions(data ?? []);
+    // Build a lookup: offer_id → pending edit request id
+    const map: Record<string, string> = {};
+    for (const req of editReqs ?? []) map[req.reward_id] = req.id;
+    setPendingEditMap(map);
     setSubmissionsLoading(false);
   }, [clientId]);
  
@@ -697,24 +710,31 @@ export default function OffersPage() {
                           description="Submit an offer to make it available for other GoSelf clients to adopt for their members."
                           action={<Btn size="md" onClick={() => { setNewOfferMode('marketplace'); setNewOfferOpen(true); }}>+ Submit first offer</Btn>}
                         />
-                      : submissions.map(offer => (
-                          <OfferCard
-                            key={offer.id}
-                            offer={offer}
-                            distribution={null}
-                            showSource
-                            sourceLabel={<MarketplaceStatusBadge offer={offer} />}
-                            actions={
-                              <>
-                                <Btn onClick={() => setCodesDrawer(offer)}>Manage Codes</Btn>
-                                <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>
-                                  {(offer as any).marketplace_status === 'approved' ? 'Request Edit' : 'Edit & Resubmit'}
-                                </Btn>
-                                <MoreMenu offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} />
-                              </>
-                            }
-                          />
-                        ))}
+                      : submissions.map(offer => {
+                          const hasPendingEdit = !!pendingEditMap[offer.id];
+                          return (
+                            <OfferCard
+                              key={offer.id}
+                              offer={offer}
+                              distribution={null}
+                              showSource
+                              sourceLabel={<MarketplaceStatusBadge offer={offer} hasPendingEdit={hasPendingEdit} />}
+                              actions={
+                                <>
+                                  <Btn onClick={() => setCodesDrawer(offer)}>Manage Codes</Btn>
+                                  <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>
+                                    {hasPendingEdit
+                                      ? 'Update Edit Request'
+                                      : (offer as any).marketplace_status === 'approved'
+                                        ? 'Request Edit'
+                                        : 'Edit & Resubmit'}
+                                  </Btn>
+                                  <MoreMenu offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} />
+                                </>
+                              }
+                            />
+                          );
+                        })}
                 </div>
               </div>
             )}
@@ -898,23 +918,37 @@ export default function OffersPage() {
 }
  
 // ─── Marketplace status badge ─────────────────────────────────────────────────
-function MarketplaceStatusBadge({ offer }: { offer: Offer }) {
+function MarketplaceStatusBadge({ offer, hasPendingEdit = false }: { offer: Offer; hasPendingEdit?: boolean }) {
   const status = (offer as any).marketplace_status as string | undefined;
   const reason = (offer as any).marketplace_rejection_reason as string | undefined;
+
+  let mainBadge: React.ReactNode = null;
   if (!status || status === 'approved') {
-    return <span className="text-xs text-purple-600 font-medium">✓ Live on marketplace</span>;
-  }
-  if (status === 'pending') {
-    return <span className="text-xs text-amber-600 font-medium">⏳ Pending admin review</span>;
-  }
-  if (status === 'rejected') {
-    return (
+    mainBadge = <span className="text-xs text-purple-600 font-medium">✓ Live on marketplace</span>;
+  } else if (status === 'pending') {
+    mainBadge = <span className="text-xs text-amber-600 font-medium">⏳ Pending admin review</span>;
+  } else if (status === 'rejected') {
+    mainBadge = (
       <span className="text-xs text-red-600 font-medium" title={reason ?? ''}>
         ✕ Rejected{reason ? `: ${reason.slice(0, 60)}${reason.length > 60 ? '…' : ''}` : ''}
       </span>
     );
   }
-  return null;
+
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      {mainBadge}
+      {hasPendingEdit && (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-300">
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Edit pending review
+        </span>
+      )}
+    </span>
+  );
 }
 
 // ─── Filter row ───────────────────────────────────────────────────────────────
