@@ -309,6 +309,19 @@ Deno.serve(async (req: Request) => {
       .order('created_at', { ascending: false })
       .limit(10);
 
+    // Fetch referral earning rule to return the Shopify discount code for the referral link
+    let referralFriendDiscountCode: string | null = null;
+    if (program?.id) {
+      const { data: referralRule } = await supabase
+        .from('loyalty_earning_rules')
+        .select('shopify_discount_code')
+        .eq('loyalty_program_id', program.id)
+        .eq('rule_type', 'referral')
+        .eq('is_active', true)
+        .maybeSingle();
+      referralFriendDiscountCode = referralRule?.shopify_discount_code || null;
+    }
+
     // Fetch all tiers for this program to build tier_thresholds map for the widget
     const TIER_KEYS = ['bronze', 'silver', 'gold', 'platinum'];
     let tierThresholds: Record<string, number> & { names?: Record<string, string> } | null = null;
@@ -359,6 +372,7 @@ Deno.serve(async (req: Request) => {
         member_user_id: memberUserIdToUse,
         client_id: resolvedClientId || null,
         referral_code: memberReferralCode,
+        referral_friend_discount_code: referralFriendDiscountCode,
         was_self_referral: wasSelfReferral,
         points_balance: status.points_balance,
         lifetime_points_earned: status.lifetime_points_earned,
