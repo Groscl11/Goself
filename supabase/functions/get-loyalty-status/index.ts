@@ -18,25 +18,43 @@ Deno.serve(async (req: Request) => {
     // Support both GET (query params) and POST (body) requests
     let memberUserId: string | null = null;
     let email: string | null = null;
+    let phone: string | null = null;
     let shopDomain: string | null = null;
     let clientId: string | null = null;
+    let shopifyOrderId: string | null = null;
 
     if (req.method === 'GET') {
       const url = new URL(req.url);
       memberUserId = url.searchParams.get('member_user_id');
       email = url.searchParams.get('email');
+      phone = url.searchParams.get('phone');
       shopDomain = url.searchParams.get('shop_domain');
       clientId = url.searchParams.get('client_id');
+      shopifyOrderId = url.searchParams.get('shopify_order_id');
     } else if (req.method === 'POST') {
       const body = await req.json();
       memberUserId = body.member_user_id || null;
-      email = body.email || body.customer_email || null; // Support both 'email' and 'customer_email'
+      email = body.email || body.customer_email || null;
+      phone = body.phone || null;
       shopDomain = body.shop_domain || null;
       clientId = body.client_id || null;
+      shopifyOrderId = body.shopify_order_id || null;
+    }
+
+    // If no email/member but we have a shopify_order_id, resolve member via points transaction
+    if (!memberUserId && !email && !phone && shopifyOrderId) {
+      const { data: txn } = await supabase
+        .from('loyalty_points_transactions')
+        .select('member_user_id')
+        .eq('reference_id', shopifyOrderId)
+        .eq('transaction_type', 'earned')
+        .limit(1)
+        .maybeSingle();
+      if (txn?.member_user_id) memberUserId = txn.member_user_id;
     }
 
     // If no member identifier but shop_domain is provided, return program/tier config for guests
-    if (!memberUserId && !email) {
+    if (!memberUserId && !email && !phone) {
       if (!shopDomain) {
         return new Response(
           JSON.stringify({ error: 'Either member_user_id or email (or customer_email) is required' }),
@@ -75,9 +93,13 @@ Deno.serve(async (req: Request) => {
       if (guestProgram?.id) {
         const { data: guestTiers } = await supabase
           .from('loyalty_tiers')
-          .select('tier_name, tier_level, min_lifetime_points')
+          .select('tier_name, tier_level, min_lifetime_points, is_default, points_earn_rate, points_earn_divisor')
           .eq('loyalty_program_id', guestProgram.id)
           .order('tier_level', { ascending: true });
+
+        // Default earn rate: prefer tier marked is_default, else lowest tier level
+        let defaultEarnRate = 1;
+        let defaultEarnDivisor = 1;
 
         if (guestTiers && guestTiers.length > 0) {
           const thresholds: Record<string, number> = {};
@@ -88,12 +110,20 @@ Deno.serve(async (req: Request) => {
             names[key] = t.tier_name;
           });
           guestTierThresholds = { ...thresholds, names };
+
+          const defTier = (guestTiers as any[]).find((t) => t.is_default) || guestTiers[0];
+          if (defTier) {
+            defaultEarnRate    = Number(defTier.points_earn_rate)    || 1;
+            defaultEarnDivisor = Number(defTier.points_earn_divisor) || 1;
+          }
         }
       }
 
       return new Response(
         JSON.stringify({
           guest: true,
+          default_earn_rate: defaultEarnRate,
+          default_earn_divisor: defaultEarnDivisor,
           tier_thresholds: guestTierThresholds,
           program: guestProgram ? {
             name: guestProgram.program_name,
@@ -123,13 +153,36 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // If we have email but not member_user_id, look up the member
+    // If we have email or phone but not member_user_id, look up the member
     let memberReferralCode: string | null = null;
-    if (!memberUserIdToUse && email) {
+    if (!memberUserIdToUse && (email || phone)) {
+      // Normalise phone for suffix matching:
+      // usePhone() on Shopify's thank-you page often returns the number WITHOUT a
+      // country-code prefix (e.g. "7878765432" instead of "+917878765432").
+      // We store numbers in E.164 in the DB, so an exact match fails.
+      // Using a LIKE '%digits' query matches regardless of the country-code prefix.
+      const phoneDigits = (phone || '').replace(/\D/g, '');
+      const useSuffix = phoneDigits.length >= 7; // only suffix-match for plausible lengths
+
       let query = supabase
         .from('member_users')
-        .select('*')
-        .eq('email', email);
+        .select('*');
+
+      if (email && phone) {
+        const phonePart = useSuffix
+          ? `phone.eq.${phone},phone.like.%${phoneDigits}`
+          : `phone.eq.${phone}`;
+        query = query.or(`email.eq.${email},${phonePart}`);
+      } else if (email) {
+        query = query.eq('email', email);
+      } else {
+        // Phone only
+        if (useSuffix) {
+          query = query.or(`phone.eq.${phone},phone.like.%${phoneDigits}`);
+        } else {
+          query = query.eq('phone', phone!);
+        }
+      }
 
       if (resolvedClientId) {
         query = query.eq('client_id', resolvedClientId);
@@ -187,9 +240,52 @@ Deno.serve(async (req: Request) => {
 
     const { data: statusRows, error: statusError } = await statusQuery;
 
-    const statusData = statusRows?.[0] || null;
+    let statusData = statusRows?.[0] || null;
 
-    if (statusError || !statusData) {
+    // Auto-enroll: if the member exists in member_users but has no loyalty status yet
+    // (common for phone-only orders where the enrollment webhook hasn't fired yet),
+    // create the status row on-the-fly so the widget renders immediately.
+    if ((statusError || !statusData) && memberUserIdToUse && resolvedClientId) {
+      try {
+        const { data: enrollProgram } = await supabase
+          .from('loyalty_programs')
+          .select('id')
+          .eq('client_id', resolvedClientId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (enrollProgram) {
+          const { data: defaultTier } = await supabase
+            .from('loyalty_tiers')
+            .select('id, tier_level')
+            .eq('loyalty_program_id', enrollProgram.id)
+            .order('tier_level', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          await supabase.from('member_loyalty_status').insert({
+            member_user_id: memberUserIdToUse,
+            loyalty_program_id: enrollProgram.id,
+            current_tier_id: defaultTier?.id ?? null,
+            points_balance: 0,
+            lifetime_points_earned: 0,
+            lifetime_points_redeemed: 0,
+            total_orders: 0,
+            total_spend: 0,
+          }).select('id').single();
+
+          // Re-fetch after enrollment
+          const { data: newRows } = await statusQuery;
+          statusData = newRows?.[0] || null;
+        }
+      } catch (_enrollErr) {
+        // Best-effort — if concurrent insert already created the row, re-fetch below
+        const { data: retryRows } = await statusQuery;
+        statusData = retryRows?.[0] || null;
+      }
+    }
+
+    if (!statusData) {
       return new Response(
         JSON.stringify({ error: 'Member not enrolled in loyalty program' }),
         {
@@ -240,11 +336,30 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Detect self-referral on this order: processReferral inserts a row with
+    // status='self_referral' when a buyer uses their own referral code. The
+    // widget uses this flag to show honest UX instead of a misleading share
+    // banner. Scoped to this member + this order, so future orders aren't
+    // affected by past self-referral attempts.
+    let wasSelfReferral = false;
+    if (shopifyOrderId && memberUserIdToUse && status.loyalty_program_id) {
+      const { data: srRow } = await supabase
+        .from('member_referrals')
+        .select('id')
+        .eq('loyalty_program_id', status.loyalty_program_id)
+        .eq('shopify_order_id', shopifyOrderId)
+        .eq('referred_member_id', memberUserIdToUse)
+        .eq('status', 'self_referral')
+        .maybeSingle();
+      wasSelfReferral = !!srRow;
+    }
+
     return new Response(
       JSON.stringify({
         member_user_id: memberUserIdToUse,
         client_id: resolvedClientId || null,
         referral_code: memberReferralCode,
+        was_self_referral: wasSelfReferral,
         points_balance: status.points_balance,
         lifetime_points_earned: status.lifetime_points_earned,
         lifetime_points_redeemed: status.lifetime_points_redeemed,
