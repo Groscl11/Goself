@@ -326,13 +326,12 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
               {OFFER_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </Field>
-          <Field label="Offer image URL (optional)">
-            <input value={form.image_url} onChange={e => set('image_url', e.target.value)}
-              placeholder="https://cdn.partner.com/offer-banner.jpg"
-              className="input-base" />
-            {form.image_url && (
-              <img src={form.image_url} alt="preview" className="mt-2 h-16 w-auto rounded-lg border border-gray-200 object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            )}
+          <Field label="Offer / Brand image (optional)">
+            <OfferImageUpload
+              value={form.image_url}
+              onChange={url => set('image_url', url)}
+              clientId={clientId}
+            />
           </Field>
           <Field label="Steps to Redeem">
             <textarea value={form.steps_to_redeem} onChange={e => set('steps_to_redeem', e.target.value)}
@@ -498,6 +497,73 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</label>
       {children}
+    </div>
+  );
+}
+
+function OfferImageUpload({ value, onChange, clientId }: { value: string; onChange: (url: string) => void; clientId: string }) {
+  const [uploading, setUploading] = useState(false);
+  const [urlMode, setUrlMode] = useState(!value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFile(file: File) {
+    if (!file.type.startsWith('image/')) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop() ?? 'jpg';
+      const path = `offer-images/${clientId}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from('client-assets').upload(path, file, { upsert: true, contentType: file.type });
+      if (error) throw error;
+      const { data: pub } = supabase.storage.from('client-assets').getPublicUrl(path);
+      onChange(pub.publicUrl);
+      setUrlMode(false);
+    } catch (err: any) {
+      alert('Upload failed: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }
+
+  return (
+    <div className="space-y-2">
+      {value && (
+        <div className="relative inline-block">
+          <img src={value} alt="preview" className="h-20 w-auto rounded-xl border border-gray-200 object-cover"
+            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <button type="button" onClick={() => { onChange(''); setUrlMode(true); }}
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600">✕</button>
+        </div>
+      )}
+      {!value && (
+        <div onDrop={handleDrop} onDragOver={e => e.preventDefault()}
+          className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:border-gray-400 transition-colors cursor-pointer"
+          onClick={() => inputRef.current?.click()}>
+          {uploading ? <div className="text-xs text-gray-500">Uploading…</div> : (
+            <>
+              <div className="text-2xl mb-1">🖼️</div>
+              <div className="text-xs font-medium text-gray-600">Click or drag to upload brand logo</div>
+              <div className="text-xs text-gray-400 mt-0.5">PNG, JPG, WebP · max 2 MB</div>
+            </>
+          )}
+          <input ref={inputRef} type="file" accept="image/*" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => setUrlMode(v => !v)} className="text-xs text-blue-600 hover:underline">
+          {urlMode ? 'Hide URL field' : 'Or paste image URL'}
+        </button>
+      </div>
+      {urlMode && (
+        <input type="url" value={value} onChange={e => onChange(e.target.value)}
+          placeholder="https://example.com/brand-logo.png" className="input-base text-xs" />
+      )}
     </div>
   );
 }
