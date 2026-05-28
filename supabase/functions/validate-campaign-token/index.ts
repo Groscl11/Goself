@@ -57,11 +57,14 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (tokenError || !tokenRow) {
+      console.warn(`[validate] not_found token=${token} err=${tokenError?.message}`);
       return new Response(
         JSON.stringify({ valid: false, reason: "not_found" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log(`[validate] token=${token} claimed=${tokenRow.is_claimed} pre_verified=${(tokenRow as any).is_pre_verified} expires=${tokenRow.expires_at}`);
 
     if (tokenRow.is_claimed) {
       return new Response(
@@ -121,13 +124,52 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── Qualifying-order gate ────────────────────────────────────────────────
+    // Verify this customer has at least one order that genuinely qualified for
+    // this campaign (trigger_result = 'success' in campaign_trigger_logs).
+    // This is the server-side backstop that blocks tokens issued via the
+    // email/phone fallback path when a previous order's success log was
+    // inadvertently matched for a new non-qualifying order.
+    //
+    // SKIPPED for is_pre_verified tokens: those were issued by get-campaign-reward-link
+    // only after it already confirmed a success trigger log exists. Re-checking here
+    // creates a race condition (trigger log may not be committed yet when the user
+    // clicks the banner immediately after checkout).
+    if (!preVerified && (tokenRow.email || tokenRow.phone)) {
+      let qualifyQuery = supabase
+        .from("campaign_trigger_logs")
+        .select("id")
+        .eq("campaign_rule_id", campaign.id)
+        .eq("trigger_result", "success");
+
+      if (tokenRow.email && tokenRow.phone) {
+        qualifyQuery = qualifyQuery.or(
+          `customer_email.eq.${tokenRow.email},customer_phone.eq.${tokenRow.phone}`
+        );
+      } else if (tokenRow.email) {
+        qualifyQuery = qualifyQuery.eq("customer_email", tokenRow.email);
+      } else {
+        qualifyQuery = qualifyQuery.eq("customer_phone", tokenRow.phone);
+      }
+
+      const { data: qualifyingLog } = await qualifyQuery.limit(1).maybeSingle();
+
+      if (!qualifyingLog) {
+        console.warn(`validate-campaign-token: no qualifying order for token ${token} — rejecting`);
+        return new Response(
+          JSON.stringify({ valid: false, reason: "no_qualifying_order" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     const { data: poolRows, error: poolError } = await supabase
       .from("campaign_reward_pools")
       .select(`
         sort_order,
         rewards (
-          id, title, description, value_description, image_url, category, coupon_type,
-          expiry_date, status, available_codes, generic_coupon_code,
+          id, title, description, image_url, offer_category, coupon_type,
+          valid_until, status, available_codes, generic_coupon_code,
           brands ( id, name, logo_url )
         )
       `)
@@ -151,8 +193,8 @@ Deno.serve(async (req: Request) => {
         if (rewardIds.length > 0) {
           const { data: fullRewards } = await supabase
             .from("rewards")
-            .select(`id, title, description, value_description, image_url, category, coupon_type,
-              expiry_date, status, available_codes, generic_coupon_code,
+            .select(`id, title, description, image_url, offer_category, coupon_type,
+              valid_until, status, available_codes, generic_coupon_code,
               brands ( id, name, logo_url )`)
             .in("id", rewardIds);
           if (fullRewards) rawRewards = fullRewards;
@@ -164,16 +206,15 @@ Deno.serve(async (req: Request) => {
     const rewards = rawRewards
       .filter((r: any) => {
         if (!r || r.status !== "active") return false;
-        if (r.expiry_date && new Date(r.expiry_date) <= now) return false;
+        if (r.valid_until && new Date(r.valid_until) <= now) return false;
         return true;
       })
       .map((r: any) => ({
         id: r.id,
         title: r.title,
         description: r.description,
-        value_description: r.value_description,
         image_url: r.image_url,
-        category: r.category,
+        category: r.offer_category,
         coupon_type: r.coupon_type,
         generic_coupon_code: r.generic_coupon_code || null,
         brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,

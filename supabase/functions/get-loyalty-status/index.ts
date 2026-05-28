@@ -90,16 +90,17 @@ Deno.serve(async (req: Request) => {
 
       const TIER_KEYS_GUEST = ['bronze', 'silver', 'gold', 'platinum'];
       let guestTierThresholds: Record<string, number> & { names?: Record<string, string> } | null = null;
+      // Hoisted out of the `if (guestProgram?.id)` block so they remain in scope
+      // for the Response body below — used as the storefront's default earn rate
+      // when no member exists yet.
+      let defaultEarnRate = 1;
+      let defaultEarnDivisor = 1;
       if (guestProgram?.id) {
         const { data: guestTiers } = await supabase
           .from('loyalty_tiers')
           .select('tier_name, tier_level, min_lifetime_points, is_default, points_earn_rate, points_earn_divisor')
           .eq('loyalty_program_id', guestProgram.id)
           .order('tier_level', { ascending: true });
-
-        // Default earn rate: prefer tier marked is_default, else lowest tier level
-        let defaultEarnRate = 1;
-        let defaultEarnDivisor = 1;
 
         if (guestTiers && guestTiers.length > 0) {
           const thresholds: Record<string, number> = {};
@@ -111,6 +112,7 @@ Deno.serve(async (req: Request) => {
           });
           guestTierThresholds = { ...thresholds, names };
 
+          // Default earn rate: prefer tier marked is_default, else lowest tier level
           const defTier = (guestTiers as any[]).find((t) => t.is_default) || guestTiers[0];
           if (defTier) {
             defaultEarnRate    = Number(defTier.points_earn_rate)    || 1;
@@ -119,12 +121,24 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      // Fetch brand name for guest mode too (powers the header storeName)
+      let guestOrgName: string | null = null;
+      if (guestClientId) {
+        const { data: guestClient } = await supabase
+          .from('clients')
+          .select('name')
+          .eq('id', guestClientId)
+          .maybeSingle();
+        guestOrgName = guestClient?.name || null;
+      }
+
       return new Response(
         JSON.stringify({
           guest: true,
           default_earn_rate: defaultEarnRate,
           default_earn_divisor: defaultEarnDivisor,
           tier_thresholds: guestTierThresholds,
+          organization_name: guestOrgName,
           program: guestProgram ? {
             name: guestProgram.program_name,
             points_name: guestProgram.points_name,
@@ -155,6 +169,7 @@ Deno.serve(async (req: Request) => {
 
     // If we have email or phone but not member_user_id, look up the member
     let memberReferralCode: string | null = null;
+    let memberFirstName: string | null = null;
     if (!memberUserIdToUse && (email || phone)) {
       // Normalise phone for suffix matching:
       // usePhone() on Shopify's thank-you page often returns the number WITHOUT a
@@ -208,6 +223,10 @@ Deno.serve(async (req: Request) => {
       // Resolve client_id from member record if not already resolved via shop_domain
       if (!resolvedClientId && memberData.client_id) {
         resolvedClientId = memberData.client_id;
+      }
+      // Capture first name from member record
+      if (memberData.full_name) {
+        memberFirstName = memberData.full_name.trim().split(' ')[0] || null;
       }
       // Don't set referral_code here — member_loyalty_status.referral_code is the source of truth
     }
@@ -301,6 +320,10 @@ Deno.serve(async (req: Request) => {
     const status = statusData;
     const program = status.loyalty_program;
     const tier = status.current_tier;
+    // welcome_bonus_claimed gates the new-member welcome screen; true once the
+    // user has claimed their first bonus or earned any points. Backfilled true
+    // for existing members so the migration doesn't trigger a retroactive screen.
+    const welcomeBonusClaimed = !!statusData.welcome_bonus_claimed;
 
     const { data: recentTransactions } = await supabase
       .from('loyalty_points_transactions')
@@ -367,6 +390,29 @@ Deno.serve(async (req: Request) => {
       wasSelfReferral = !!srRow;
     }
 
+    // Fetch first name if lookup was by member_user_id (not email/phone, so memberData wasn't set)
+    if (!memberFirstName && memberUserIdToUse) {
+      const { data: nameRow } = await supabase
+        .from('member_users')
+        .select('full_name')
+        .eq('id', memberUserIdToUse)
+        .maybeSingle();
+      if (nameRow?.full_name) {
+        memberFirstName = nameRow.full_name.trim().split(' ')[0] || null;
+      }
+    }
+
+    // Fetch brand/organization name from clients table
+    let organizationName: string | null = null;
+    if (resolvedClientId) {
+      const { data: clientRow } = await supabase
+        .from('clients')
+        .select('name')
+        .eq('id', resolvedClientId)
+        .maybeSingle();
+      organizationName = clientRow?.name || null;
+    }
+
     return new Response(
       JSON.stringify({
         member_user_id: memberUserIdToUse,
@@ -374,6 +420,7 @@ Deno.serve(async (req: Request) => {
         referral_code: memberReferralCode,
         referral_friend_discount_code: referralFriendDiscountCode,
         was_self_referral: wasSelfReferral,
+        welcome_bonus_claimed: welcomeBonusClaimed,
         points_balance: status.points_balance,
         lifetime_points_earned: status.lifetime_points_earned,
         lifetime_points_redeemed: status.lifetime_points_redeemed,
@@ -398,6 +445,8 @@ Deno.serve(async (req: Request) => {
         },
         tier_thresholds: tierThresholds,
         recent_transactions: recentTransactions || [],
+        first_name: memberFirstName,
+        organization_name: organizationName,
       }),
       {
         status: 200,

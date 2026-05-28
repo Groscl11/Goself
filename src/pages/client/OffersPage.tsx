@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { clientMenuItems } from './clientMenuItems';
-import { Offer, OfferDistribution, MarketplaceOffer, AccessType } from '../../types/offers';
+import { Offer, OfferDistribution, MarketplaceOffer } from '../../types/offers';
 import {
   Badge, Btn, StatusBadge, CodePoolBadge,
   OfferCard, AddCard, EmptyState, SourceDot,
@@ -15,12 +15,29 @@ import { PartnerWizard } from '../../components/offers/PartnerWizard';
  
 // ─── Tab ids ─────────────────────────────────────────────────────────────────
 type TabId = 'store' | 'partner' | 'marketplace' | 'distribution';
+
+// ─── Widget catalog item ──────────────────────────────────────────────────────
+interface WidgetItem {
+  rewardId: string;
+  distId: string | null;
+  title: string;
+  subtitle: string;
+  source: 'own' | 'partner' | 'marketplace';
+  rewardStatus: string;
+  couponType: string;
+  availableCodes: number;
+  validUntil: string | null;
+  inWidget: boolean;
+  pointsCost: number | null;
+  maxPerMember: number | null;
+  distAccessType: string | null;
+}
  
 const TABS: { id: TabId; label: string }[] = [
   { id: 'store',        label: 'My Store Offers' },
   { id: 'partner',      label: 'Partner Vouchers' },
   { id: 'marketplace',  label: 'Marketplace' },
-  { id: 'distribution', label: 'Distribution & Points' },
+  { id: 'distribution', label: 'Widget Rewards' },
 ];
  
 // ─── Skeleton loader ─────────────────────────────────────────────────────────
@@ -92,12 +109,15 @@ export default function OffersPage() {
   // Map of offer_id → pending edit request id (for approved offers with an in-flight edit)
   const [pendingEditMap, setPendingEditMap] = useState<Record<string, string>>({});
  
-  // Distribution state
-  const [distributions, setDistributions] = useState<OfferDistribution[]>([]);
-  const [distLoading, setDistLoading] = useState(false);
-  const [distEdits, setDistEdits] = useState<Record<string, string>>({});
-  const [distSaving, setDistSaving] = useState<Record<string, boolean>>({});
-  const [distSaved, setDistSaved] = useState<Record<string, boolean>>({});
+  // Widget catalog state
+  const [widgetItems, setWidgetItems] = useState<WidgetItem[]>([]);
+  const [widgetLoading, setWidgetLoading] = useState(false);
+  const [widgetSearch, setWidgetSearch] = useState('');
+  const [widgetFilter, setWidgetFilter] = useState<'all' | 'in_widget' | 'not_configured'>('all');
+  const [widgetEdits, setWidgetEdits] = useState<Record<string, { points?: string; max?: string }>>({});
+  const [widgetSaving, setWidgetSaving] = useState<Record<string, boolean>>({});
+  const [widgetSaved, setWidgetSaved] = useState<Record<string, boolean>>({});
+  const [widgetToggling, setWidgetToggling] = useState<Record<string, boolean>>({});
  
   // Drawer / modal state
   const [newOfferOpen, setNewOfferOpen] = useState(false);
@@ -228,23 +248,68 @@ export default function OffersPage() {
     setSubmissionsLoading(false);
   }, [clientId]);
  
-  const fetchDistributions = useCallback(async () => {
+  const fetchWidgetCatalog = useCallback(async () => {
     if (!clientId) return;
-    setDistLoading(true);
-    const { data } = await supabase
+    setWidgetLoading(true);
+
+    // 1. All distributions for this client (active + inactive) to detect adopted offers + widget status
+    const { data: allDists } = await supabase
       .from('offer_distributions')
-      .select(`
-        *,
-        offer:rewards(
-          id, title, reward_type, coupon_type, offer_type,
-          available_codes, status, tracking_type, owner_client_id
-        )
-      `)
-      .eq('distributing_client_id', clientId)
-      .eq('is_active', true)
+      .select('id, offer_id, points_cost, access_type, max_per_member, is_active')
+      .eq('distributing_client_id', clientId);
+
+    // Build map: offer_id → dist row (prefer active rows)
+    const distMap = new Map<string, any>();
+    for (const d of (allDists ?? [])) {
+      const existing = distMap.get(d.offer_id);
+      if (!existing || d.is_active) distMap.set(d.offer_id, d);
+    }
+
+    // 2. All own rewards (store + partner)
+    const { data: ownRewards } = await supabase
+      .from('rewards')
+      .select('id, title, reward_type, coupon_type, offer_type, available_codes, status, valid_until')
+      .eq('owner_client_id', clientId)
+      .in('offer_type', ['store_discount', 'partner_voucher'])
       .order('created_at', { ascending: false });
-    setDistributions(data ?? []);
-    setDistLoading(false);
+
+    const ownIds = new Set((ownRewards ?? []).map((r: any) => r.id));
+
+    // 3. External (adopted marketplace) rewards not owned by this client
+    const adoptedIds = Array.from(distMap.keys()).filter(id => !ownIds.has(id));
+    let externalRewards: any[] = [];
+    if (adoptedIds.length > 0) {
+      const { data } = await supabase
+        .from('rewards')
+        .select('id, title, reward_type, coupon_type, offer_type, available_codes, status, valid_until')
+        .in('id', adoptedIds);
+      externalRewards = data ?? [];
+    }
+
+    const allRewards = [...(ownRewards ?? []), ...externalRewards];
+
+    const items: WidgetItem[] = allRewards.map((r: any) => {
+      const dist = distMap.get(r.id);
+      const inWidget = !!(dist?.is_active && ['points_redemption', 'both', 'free_claim'].includes(dist.access_type));
+      return {
+        rewardId: r.id,
+        distId: dist?.id ?? null,
+        title: r.title,
+        subtitle: `${(r.reward_type ?? '').replace(/_/g, ' ')} · ${r.coupon_type ?? ''}`,
+        source: r.offer_type === 'store_discount' ? 'own' : r.offer_type === 'partner_voucher' ? 'partner' : 'marketplace',
+        rewardStatus: r.status ?? 'draft',
+        couponType: r.coupon_type ?? '',
+        availableCodes: r.available_codes ?? 0,
+        validUntil: r.valid_until ?? null,
+        inWidget,
+        pointsCost: dist?.points_cost ?? null,
+        maxPerMember: dist?.max_per_member ?? null,
+        distAccessType: dist?.access_type ?? null,
+      };
+    });
+
+    setWidgetItems(items);
+    setWidgetLoading(false);
   }, [clientId]);
  
   // Load data per tab
@@ -252,8 +317,8 @@ export default function OffersPage() {
     if (activeTab === 'store')        fetchStoreOffers();
     if (activeTab === 'partner')      fetchPartnerOffers();
     if (activeTab === 'marketplace')  fetchMarketplace();
-    if (activeTab === 'distribution') fetchDistributions();
-  }, [activeTab, fetchStoreOffers, fetchPartnerOffers, fetchMarketplace, fetchDistributions]);
+    if (activeTab === 'distribution') fetchWidgetCatalog();
+  }, [activeTab, fetchStoreOffers, fetchPartnerOffers, fetchMarketplace, fetchWidgetCatalog]);
  
   useEffect(() => {
     if (mktSubtab === 'submit' && activeTab === 'marketplace') fetchSubmissions();
@@ -378,43 +443,93 @@ export default function OffersPage() {
     setAdoptLoading(false);
   }
  
-  // ── Distribution inline save ─────────────────────────────────────────────────
-  async function saveDistPoints(distId: string) {
-    const val = distEdits[distId];
-    if (val === undefined) return;
-    setDistSaving(p => ({ ...p, [distId]: true }));
-    await supabase.from('offer_distributions').update({ points_cost: Number(val) }).eq('id', distId);
-    setDistributions(prev => prev.map(d => d.id === distId ? { ...d, points_cost: Number(val) } : d));
-    setDistEdits(p => { const n = { ...p }; delete n[distId]; return n; });
-    setDistSaving(p => ({ ...p, [distId]: false }));
-    setDistSaved(p => ({ ...p, [distId]: true }));
-    setTimeout(() => setDistSaved(p => ({ ...p, [distId]: false })), 2000);
+  // ── Widget toggle ─────────────────────────────────────────────────────────────
+  async function toggleWidgetReward(item: WidgetItem) {
+    setWidgetToggling(p => ({ ...p, [item.rewardId]: true }));
+    try {
+      if (item.inWidget) {
+        // Remove from widget
+        if (item.distId) {
+          if (item.distAccessType === 'both') {
+            // Keep dist but downgrade to campaign-only
+            await supabase.from('offer_distributions')
+              .update({ access_type: 'campaign_reward' })
+              .eq('id', item.distId);
+            setWidgetItems(prev => prev.map(i =>
+              i.rewardId === item.rewardId ? { ...i, inWidget: false, distAccessType: 'campaign_reward' } : i
+            ));
+          } else {
+            await supabase.from('offer_distributions')
+              .update({ is_active: false })
+              .eq('id', item.distId);
+            setWidgetItems(prev => prev.map(i =>
+              i.rewardId === item.rewardId ? { ...i, inWidget: false } : i
+            ));
+          }
+        }
+      } else {
+        // Add to widget
+        if (item.distId) {
+          const newAccessType = item.distAccessType === 'campaign_reward' ? 'both' : 'points_redemption';
+          await supabase.from('offer_distributions')
+            .update({ is_active: true, access_type: newAccessType })
+            .eq('id', item.distId);
+          setWidgetItems(prev => prev.map(i =>
+            i.rewardId === item.rewardId ? { ...i, inWidget: true, distAccessType: newAccessType } : i
+          ));
+        } else {
+          const { data: newDist } = await supabase
+            .from('offer_distributions')
+            .insert({
+              offer_id: item.rewardId,
+              distributing_client_id: clientId,
+              access_type: 'points_redemption',
+              points_cost: null,
+              is_active: true,
+            })
+            .select('id')
+            .single();
+          setWidgetItems(prev => prev.map(i =>
+            i.rewardId === item.rewardId
+              ? { ...i, inWidget: true, distId: newDist?.id ?? null, distAccessType: 'points_redemption' }
+              : i
+          ));
+        }
+      }
+    } finally {
+      setWidgetToggling(p => ({ ...p, [item.rewardId]: false }));
+    }
   }
- 
-  async function removeDistribution(distId: string) {
-    if (!window.confirm('Remove this offer from your members?')) return;
-    await supabase.from('offer_distributions').update({ is_active: false }).eq('id', distId);
-    setDistributions(prev => prev.filter(d => d.id !== distId));
+
+  async function saveWidgetConfig(item: WidgetItem) {
+    const edit = widgetEdits[item.rewardId];
+    if (!edit || !item.distId) return;
+    setWidgetSaving(p => ({ ...p, [item.rewardId]: true }));
+    const updatePayload: any = {};
+    if (edit.points !== undefined) updatePayload.points_cost = edit.points === '' ? null : Number(edit.points);
+    if (edit.max !== undefined) updatePayload.max_per_member = edit.max === '' ? null : Number(edit.max);
+    await supabase.from('offer_distributions').update(updatePayload).eq('id', item.distId);
+    setWidgetItems(prev => prev.map(i =>
+      i.rewardId === item.rewardId
+        ? {
+            ...i,
+            pointsCost: edit.points !== undefined ? (edit.points === '' ? null : Number(edit.points)) : i.pointsCost,
+            maxPerMember: edit.max !== undefined ? (edit.max === '' ? null : Number(edit.max)) : i.maxPerMember,
+          }
+        : i
+    ));
+    setWidgetEdits(p => { const n = { ...p }; delete n[item.rewardId]; return n; });
+    setWidgetSaving(p => ({ ...p, [item.rewardId]: false }));
+    setWidgetSaved(p => ({ ...p, [item.rewardId]: true }));
+    setTimeout(() => setWidgetSaved(p => ({ ...p, [item.rewardId]: false })), 2000);
   }
- 
-  async function updateDistAccessType(distId: string, accessType: AccessType) {
-    await supabase.from('offer_distributions').update({ access_type: accessType }).eq('id', distId);
-    setDistributions(prev => prev.map(d => d.id === distId ? { ...d, access_type: accessType } : d));
-  }
- 
+
   // ── Source type helper ────────────────────────────────────────────────────────
   function sourceType(offer: Offer): 'own' | 'partner' | 'marketplace' {
     if (offer.offer_type === 'store_discount') return 'own';
     if (offer.offer_type === 'partner_voucher') return 'partner';
     return 'marketplace';
   }
- 
-  const accessBadgeVariant: Record<AccessType, { label: string; variant: 'purple' | 'blue' | 'gray' | 'teal' }> = {
-    points_redemption: { label: 'Points',    variant: 'purple' },
-    campaign_reward:   { label: 'Campaign',  variant: 'blue' },
-    free_claim:        { label: 'Free',      variant: 'gray' },
-    both:              { label: 'Both',      variant: 'teal' },
-  };
  
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -741,21 +856,51 @@ export default function OffersPage() {
           </div>
         )}
  
-        {/* ── TAB 4: Distribution & Points ──────────────────────────────────── */}
+        {/* ── TAB 4: Widget Rewards ─────────────────────────────────────────── */}
         {activeTab === 'distribution' && (
           <div>
-            <p className="text-sm text-gray-500 mb-4">
-              All offers currently available to your members. Edit points cost inline —
-              each client sets their own rate independently.
-            </p>
-            {distLoading ? (
-              <div className="space-y-2">
-                {[...Array(4)].map((_, i) => <div key={i} className="h-14 bg-white border border-gray-200 rounded-lg animate-pulse" />)}
+            {/* Header bar: description + search + filters */}
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <p className="text-sm text-gray-500 flex-1 min-w-[200px]">
+                Toggle any reward to show it in your loyalty widget. Set the points members need to redeem it.
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative">
+                  <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Search rewards…"
+                    value={widgetSearch}
+                    onChange={e => setWidgetSearch(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-400 w-44"
+                  />
+                </div>
+                {(['all', 'in_widget', 'not_configured'] as const).map(f => (
+                  <button key={f} onClick={() => setWidgetFilter(f)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap
+                      ${widgetFilter === f
+                        ? 'bg-gray-900 text-white'
+                        : 'bg-white border border-gray-300 text-gray-600 hover:border-gray-400'}`}>
+                    {f === 'all' ? 'All' : f === 'in_widget' ? 'In Widget' : 'Not Configured'}
+                  </button>
+                ))}
               </div>
-            ) : distributions.length === 0 ? (
+            </div>
+
+            {widgetLoading ? (
+              <div className="space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="h-14 bg-white border border-gray-200 rounded-lg animate-pulse" />
+                ))}
+              </div>
+            ) : widgetItems.length === 0 ? (
               <EmptyState
-                title="No offers configured yet"
-                description="Add offers from the other tabs to configure how members can redeem them."
+                title="No rewards available yet"
+                description="Create a store offer or adopt a marketplace reward, then configure it for your widget here."
                 action={
                   <div className="flex gap-2">
                     <Btn size="md" onClick={() => setTab('store')}>My Store Offers</Btn>
@@ -763,106 +908,184 @@ export default function OffersPage() {
                   </div>
                 }
               />
-            ) : (
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      {['Offer', 'Source', 'Access type', 'Points cost', 'Status', ''].map(h => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {distributions.map(dist => {
-                      const offer = dist.offer as Offer | undefined;
-                      if (!offer) return null;
-                      const src = sourceType(offer);
-                      const ab = accessBadgeVariant[dist.access_type];
-                      const isEdited = distEdits[dist.id] !== undefined;
-                      const isCampaignOnly = dist.access_type === 'campaign_reward';
-                      return (
-                        <tr key={dist.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                          <td className="px-4 py-3">
-                            <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5">
-                              {offer.title}
-                              {offer.valid_until && new Date(offer.valid_until) < today && (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5">
-                                  ⚠ Expired
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-gray-400 mt-0.5 capitalize">
-                              {offer.reward_type?.replace('_', ' ')} · {offer.coupon_type}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <SourceDot type={src} />
-                          </td>
-                          <td className="px-4 py-3">
-                            <select
-                              value={dist.access_type}
-                              onChange={e => updateDistAccessType(dist.id, e.target.value as AccessType)}
-                              className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
-                            >
-                              <option value="points_redemption">Points</option>
-                              <option value="campaign_reward">Campaign only</option>
-                              <option value="free_claim">Free claim</option>
-                              <option value="both">Both</option>
-                            </select>
-                          </td>
-                          <td className="px-4 py-3">
-                            {isCampaignOnly ? (
-                              <span className="text-xs text-gray-400 italic">— free via campaign</span>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={isEdited ? distEdits[dist.id] : (dist.points_cost ?? '')}
-                                  placeholder="Set pts"
-                                  onChange={e => setDistEdits(p => ({ ...p, [dist.id]: e.target.value }))}
-                                  className="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-900/20 text-center"
-                                />
-                                <span className="text-xs text-gray-400">pts</span>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {offer.status && <StatusBadge status={offer.status} />}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              {isEdited && (
-                                <button
-                                  onClick={() => saveDistPoints(dist.id)}
-                                  disabled={distSaving[dist.id]}
-                                  className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-60 transition-colors"
-                                >
-                                  {distSaving[dist.id] ? '...' : 'Save'}
-                                </button>
-                              )}
-                              {distSaved[dist.id] && (
-                                <span className="text-xs text-green-600 font-medium">✓ Saved</span>
-                              )}
-                              <button
-                                onClick={() => removeDistribution(dist.id)}
-                                className="text-xs text-red-400 hover:text-red-600 transition-colors px-1"
-                                title="Remove from members"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          </td>
+            ) : (() => {
+              const filtered = widgetItems.filter(item => {
+                if (widgetFilter === 'in_widget' && !item.inWidget) return false;
+                if (widgetFilter === 'not_configured' && item.inWidget) return false;
+                if (widgetSearch.trim()) {
+                  const q = widgetSearch.trim().toLowerCase();
+                  if (!item.title.toLowerCase().includes(q)) return false;
+                }
+                return true;
+              });
+
+              return (
+                <>
+                  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50">
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Reward</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Source</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Status</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">In Widget</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">Points Cost</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-32">Max / Member</th>
+                          <th className="px-4 py-3 w-20" />
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                      </thead>
+                      <tbody>
+                        {filtered.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">
+                              No rewards match your filter.
+                            </td>
+                          </tr>
+                        ) : filtered.map(item => {
+                          const isEdited = !!widgetEdits[item.rewardId];
+                          const isExpired = item.validUntil ? new Date(item.validUntil) < today : false;
+                          const noCodesWarning = item.couponType === 'unique' && item.availableCodes === 0 && item.rewardStatus === 'active';
+
+                          return (
+                            <tr key={item.rewardId}
+                              className={`border-b border-gray-50 transition-colors ${
+                                item.inWidget ? 'bg-white hover:bg-gray-50/50' : 'bg-gray-50/40 hover:bg-gray-50/70'
+                              }`}>
+                              {/* Reward name + meta */}
+                              <td className="px-4 py-3">
+                                <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5 flex-wrap">
+                                  {item.title}
+                                  {isExpired && (
+                                    <span className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5">
+                                      ⚠ Expired
+                                    </span>
+                                  )}
+                                  {noCodesWarning && !isExpired && (
+                                    <span className="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+                                      No codes
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-400 mt-0.5 capitalize">{item.subtitle}</div>
+                              </td>
+
+                              {/* Source */}
+                              <td className="px-4 py-3">
+                                <SourceDot type={item.source} />
+                              </td>
+
+                              {/* Status */}
+                              <td className="px-4 py-3">
+                                <StatusBadge status={item.rewardStatus} />
+                              </td>
+
+                              {/* Toggle */}
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => toggleWidgetReward(item)}
+                                    disabled={widgetToggling[item.rewardId]}
+                                    title={item.inWidget ? 'Remove from widget' : 'Add to widget'}
+                                    className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-gray-400 ${
+                                      item.inWidget ? 'bg-gray-900' : 'bg-gray-200'
+                                    } ${widgetToggling[item.rewardId] ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                                  >
+                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${
+                                      item.inWidget ? 'translate-x-4' : 'translate-x-0.5'
+                                    }`} />
+                                  </button>
+                                  {item.inWidget && (
+                                    <span className="text-xs text-gray-500">On</span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Points cost */}
+                              <td className="px-4 py-3">
+                                {item.inWidget ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={widgetEdits[item.rewardId]?.points ?? (item.pointsCost ?? '')}
+                                      placeholder="0"
+                                      onChange={e => setWidgetEdits(p => ({
+                                        ...p,
+                                        [item.rewardId]: { ...p[item.rewardId], points: e.target.value },
+                                      }))}
+                                      className="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-900/20 text-center"
+                                    />
+                                    <span className="text-xs text-gray-400">pts</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-gray-300">—</span>
+                                )}
+                              </td>
+
+                              {/* Max per member */}
+                              <td className="px-4 py-3">
+                                {item.inWidget ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      value={widgetEdits[item.rewardId]?.max ?? (item.maxPerMember ?? '')}
+                                      placeholder="∞"
+                                      onChange={e => setWidgetEdits(p => ({
+                                        ...p,
+                                        [item.rewardId]: { ...p[item.rewardId], max: e.target.value },
+                                      }))}
+                                      className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-900/20 text-center"
+                                    />
+                                    <span className="text-xs text-gray-400">max</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-gray-300">—</span>
+                                )}
+                              </td>
+
+                              {/* Save */}
+                              <td className="px-4 py-3">
+                                {isEdited && item.inWidget && (
+                                  <button
+                                    onClick={() => saveWidgetConfig(item)}
+                                    disabled={widgetSaving[item.rewardId]}
+                                    className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-60 transition-colors whitespace-nowrap"
+                                  >
+                                    {widgetSaving[item.rewardId] ? '…' : 'Save'}
+                                  </button>
+                                )}
+                                {widgetSaved[item.rewardId] && (
+                                  <span className="text-xs text-green-600 font-medium">✓ Saved</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Summary footer */}
+                  <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
+                    <span>
+                      {widgetItems.filter(i => i.inWidget).length} of {widgetItems.length} rewards active in widget
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setTab('store')}
+                        className="text-gray-500 hover:text-gray-700 underline underline-offset-2">
+                        + Create Store Reward
+                      </button>
+                      <span>·</span>
+                      <button onClick={() => setTab('marketplace')}
+                        className="text-gray-500 hover:text-gray-700 underline underline-offset-2">
+                        Browse Marketplace ↗
+                      </button>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
         </div>
@@ -882,7 +1105,7 @@ export default function OffersPage() {
             fetchSubmissions();
           } else {
             fetchStoreOffers();
-            fetchDistributions();
+            fetchWidgetCatalog();
           }
           setEditOffer(null);
         }}
@@ -894,7 +1117,7 @@ export default function OffersPage() {
         clientId={clientId}
         shopDomain={shopDomain}
         editTarget={partnerEditTarget}
-        onCreated={() => { fetchPartnerOffers(); fetchDistributions(); }}
+        onCreated={() => { fetchPartnerOffers(); fetchWidgetCatalog(); }}
       />
  
       <ManageCodesDrawer

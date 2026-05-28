@@ -118,19 +118,21 @@ Deno.serve(async (req: Request) => {
       .from("offer_distributions")
       .select(
         "id, offer_id, points_cost, access_type, max_per_member, distributing_client_id, " +
-        "offer:rewards(id, title, description, image_url, terms_conditions, reward_type, discount_value, max_discount_value, min_purchase_amount, coupon_type, generic_coupon_code, available_codes, offer_type, tracking_type, redeems_at_shop_domain, owner_client_id, is_active, status)"
+        "offer:rewards(id, title, description, image_url, terms_conditions, reward_type, discount_value, max_discount_value, min_purchase_amount, coupon_type, generic_coupon_code, available_codes, offer_type, redeems_at_shop_domain, owner_client_id, status, redemption_link, steps_to_redeem)"
       )
       .eq("distributing_client_id", clientId)
       .eq("is_active", true)
       .in("access_type", ["points_redemption", "both"]);
 
     if (distError) {
+      console.error("offer_distributions query error:", distError.message);
       return jsonResponse({ success: false, error: distError.message }, 500);
     }
 
+    // Filter to only active rewards (rewards table has no is_active column — use status only)
     const distributionRows = (distRows ?? []).filter((row: any) => {
       const offer = row.offer;
-      return offer && offer.is_active === true && offer.status === "active";
+      return offer && offer.status === "active";
     });
 
     const offerIds = distributionRows.map((row: any) => row.offer_id);
@@ -216,7 +218,8 @@ Deno.serve(async (req: Request) => {
             : null,
           owner_name: offer.owner_client_id ? ownerMap[offer.owner_client_id] ?? null : null,
           redeems_at_shop_domain: offer.redeems_at_shop_domain ?? shopDomain,
-          tracking_type: offer.tracking_type ?? "automatic",
+          redemption_link: offer.redemption_link ?? null,
+          steps_to_redeem: offer.steps_to_redeem ?? null,
         };
       })
       .sort((a: any, b: any) => a.points_cost - b.points_cost);

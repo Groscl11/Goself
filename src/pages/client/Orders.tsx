@@ -139,6 +139,8 @@ export function Orders() {
         .from('shopify_orders')
         .select('*')
         .eq('client_id', clientId)
+        // Exclude phantom / incomplete webhook rows that have no customer and ₹0 total
+        .or('customer_email.not.is.null,total_price.gt.0')
         .order('processed_at', { ascending: false });
 
       if (!raw) { setOrders([]); return; }
@@ -156,29 +158,41 @@ export function Orders() {
         pointsMap[t.reference_id] = (pointsMap[t.reference_id] || 0) + t.points_amount;
       });
 
-      // Batch-load member names by email
-      const emails = [...new Set(raw.map((o) => o.customer_email).filter(Boolean))];
-      const { data: members } = await supabase
-        .from('member_users')
-        .select('id, email, full_name')
-        .eq('client_id', clientId)
-        .in('email', emails);
+      // Batch-load member names — fetch ALL members by member_id (covers email + phone-only orders)
+      const allMemberIds = [...new Set(raw.map((o) => o.member_id).filter(Boolean))];
+      const { data: membersById } = allMemberIds.length > 0
+        ? await supabase.from('member_users').select('id, email, full_name, phone').eq('client_id', clientId).in('id', allMemberIds)
+        : { data: [] as any[] };
 
-      const memberMap: Record<string, { id: string; name: string }> = {};
-      (members || []).forEach((m) => {
-        memberMap[m.email] = { id: m.id, name: m.full_name || m.email };
+      const memberById: Record<string, { id: string; name: string }> = {};
+      (membersById || []).forEach((m: any) => {
+        memberById[m.id] = { id: m.id, name: m.full_name || m.phone || m.email || 'Member' };
+      });
+
+      // Fallback: email-keyed lookup for orders that have no member_id set yet
+      const emailsWithoutMemberId = [...new Set(raw.filter((o) => o.customer_email && !o.member_id).map((o) => o.customer_email))];
+      const { data: membersByEmail } = emailsWithoutMemberId.length > 0
+        ? await supabase.from('member_users').select('id, email, full_name').eq('client_id', clientId).in('email', emailsWithoutMemberId)
+        : { data: [] as any[] };
+
+      const memberByEmail: Record<string, { id: string; name: string }> = {};
+      (membersByEmail || []).forEach((m: any) => {
+        if (m.email) memberByEmail[m.email] = { id: m.id, name: m.full_name || m.email };
       });
 
       const enriched: OrderRow[] = raw.map((o) => {
         const od = o.order_data || {};
         const discountCodes: DiscountCode[] = od.discount_codes || [];
         const lineItems: LineItem[] = od.line_items || [];
-        const memberInfo = memberMap[o.customer_email] || null;
+        // member_id lookup is primary (works for both email + phone orders)
+        const memberInfo = (o.member_id ? memberById[o.member_id] : null)
+          || (o.customer_email ? memberByEmail[o.customer_email] : null)
+          || null;
 
         return {
           id: o.id,
           shopify_order_id: o.shopify_order_id,
-          order_number: (o.order_number || o.shopify_order_id).replace(/^#+/, ''),
+          order_number: o.order_number ? o.order_number.replace(/^#+/, '') : String(o.shopify_order_id || ''),
           customer_email: o.customer_email || '',
           customer_phone: o.customer_phone || null,
           total_price: o.total_price || 0,
