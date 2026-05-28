@@ -648,19 +648,19 @@ export default function OffersPage() {
                   <EmptyState title="No marketplace offers available" description="Try adjusting your search or filters." />
                 ) : (
                   <>
-                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                      <table className="w-full text-sm">
+                    <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+                      <table className="w-full text-sm" style={{ minWidth: '860px' }}>
                         <thead>
                           <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wide">
-                            <th className="px-4 py-3 text-left">Reward ID</th>
+                            <th className="px-4 py-3 text-left whitespace-nowrap">Reward ID</th>
                             <th className="px-4 py-3 text-left">Offer</th>
-                            <th className="px-4 py-3 text-left">Brand</th>
-                            <th className="px-4 py-3 text-left">Discount</th>
-                            <th className="px-4 py-3 text-left">Type</th>
-                            <th className="px-4 py-3 text-left">Codes</th>
-                            <th className="px-4 py-3 text-left">Valid Until</th>
-                            <th className="px-4 py-3 text-left">Points Cost</th>
-                            <th className="px-4 py-3 text-left">Status</th>
+                            <th className="px-4 py-3 text-left whitespace-nowrap">Brand</th>
+                            <th className="px-4 py-3 text-left whitespace-nowrap">Discount</th>
+                            <th className="px-4 py-3 text-left whitespace-nowrap">Type</th>
+                            <th className="px-4 py-3 text-left whitespace-nowrap">Codes</th>
+                            <th className="px-4 py-3 text-left whitespace-nowrap">Valid Until</th>
+                            <th className="px-4 py-3 text-left whitespace-nowrap">Points Cost</th>
+                            <th className="px-4 py-3 text-left whitespace-nowrap">Status</th>
                             <th className="px-4 py-3 text-left"></th>
                           </tr>
                         </thead>
