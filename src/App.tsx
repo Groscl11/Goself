@@ -92,6 +92,9 @@ const OffersPage = lazy(() => import('./pages/client/OffersPage'));
 const LoyaltyProgramPage = lazy(() => import('./pages/client/LoyaltyProgramPage'));
 const CampaignsPage = lazy(() => import('./pages/client/CampaignsPage'));
 const AffiliatesPage = lazy(() => import('./pages/client/AffiliatesPage'));
+const CouponCodesPage = lazy(() => import('./pages/client/CouponCodesPage'));
+const UTMLinksPage = lazy(() => import('./pages/client/UTMLinksPage'));
+const AttributionReportsPage = lazy(() => import('./pages/client/AttributionReportsPage'));
 
 function DashboardRouter() {
   const { profile, loading } = useAuth();
@@ -196,6 +199,9 @@ function App() {
           <Route path="/client/campaigns" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading campaigns...</div>}><CampaignsPage /></Suspense></RoleBasedRoute>} />
           <Route path="/client/campaign-logs" element={<RoleBasedRoute allowedRoles={['client']}><CampaignTriggerLogs /></RoleBasedRoute>} />
           <Route path="/client/affiliates" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading affiliates...</div>}><AffiliatesPage /></Suspense></RoleBasedRoute>} />
+          <Route path="/client/attribution/coupons" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading coupon codes...</div>}><CouponCodesPage /></Suspense></RoleBasedRoute>} />
+          <Route path="/client/attribution/utm" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading UTM links...</div>}><UTMLinksPage /></Suspense></RoleBasedRoute>} />
+          <Route path="/client/attribution/reports" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading attribution reports...</div>}><AttributionReportsPage /></Suspense></RoleBasedRoute>} />
           <Route path="/client/templates" element={<RoleBasedRoute allowedRoles={['client']}><MessageTemplates /></RoleBasedRoute>} />
           <Route path="/client/communications" element={<RoleBasedRoute allowedRoles={['client']}><CommunicationLogs /></RoleBasedRoute>} />
           <Route path="/client/integrations" element={<RoleBasedRoute allowedRoles={['client']}><Integrations /></RoleBasedRoute>} />
