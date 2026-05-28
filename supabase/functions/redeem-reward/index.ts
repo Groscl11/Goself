@@ -190,7 +190,7 @@ Deno.serve(async (req: Request) => {
       .from("offer_distributions")
       .select(
         "id, offer_id, points_cost, max_per_member, access_type, distributing_client_id, " +
-        "offer:rewards(id, title, discount_value, reward_type, min_purchase_amount, coupon_type, generic_coupon_code, available_codes, offer_type, redeems_at_shop_domain, is_active, status, client_id)"
+        "offer:rewards(id, title, discount_value, reward_type, min_purchase_amount, coupon_type, generic_coupon_code, available_codes, offer_type, redeems_at_shop_domain, status, owner_client_id)"
       )
       .eq("offer_id", reward_id)
       .eq("distributing_client_id", clientId)
@@ -198,7 +198,7 @@ Deno.serve(async (req: Request) => {
       .in("access_type", ["points_redemption", "both"])
       .maybeSingle();
 
-    if (!offerRow || !offerRow.offer || offerRow.offer.is_active !== true || offerRow.offer.status !== "active") {
+    if (!offerRow || !offerRow.offer || offerRow.offer.status !== "active") {
       return new Response(
         JSON.stringify({ success: false, error: "Offer not available for your store" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -342,7 +342,7 @@ Deno.serve(async (req: Request) => {
     // ── Step 5C: Determine receiving_client_id (marketplace offers only) ──────
     const receivingClientId =
       reward.offer_type === "marketplace_offer"
-        ? reward.client_id ?? null
+        ? reward.owner_client_id ?? null
         : null;
 
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
