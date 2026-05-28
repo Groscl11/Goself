@@ -100,13 +100,8 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
 
   // Pre-populate form when editing an existing offer
   useEffect(() => {
-    // Marketplace offers are always generic-code based — skip Shopify flow picker
-    if (!editOffer && open && mode === 'marketplace') {
-      setFlow('generic');
-      return;
-    }
     if (editOffer && open) {
-      const isGeneric = editOffer.coupon_type === 'generic' || mode === 'marketplace';
+      const isGeneric = editOffer.coupon_type === 'generic';
       setFlow(isGeneric ? 'generic' : 'shopify_imported');
       setForm({
         title: editOffer.title ?? '',
@@ -448,8 +443,8 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         ) : null
       }
     >
-      {/* Flow selector — only shown when creating a store offer (marketplace always uses generic) */}
-      {!flow && !editOffer && mode !== 'marketplace' && (
+      {/* Flow selector — only shown when creating a new offer */}
+      {!flow && !editOffer && (
         <div className="space-y-3">
           <p className="text-sm text-gray-500 mb-4">Choose how you want to add discount codes:</p>
           {[
