@@ -164,10 +164,13 @@ export default function ShopifyLanding() {
     setStatus('Starting Shopify installation...');
     await new Promise(r => setTimeout(r, 400));
 
-    const scopes      = 'read_customers,read_orders,read_discounts,write_discounts';
+    // Full scopes — must match shopify.app.*.toml exactly.
+    // No grant_options[]=per-user → Shopify issues a permanent offline token (shpat_).
+    const scopes      = 'read_customers,read_orders,read_discounts,write_discounts,read_price_rules,write_price_rules';
     const redirectUri = `${SUPABASE_URL}/functions/v1/shopify-oauth-callback`;
     const state       = btoa(JSON.stringify({ app_url: window.location.origin, ts: Date.now() }));
-    window.location.href = `https://${shop}/admin/oauth/authorize?client_id=${SHOPIFY_API_KEY}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+    const authParams  = new URLSearchParams({ client_id: SHOPIFY_API_KEY, scope: scopes, redirect_uri: redirectUri, state });
+    window.location.href = `https://${shop}/admin/oauth/authorize?${authParams}`;
   }
 
   return (

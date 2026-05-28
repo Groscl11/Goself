@@ -4,6 +4,22 @@ import { supabase, supabaseUrl, supabaseAnonKey } from '../../lib/supabase';
 import { uploadOfferCodesDirect } from '../../lib/offerCodes';
 import { CodeSource, RewardType } from '../../types/offers';
 
+const SHOPIFY_CLIENT_ID = import.meta.env.VITE_SHOPIFY_API_KEY || '3290e6e4e5cb6711e4a7876ef40f87e8';
+const SHOPIFY_OAUTH_SCOPES = 'read_customers,read_orders,read_discounts,write_discounts,read_price_rules,write_price_rules';
+
+function buildShopifyReconnectUrl(shopDomain: string, clientId: string): string {
+  const callbackUrl = `${supabaseUrl}/functions/v1/shopify-oauth-callback`;
+  const state = btoa(JSON.stringify({ app_url: window.location.origin, client_id: clientId, ts: Date.now() }));
+  const params = new URLSearchParams({
+    client_id:    SHOPIFY_CLIENT_ID,
+    scope:        SHOPIFY_OAUTH_SCOPES,
+    redirect_uri: callbackUrl,
+    state,
+    // Deliberately NO grant_options[]=per-user → Shopify issues offline shpat_ token
+  });
+  return `https://${shopDomain}/admin/oauth/authorize?${params}`;
+}
+
 type Flow = 'shopify_generated' | 'shopify_imported' | 'generic';
 
 interface ShopifyPriceRule {
@@ -171,20 +187,13 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
       const json = await res.json();
       if (!json.success) {
         if (json.token_expired) {
-          // Token expired — fetch a reconnect URL so the merchant can re-authorize
+          // Token expired — build reconnect OAuth URL client-side (no extra round-trip needed)
+          // The URL omits grant_options[]=per-user so Shopify issues a permanent shpat_ token
           setShopifyTokenExpired(true);
           setShopifyError('Your Shopify store connection has expired.');
-          try {
-            const reconnectParams = new URLSearchParams();
-            if (shopDomain) reconnectParams.set('shop_domain', shopDomain);
-            if (clientId)   reconnectParams.set('client_id', clientId);
-            const reconnectRes = await fetch(
-              `${supabaseUrl}/functions/v1/shopify-reconnect-url?${reconnectParams.toString()}`,
-              { headers: { 'apikey': supabaseAnonKey, 'Authorization': `Bearer ${supabaseAnonKey}` } }
-            );
-            const reconnectJson = await reconnectRes.json();
-            if (reconnectJson.auth_url) setShopifyReconnectUrl(reconnectJson.auth_url);
-          } catch {}
+          if (shopDomain && SHOPIFY_CLIENT_ID) {
+            setShopifyReconnectUrl(buildShopifyReconnectUrl(shopDomain, clientId));
+          }
         } else {
           throw new Error(json.error || 'Failed to fetch Shopify discounts');
         }
