@@ -72,10 +72,26 @@ const FONTS = [
   { label: 'Nunito',   value: "'Nunito', sans-serif",   key: 'Nunito'   },
 ];
 
-const INDUSTRIES = [
-  'E-commerce','Retail','Healthcare','Education','Food & Beverage',
-  'Travel & Hospitality','Financial Services','Technology','Fashion',
-  'Beauty & Wellness','Sports & Fitness','Entertainment','Real Estate','Other',
+// Keys must match the onboarding StepIndustry keys so the saved value loads correctly
+const INDUSTRIES: { key: string; label: string }[] = [
+  { key: 'fashion',       label: 'Fashion & Apparel'   },
+  { key: 'food',          label: 'Food & Beverage'     },
+  { key: 'beauty',        label: 'Beauty & Wellness'   },
+  { key: 'electronics',   label: 'Electronics'         },
+  { key: 'home',          label: 'Home & Decor'        },
+  { key: 'sports',        label: 'Sports & Fitness'    },
+  { key: 'travel',        label: 'Travel & Hospitality'},
+  { key: 'entertainment', label: 'Entertainment'       },
+  { key: 'health',        label: 'Healthcare'          },
+  { key: 'luxury',        label: 'Luxury & Jewellery'  },
+  { key: 'kids',          label: 'Kids & Baby'         },
+  { key: 'ecommerce',     label: 'E-commerce'          },
+  { key: 'retail',        label: 'Retail'              },
+  { key: 'education',     label: 'Education'           },
+  { key: 'financial',     label: 'Financial Services'  },
+  { key: 'technology',    label: 'Technology'          },
+  { key: 'realestate',    label: 'Real Estate'         },
+  { key: 'other',         label: 'Other'               },
 ];
 
 const TIMEZONES = [
@@ -566,7 +582,7 @@ export function Settings() {
                     <select value={formData.industry} className={inputCls}
                       onChange={e => setField({ industry: e.target.value })}>
                       <option value="">Select industry…</option>
-                      {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
+                      {INDUSTRIES.map(i => <option key={i.key} value={i.key}>{i.label}</option>)}
                     </select>
                   </FieldGroup>
                   <FieldGroup label="Timezone">
