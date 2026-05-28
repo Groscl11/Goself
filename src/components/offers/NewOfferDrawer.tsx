@@ -187,12 +187,15 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
       const json = await res.json();
       if (!json.success) {
         if (json.token_expired) {
-          // Token expired — build reconnect OAuth URL client-side (no extra round-trip needed)
-          // The URL omits grant_options[]=per-user so Shopify issues a permanent shpat_ token
+          // Token expired — build reconnect OAuth URL client-side (no extra round-trip needed).
+          // Fall back to shop_domain from the response when the shopDomain prop is empty
+          // (caller used client_id for lookup; the function resolves and echoes the domain).
+          // The URL omits grant_options[]=per-user so Shopify issues a permanent shpat_ token.
           setShopifyTokenExpired(true);
           setShopifyError('Your Shopify store connection has expired.');
-          if (shopDomain && SHOPIFY_CLIENT_ID) {
-            setShopifyReconnectUrl(buildShopifyReconnectUrl(shopDomain, clientId));
+          const effectiveShopDomain = shopDomain || json.shop_domain || '';
+          if (effectiveShopDomain && SHOPIFY_CLIENT_ID) {
+            setShopifyReconnectUrl(buildShopifyReconnectUrl(effectiveShopDomain, clientId));
           }
         } else {
           throw new Error(json.error || 'Failed to fetch Shopify discounts');
