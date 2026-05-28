@@ -145,13 +145,42 @@ export default function OffersPage() {
   const fetchStoreOffers = useCallback(async () => {
     if (!clientId) return;
     setStoreLoading(true);
+
+    // Fetch offers with distributions + individual code rows for accurate counts
     const { data } = await supabase
       .from('rewards')
-      .select('*, offer_distributions(id, distributing_client_id, points_cost, access_type, is_active, current_issuances, max_per_member, created_at, updated_at)')
+      .select('*, offer_distributions(id, distributing_client_id, points_cost, access_type, is_active, current_issuances, max_per_member, created_at, updated_at), offer_codes(status)')
       .eq('owner_client_id', clientId)
       .eq('offer_type', 'store_discount')
       .order('created_at', { ascending: false });
-    setStoreOffers(data ?? []);
+
+    const offers = data ?? [];
+
+    // Separately fetch campaign usage counts for these offer IDs
+    const offerIds = offers.map((o: any) => o.id as string);
+    let campaignUsageMap: Record<string, number> = {};
+    if (offerIds.length > 0) {
+      const { data: poolData } = await supabase
+        .from('campaign_reward_pools')
+        .select('reward_id')
+        .in('reward_id', offerIds);
+      for (const p of poolData ?? []) {
+        campaignUsageMap[p.reward_id] = (campaignUsageMap[p.reward_id] ?? 0) + 1;
+      }
+    }
+
+    // Compute accurate codes counts from offer_codes rows (unique offers only)
+    const normalized = offers.map((offer: any) => {
+      const extras: any = { campaign_usage_count: campaignUsageMap[offer.id] ?? 0 };
+      if (offer.coupon_type === 'unique') {
+        const codes = (offer.offer_codes ?? []) as Array<{ status: string }>;
+        extras.total_codes_uploaded = codes.length;
+        extras.available_codes = codes.filter((c: any) => c.status === 'available').length;
+      }
+      return { ...offer, ...extras };
+    });
+
+    setStoreOffers(normalized);
     setStoreLoading(false);
   }, [clientId]);
 
@@ -621,12 +650,36 @@ export default function OffersPage() {
                     />
                   : storeFiltered.map(offer => {
                       const dist = getDistForOffer(offer);
+                      const dists = (offer.offer_distributions ?? []) as any[];
+                      const inWidget = dists.some(d =>
+                        d.is_active && ['points_redemption', 'both', 'free_claim'].includes(d.access_type)
+                      );
+                      const campaignCount = (offer as any).campaign_usage_count ?? 0;
+                      const usageTags = (inWidget || campaignCount > 0) ? (
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          {inWidget && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200">
+                              🔧 In widget
+                            </span>
+                          )}
+                          {campaignCount > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-purple-50 text-purple-700 border border-purple-200">
+                              🎯 {campaignCount} campaign{campaignCount > 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                      ) : null;
                       return (
                         <OfferCard key={offer.id} offer={offer} distribution={dist}
+                          context="store"
+                          showSource={usageTags !== null}
+                          sourceLabel={usageTags}
                           actions={
                             <>
-                              <Btn onClick={() => setTab('distribution')}>Edit Points</Btn>
-                              <Btn onClick={() => setCodesDrawer(offer)}>Manage Codes</Btn>
+                              <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>Edit Offer</Btn>
+                              {offer.coupon_type === 'unique' && (
+                                <Btn onClick={() => setCodesDrawer(offer)}>Manage Codes</Btn>
+                              )}
                               <Btn onClick={() => window.location.href = `/client/campaigns?offer_id=${offer.id}`}>
                                 Use in Campaign
                               </Btn>
@@ -1101,7 +1154,11 @@ export default function OffersPage() {
         mode={newOfferMode}
         editOffer={editOffer}
         onCreated={() => {
-          if (editOffer || newOfferMode === 'marketplace') {
+          const isMarketplaceOffer =
+            editOffer
+              ? (editOffer as any).offer_type === 'marketplace_offer'
+              : newOfferMode === 'marketplace';
+          if (isMarketplaceOffer) {
             fetchSubmissions();
           } else {
             fetchStoreOffers();

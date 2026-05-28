@@ -71,9 +71,11 @@ interface OfferCardProps {
   actions: React.ReactNode;
   showSource?: boolean;
   sourceLabel?: React.ReactNode;
+  /** 'store' swaps the stats row to show codes + valid-until instead of points/assigned */
+  context?: 'store' | 'partner' | 'marketplace';
 }
 
-export function OfferCard({ offer, distribution, actions, showSource, sourceLabel }: OfferCardProps) {
+export function OfferCard({ offer, distribution, actions, showSource, sourceLabel, context }: OfferCardProps) {
   const isLowStock =
     offer.coupon_type === 'unique' &&
     (offer.available_codes ?? 0) < 10 &&
@@ -137,28 +139,67 @@ export function OfferCard({ offer, distribution, actions, showSource, sourceLabe
           </div>
         </div>
 
-        {/* Stats row */}
+        {/* Stats row — store context shows codes+expiry; others show distribution info */}
         <div className="grid grid-cols-4 gap-3 py-3 border-t border-b border-gray-100 mb-3">
-          <StatItem
-            label="Points to redeem"
-            value={
-              distribution?.points_cost != null
-                ? `${distribution.points_cost.toLocaleString('en-IN')} pts`
-                : distribution?.access_type === 'campaign_reward'
-                  ? <span className="text-gray-400">Free (campaign)</span>
-                  : <span className="text-red-500 text-xs">Not configured</span>
-            }
-          />
-          <StatItem label="Assigned" value={distribution?.current_issuances?.toLocaleString('en-IN') ?? '—'} />
-          <StatItem label="Total codes" value={(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')} />
-          <StatItem
-            label="Tracking"
-            value={
-              offer.tracking_type === 'manual'
-                ? <Badge variant="amber">Manual</Badge>
-                : <span className="text-gray-500 text-xs">Auto</span>
-            }
-          />
+          {context === 'store' ? (
+            <>
+              <StatItem
+                label="Available codes"
+                value={
+                  offer.coupon_type === 'generic'
+                    ? <span className="text-gray-500 text-xs">Generic (reusable)</span>
+                    : (offer.available_codes ?? 0).toLocaleString('en-IN')
+                }
+              />
+              <StatItem
+                label="Total codes"
+                value={
+                  offer.coupon_type === 'generic'
+                    ? '—'
+                    : (offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')
+                }
+              />
+              <StatItem
+                label="Valid until"
+                value={
+                  offer.valid_until
+                    ? new Date(offer.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                    : <span className="text-gray-400">No expiry</span>
+                }
+              />
+              <StatItem
+                label="Tracking"
+                value={
+                  offer.tracking_type === 'manual'
+                    ? <Badge variant="amber">Manual</Badge>
+                    : <span className="text-gray-500 text-xs">Auto</span>
+                }
+              />
+            </>
+          ) : (
+            <>
+              <StatItem
+                label="Points to redeem"
+                value={
+                  distribution?.points_cost != null
+                    ? `${distribution.points_cost.toLocaleString('en-IN')} pts`
+                    : distribution?.access_type === 'campaign_reward'
+                      ? <span className="text-gray-400">Free (campaign)</span>
+                      : <span className="text-red-500 text-xs">Not configured</span>
+                }
+              />
+              <StatItem label="Assigned" value={distribution?.current_issuances?.toLocaleString('en-IN') ?? '—'} />
+              <StatItem label="Total codes" value={(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')} />
+              <StatItem
+                label="Tracking"
+                value={
+                  offer.tracking_type === 'manual'
+                    ? <Badge variant="amber">Manual</Badge>
+                    : <span className="text-gray-500 text-xs">Auto</span>
+                }
+              />
+            </>
+          )}
         </div>
 
         {(offer.offer_type === 'partner_voucher') && (
