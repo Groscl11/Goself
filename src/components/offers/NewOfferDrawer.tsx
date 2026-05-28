@@ -114,6 +114,14 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
   // Shopify create-discount state
   const [shopifyCreating, setShopifyCreating] = useState(false);
 
+  // Client logo — fetched once, used as default image_url fallback
+  const [clientLogoUrl, setClientLogoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!clientId) return;
+    supabase.from('clients').select('logo_url').eq('id', clientId).maybeSingle()
+      .then(({ data }) => setClientLogoUrl(data?.logo_url ?? null));
+  }, [clientId]);
+
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
   // Pre-populate form when editing an existing offer
@@ -271,7 +279,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         discount_value: form.discount_value ? Number(form.discount_value) : null,
         max_discount_value: form.max_cap ? Number(form.max_cap) : null,
         min_purchase_amount: form.min_purchase_amount ? Number(form.min_purchase_amount) : 0,
-        image_url: form.image_url.trim() || null,
+        image_url: form.image_url.trim() || clientLogoUrl || null,
         valid_until: form.valid_until || null,
         redemption_link: form.redemption_link.trim() || null,
         terms_conditions: form.terms_conditions.trim() || null,

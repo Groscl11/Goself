@@ -29,6 +29,14 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
 
   const [partnerId, setPartnerId] = useState<string | null>(null);
 
+  // Client logo — fetched once, used as default image_url fallback
+  const [clientLogoUrl, setClientLogoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!clientId) return;
+    supabase.from('clients').select('logo_url').eq('id', clientId).maybeSingle()
+      .then(({ data }) => setClientLogoUrl(data?.logo_url ?? null));
+  }, [clientId]);
+
   const [form, setForm] = useState({
     // Step 1
     partner_name: '',
@@ -165,7 +173,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       const rewardPayload = {
         title: `${form.partner_name} — ${categoryLabel}`,
         description: form.steps_to_redeem || null,
-        image_url: form.image_url.trim() || null,
+        image_url: form.image_url.trim() || clientLogoUrl || null,
         redemption_link: form.redemption_link || null,
         terms_conditions: form.terms_conditions || null,
         steps_to_redeem: form.steps_to_redeem || null,
