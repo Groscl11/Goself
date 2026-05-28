@@ -91,6 +91,7 @@ import { AdminMarketplaceApprovals } from './pages/admin/AdminMarketplaceApprova
 const OffersPage = lazy(() => import('./pages/client/OffersPage'));
 const LoyaltyProgramPage = lazy(() => import('./pages/client/LoyaltyProgramPage'));
 const CampaignsPage = lazy(() => import('./pages/client/CampaignsPage'));
+const AffiliatesPage = lazy(() => import('./pages/client/AffiliatesPage'));
 
 function DashboardRouter() {
   const { profile, loading } = useAuth();
@@ -194,6 +195,7 @@ function App() {
           <Route path="/client/rewards" element={<RoleBasedRoute allowedRoles={['client']}><RewardsMarketplace /></RoleBasedRoute>} />
           <Route path="/client/campaigns" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading campaigns...</div>}><CampaignsPage /></Suspense></RoleBasedRoute>} />
           <Route path="/client/campaign-logs" element={<RoleBasedRoute allowedRoles={['client']}><CampaignTriggerLogs /></RoleBasedRoute>} />
+          <Route path="/client/affiliates" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading affiliates...</div>}><AffiliatesPage /></Suspense></RoleBasedRoute>} />
           <Route path="/client/templates" element={<RoleBasedRoute allowedRoles={['client']}><MessageTemplates /></RoleBasedRoute>} />
           <Route path="/client/communications" element={<RoleBasedRoute allowedRoles={['client']}><CommunicationLogs /></RoleBasedRoute>} />
           <Route path="/client/integrations" element={<RoleBasedRoute allowedRoles={['client']}><Integrations /></RoleBasedRoute>} />

@@ -18,6 +18,7 @@ import {
   Sparkles,
   Settings,
   CreditCard,
+  Link,
 } from 'lucide-react';
 
 export const clientMenuItems = [
@@ -82,6 +83,12 @@ export const clientMenuItems = [
     icon: <Megaphone className="w-4 h-4" />,
   },
 
+  {
+    section: 'Rewards & Offers',
+    label: 'Affiliates',
+    path: '/client/affiliates',
+    icon: <Link className="w-4 h-4" />,
+  },
   {
     section: 'Rewards & Offers',
     label: 'Brand Network',
