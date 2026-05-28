@@ -512,7 +512,7 @@ export default function OffersPage() {
                             <>
                               <Btn onClick={() => setTab('distribution')}>Edit Points</Btn>
                               <Btn onClick={() => setCodesDrawer(offer)}>Manage Codes</Btn>
-                              <Btn onClick={() => window.location.href = `/client/campaigns/new?offer_id=${offer.id}`}>
+                              <Btn onClick={() => window.location.href = `/client/campaigns?offer_id=${offer.id}`}>
                                 Use in Campaign
                               </Btn>
                               <MoreMenu offer={offer} onRefresh={fetchStoreOffers} clientId={clientId} />
@@ -564,7 +564,7 @@ export default function OffersPage() {
                               </Btn>
                               <Btn onClick={() => setPartnerEditTarget({ offer, distribution: dist })}>Edit Offer</Btn>
                               <Btn onClick={() => setTab('distribution')}>Edit Points</Btn>
-                              <Btn onClick={() => window.location.href = `/client/campaigns/new?offer_id=${offer.id}`}>
+                              <Btn onClick={() => window.location.href = `/client/campaigns?offer_id=${offer.id}`}>
                                 Use in Campaign
                               </Btn>
                             </>
