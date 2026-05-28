@@ -63,6 +63,8 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
   const [shopifyRules, setShopifyRules] = useState<ShopifyPriceRule[]>([]);
   const [shopifyLoading, setShopifyLoading] = useState(false);
   const [shopifyError, setShopifyError] = useState('');
+  const [shopifyTokenExpired, setShopifyTokenExpired] = useState(false);
+  const [shopifyReconnectUrl, setShopifyReconnectUrl] = useState('');
   const [shopifySearch, setShopifySearch] = useState('');
   const [shopifyPicked, setShopifyPicked] = useState(false);
   const [shopifyFetched, setShopifyFetched] = useState(false);
@@ -134,6 +136,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     setFlow(null); setLoading(false); setError(''); setSuccess('');
     setParsedCodes([]);
     setShopifyRules([]); setShopifyLoading(false); setShopifyError('');
+    setShopifyTokenExpired(false); setShopifyReconnectUrl('');
     setShopifySearch(''); setShopifyPicked(false); setShopifyFetched(false);
     setShopifyCreating(false);
     setForm({
@@ -154,6 +157,8 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     }
     setShopifyLoading(true);
     setShopifyError('');
+    setShopifyTokenExpired(false);
+    setShopifyReconnectUrl('');
     try {
       const params = new URLSearchParams();
       if (shopDomain) params.set('shop_domain', shopDomain);
@@ -164,8 +169,28 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         { headers: { 'apikey': supabaseAnonKey, 'Authorization': `Bearer ${supabaseAnonKey}` } }
       );
       const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Failed to fetch Shopify discounts');
-      setShopifyRules(json.price_rules || []);
+      if (!json.success) {
+        if (json.token_expired) {
+          // Token expired — fetch a reconnect URL so the merchant can re-authorize
+          setShopifyTokenExpired(true);
+          setShopifyError('Your Shopify store connection has expired.');
+          try {
+            const reconnectParams = new URLSearchParams();
+            if (shopDomain) reconnectParams.set('shop_domain', shopDomain);
+            if (clientId)   reconnectParams.set('client_id', clientId);
+            const reconnectRes = await fetch(
+              `${supabaseUrl}/functions/v1/shopify-reconnect-url?${reconnectParams.toString()}`,
+              { headers: { 'apikey': supabaseAnonKey, 'Authorization': `Bearer ${supabaseAnonKey}` } }
+            );
+            const reconnectJson = await reconnectRes.json();
+            if (reconnectJson.auth_url) setShopifyReconnectUrl(reconnectJson.auth_url);
+          } catch {}
+        } else {
+          throw new Error(json.error || 'Failed to fetch Shopify discounts');
+        }
+      } else {
+        setShopifyRules(json.price_rules || []);
+      }
     } catch (e: any) {
       setShopifyError(e.message);
     }
@@ -499,8 +524,29 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
               )}
               {shopifyError && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-3">
-                  {shopifyError}
-                  <button onClick={fetchShopifyDiscounts} className="ml-2 underline text-xs">Retry</button>
+                  {shopifyTokenExpired ? (
+                    <div className="space-y-2">
+                      <p className="font-medium">Your Shopify store connection has expired.</p>
+                      <p className="text-xs text-red-600">The access token stored for your store is no longer valid. You need to reconnect your Shopify store to continue.</p>
+                      {shopifyReconnectUrl ? (
+                        <a
+                          href={shopifyReconnectUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                          🔗 Reconnect Shopify Store →
+                        </a>
+                      ) : (
+                        <p className="text-xs text-red-500 italic">Please reinstall the Goself app from your Shopify admin.</p>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      {shopifyError}
+                      <button onClick={fetchShopifyDiscounts} className="ml-2 underline text-xs">Retry</button>
+                    </>
+                  )}
                 </div>
               )}
               {!shopifyLoading && !shopifyError && shopifyFetched && shopifyRules.length === 0 && (
