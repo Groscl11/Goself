@@ -75,6 +75,40 @@ interface OfferCardProps {
   context?: 'store' | 'partner' | 'marketplace';
 }
 
+// ─── Brand logo avatar ───────────────────────────────────────────────────────
+function BrandLogo({ offer }: { offer: Offer }) {
+  const logoUrl = (offer as any).image_url ?? offer.owner_client?.logo_url ?? null;
+  const name = offer.owner_client?.name ?? offer.title ?? '';
+  const initials = name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w: string) => w[0]?.toUpperCase() ?? '')
+    .join('');
+
+  const [imgError, setImgError] = React.useState(false);
+
+  if (logoUrl && !imgError) {
+    return (
+      <div className="w-10 h-10 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0 bg-gray-50">
+        <img
+          src={logoUrl}
+          alt={name}
+          onError={() => setImgError(true)}
+          className="w-full h-full object-cover"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-200 flex items-center justify-center">
+      <span className="text-xs font-bold text-indigo-600 leading-none">
+        {initials || '?'}
+      </span>
+    </div>
+  );
+}
+
 export function OfferCard({ offer, distribution, actions, showSource, sourceLabel, context }: OfferCardProps) {
   const isLowStock =
     offer.coupon_type === 'unique' &&
@@ -116,7 +150,9 @@ export function OfferCard({ offer, distribution, actions, showSource, sourceLabe
       <div className="p-4">
         {/* Header row */}
         <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            <BrandLogo offer={offer} />
+            <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-sm font-semibold text-gray-900 truncate">{offer.title}</h3>
               {discountLabel && (
@@ -132,6 +168,7 @@ export function OfferCard({ offer, distribution, actions, showSource, sourceLabe
             {showSource && sourceLabel && (
               <div className="mt-1">{sourceLabel}</div>
             )}
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <CodePoolBadge offer={offer} />

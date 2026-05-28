@@ -149,7 +149,7 @@ export default function OffersPage() {
     // Fetch offers with distributions + individual code rows for accurate counts
     const { data } = await supabase
       .from('rewards')
-      .select('*, offer_distributions(id, distributing_client_id, points_cost, access_type, is_active, current_issuances, max_per_member, created_at, updated_at), offer_codes(status)')
+      .select('*, offer_distributions(id, distributing_client_id, points_cost, access_type, is_active, current_issuances, max_per_member, created_at, updated_at), offer_codes(status), owner_client:clients!owner_client_id(name, logo_url)')
       .eq('owner_client_id', clientId)
       .eq('offer_type', 'store_discount')
       .order('created_at', { ascending: false });
@@ -189,7 +189,7 @@ export default function OffersPage() {
     setPartnerLoading(true);
     const { data } = await supabase
       .from('rewards')
-      .select('*, offer_distributions(id, distributing_client_id, points_cost, access_type, is_active, current_issuances, max_per_member, created_at, updated_at), offer_codes(status)')
+      .select('*, offer_distributions(id, distributing_client_id, points_cost, access_type, is_active, current_issuances, max_per_member, created_at, updated_at), offer_codes(status), owner_client:clients!owner_client_id(name, logo_url)')
       .eq('owner_client_id', clientId)
       .eq('offer_type', 'partner_voucher')
       .order('created_at', { ascending: false });
@@ -258,7 +258,7 @@ export default function OffersPage() {
     const [{ data, error }, { data: editReqs }] = await Promise.all([
       supabase
         .from('rewards')
-        .select('*, offer_distributions(id, distributing_client_id, current_issuances), marketplace_status, marketplace_rejection_reason, marketplace_submitted_at')
+        .select('*, offer_distributions(id, distributing_client_id, current_issuances), owner_client:clients!owner_client_id(name, logo_url), marketplace_status, marketplace_rejection_reason, marketplace_submitted_at')
         .eq('owner_client_id', clientId)
         .eq('offer_type', 'marketplace_offer')
         .order('created_at', { ascending: false }),
