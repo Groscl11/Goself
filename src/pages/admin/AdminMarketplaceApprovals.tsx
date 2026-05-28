@@ -102,7 +102,7 @@ export function AdminMarketplaceApprovals() {
 
   async function fetchOffers() {
     setOffersLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('rewards')
       .select(`
         id, reward_id, title, description, offer_type, offer_category,
@@ -113,14 +113,15 @@ export function AdminMarketplaceApprovals() {
         owner_client:clients!owner_client_id(id, name, logo_url)
       `)
       .eq('offer_type', 'marketplace_offer')
-      .order('marketplace_submitted_at', { ascending: false });
+      .order('marketplace_submitted_at', { ascending: false, nullsFirst: false });
+    if (error) console.error('[AdminMarketplaceApprovals] fetchOffers error:', error);
     setOffers((data ?? []) as unknown as Offer[]);
     setOffersLoading(false);
   }
 
   async function fetchEditRequests() {
     setEditLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('rewards_edit_requests')
       .select(`
         id, reward_id, requesting_client_id, proposed_changes,
@@ -130,6 +131,7 @@ export function AdminMarketplaceApprovals() {
         requesting_client:clients(name, logo_url)
       `)
       .order('created_at', { ascending: false });
+    if (error) console.error('[AdminMarketplaceApprovals] fetchEditRequests error:', error);
     setEditReqs((data ?? []) as unknown as RewardsEditRequest[]);
     setEditLoading(false);
   }
