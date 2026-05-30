@@ -19,6 +19,7 @@ type TabId = 'store' | 'partner' | 'marketplace' | 'distribution';
 // ─── Widget catalog item ──────────────────────────────────────────────────────
 interface WidgetItem {
   rewardId: string;
+  rewardShortId: string;
   distId: string | null;
   title: string;
   subtitle: string;
@@ -31,6 +32,10 @@ interface WidgetItem {
   pointsCost: number | null;
   maxPerMember: number | null;
   distAccessType: string | null;
+  brandName: string | null;
+  brandLogo: string | null;
+  offerType: string;
+  rewardType: string;
 }
  
 const TABS: { id: TabId; label: string }[] = [
@@ -114,6 +119,8 @@ export default function OffersPage() {
   const [widgetLoading, setWidgetLoading] = useState(false);
   const [widgetSearch, setWidgetSearch] = useState('');
   const [widgetFilter, setWidgetFilter] = useState<'all' | 'in_widget' | 'not_configured'>('all');
+  const [widgetTypeFilter, setWidgetTypeFilter] = useState('');
+  const [widgetBrandFilter, setWidgetBrandFilter] = useState('');
   const [widgetEdits, setWidgetEdits] = useState<Record<string, { points?: string; max?: string }>>({});
   const [widgetSaving, setWidgetSaving] = useState<Record<string, boolean>>({});
   const [widgetSaved, setWidgetSaved] = useState<Record<string, boolean>>({});
@@ -297,7 +304,7 @@ export default function OffersPage() {
     // 2. All own rewards (store + partner)
     const { data: ownRewards } = await supabase
       .from('rewards')
-      .select('id, title, reward_type, coupon_type, offer_type, available_codes, status, valid_until')
+      .select('id, title, reward_type, coupon_type, offer_type, available_codes, status, valid_until, image_url, owner_client_id')
       .eq('owner_client_id', clientId)
       .in('offer_type', ['store_discount', 'partner_voucher'])
       .order('created_at', { ascending: false });
@@ -310,18 +317,33 @@ export default function OffersPage() {
     if (adoptedIds.length > 0) {
       const { data } = await supabase
         .from('rewards')
-        .select('id, title, reward_type, coupon_type, offer_type, available_codes, status, valid_until')
+        .select('id, title, reward_type, coupon_type, offer_type, available_codes, status, valid_until, image_url, owner_client_id')
         .in('id', adoptedIds);
       externalRewards = data ?? [];
     }
 
     const allRewards = [...(ownRewards ?? []), ...externalRewards];
 
+    // 4. Fetch brand info for all unique owner_client_ids
+    const ownerIds = [...new Set(allRewards.map((r: any) => r.owner_client_id).filter(Boolean))];
+    const brandMap = new Map<string, { name: string; logo_url: string | null }>();
+    if (ownerIds.length > 0) {
+      const { data: clientRows } = await supabase
+        .from('clients')
+        .select('id, name, logo_url')
+        .in('id', ownerIds);
+      for (const c of (clientRows ?? [])) {
+        brandMap.set(c.id, { name: c.name, logo_url: c.logo_url ?? null });
+      }
+    }
+
     const items: WidgetItem[] = allRewards.map((r: any) => {
       const dist = distMap.get(r.id);
       const inWidget = !!(dist?.is_active && ['points_redemption', 'both', 'free_claim'].includes(dist.access_type));
+      const brand = brandMap.get(r.owner_client_id);
       return {
         rewardId: r.id,
+        rewardShortId: r.id.slice(0, 8),
         distId: dist?.id ?? null,
         title: r.title,
         subtitle: `${(r.reward_type ?? '').replace(/_/g, ' ')} · ${r.coupon_type ?? ''}`,
@@ -334,6 +356,10 @@ export default function OffersPage() {
         pointsCost: dist?.points_cost ?? null,
         maxPerMember: dist?.max_per_member ?? null,
         distAccessType: dist?.access_type ?? null,
+        brandName: brand?.name ?? null,
+        brandLogo: r.image_url ?? brand?.logo_url ?? null,
+        offerType: r.offer_type ?? '',
+        rewardType: r.reward_type ?? '',
       };
     });
 
@@ -918,6 +944,7 @@ export default function OffersPage() {
                 Toggle any reward to show it in your loyalty widget. Set the points members need to redeem it.
               </p>
               <div className="flex items-center gap-2 flex-wrap">
+                {/* Search */}
                 <div className="relative">
                   <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"
                     fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -932,6 +959,32 @@ export default function OffersPage() {
                     className="pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-400 w-44"
                   />
                 </div>
+
+                {/* Reward type filter */}
+                <select
+                  value={widgetTypeFilter}
+                  onChange={e => setWidgetTypeFilter(e.target.value)}
+                  className="px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-400 text-gray-600 bg-white"
+                >
+                  <option value="">All Types</option>
+                  {[...new Set(widgetItems.map(i => i.rewardType).filter(Boolean))].sort().map(t => (
+                    <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+
+                {/* Brand filter */}
+                <select
+                  value={widgetBrandFilter}
+                  onChange={e => setWidgetBrandFilter(e.target.value)}
+                  className="px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-400 text-gray-600 bg-white"
+                >
+                  <option value="">All Brands</option>
+                  {[...new Set(widgetItems.map(i => i.brandName).filter(Boolean))].sort().map(b => (
+                    <option key={b!} value={b!}>{b}</option>
+                  ))}
+                </select>
+
+                {/* Widget status pills */}
                 {(['all', 'in_widget', 'not_configured'] as const).map(f => (
                   <button key={f} onClick={() => setWidgetFilter(f)}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap
@@ -965,9 +1018,13 @@ export default function OffersPage() {
               const filtered = widgetItems.filter(item => {
                 if (widgetFilter === 'in_widget' && !item.inWidget) return false;
                 if (widgetFilter === 'not_configured' && item.inWidget) return false;
+                if (widgetTypeFilter && item.rewardType !== widgetTypeFilter) return false;
+                if (widgetBrandFilter && item.brandName !== widgetBrandFilter) return false;
                 if (widgetSearch.trim()) {
                   const q = widgetSearch.trim().toLowerCase();
-                  if (!item.title.toLowerCase().includes(q)) return false;
+                  if (!item.title.toLowerCase().includes(q) &&
+                      !item.rewardShortId.toLowerCase().includes(q) &&
+                      !(item.brandName ?? '').toLowerCase().includes(q)) return false;
                 }
                 return true;
               });
@@ -979,6 +1036,9 @@ export default function OffersPage() {
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50">
                           <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Reward</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Reward ID</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">Brand</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-32">Offer Type</th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Source</th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Status</th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">In Widget</th>
@@ -990,7 +1050,7 @@ export default function OffersPage() {
                       <tbody>
                         {filtered.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">
+                            <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-400">
                               No rewards match your filter.
                             </td>
                           </tr>
@@ -1020,6 +1080,39 @@ export default function OffersPage() {
                                   )}
                                 </div>
                                 <div className="text-xs text-gray-400 mt-0.5 capitalize">{item.subtitle}</div>
+                              </td>
+
+                              {/* Reward ID */}
+                              <td className="px-4 py-3">
+                                <span className="font-mono text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 select-all">
+                                  {item.rewardShortId}…
+                                </span>
+                              </td>
+
+                              {/* Brand */}
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {item.brandLogo ? (
+                                    <img src={item.brandLogo} alt={item.brandName ?? ''}
+                                      className="w-6 h-6 rounded object-cover flex-shrink-0 border border-gray-100" />
+                                  ) : (
+                                    <div className="w-6 h-6 rounded bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-200 flex items-center justify-center flex-shrink-0">
+                                      <span className="text-[9px] font-bold text-indigo-600">
+                                        {(item.brandName ?? '?')[0]?.toUpperCase()}
+                                      </span>
+                                    </div>
+                                  )}
+                                  <span className="text-xs text-gray-700 truncate max-w-[90px]" title={item.brandName ?? ''}>
+                                    {item.brandName ?? '—'}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Offer Type */}
+                              <td className="px-4 py-3">
+                                <span className="text-xs text-gray-600 capitalize whitespace-nowrap">
+                                  {(item.offerType ?? '').replace(/_/g, ' ')}
+                                </span>
                               </td>
 
                               {/* Source */}
