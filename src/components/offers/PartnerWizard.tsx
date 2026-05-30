@@ -47,7 +47,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     // Step 1
     title: '',
     description: '',
-    offer_category: 'general',
+    offer_category: 'other',
     reward_type: 'flat_discount',
     discount_value: '',
     max_discount_value: '',
@@ -102,7 +102,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     setParsedCodes([]);
     setPartnerId(null);
     setForm({
-      title: '', description: '', offer_category: 'general',
+      title: '', description: '', offer_category: 'other',
       reward_type: 'flat_discount', discount_value: '', max_discount_value: '', min_purchase_amount: '',
       image_url: '',
       steps_to_redeem: '', redemption_link: '', terms_conditions: '',
@@ -120,7 +120,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     setForm({
       title: offer.title ?? '',
       description: offer.description ?? '',
-      offer_category: offer.offer_category || 'general',
+      offer_category: offer.offer_category || 'other',
       reward_type: offer.reward_type ?? 'flat_discount',
       discount_value: offer.discount_value != null ? String(offer.discount_value) : '',
       max_discount_value: offer.max_discount_value != null ? String(offer.max_discount_value) : '',
@@ -185,7 +185,10 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       const isEdit = Boolean(editTarget?.offer?.id);
       let offerId = editTarget?.offer?.id as string | undefined;
 
-      const codeSource = form.coupon_type === 'generic' ? 'manual' : 'csv_uploaded';
+      // Both generic (fixed shared code) and unique (CSV-uploaded) use 'csv_uploaded' as
+      // that is the only non-Shopify CodeSource value in the type. A future 'manual' variant
+      // can be added to CodeSource when needed.
+      const codeSource: 'csv_uploaded' = 'csv_uploaded';
 
       const rewardPayload: Record<string, any> = {
         title: form.title.trim(),
@@ -195,7 +198,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
         terms_conditions: form.terms_conditions || null,
         steps_to_redeem: form.steps_to_redeem || null,
         offer_type: 'partner_voucher',
-        offer_category: form.offer_category || 'general',
+        offer_category: form.offer_category || 'other',
         code_source: codeSource,
         coupon_type: form.coupon_type,
         generic_coupon_code: form.coupon_type === 'generic' ? form.generic_coupon_code.trim() : null,
