@@ -1,5 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useTheme } from '../../context/ThemeContext';
 import { Menu, X, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface MenuItem {
@@ -19,6 +20,7 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, menuItems, title }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { theme } = useTheme();
 
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const location = useLocation();
@@ -60,7 +62,10 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
         <div className="h-full flex flex-col">
           <div className="p-6 border-b border-gray-200">
             <h2 className="text-2xl font-bold text-blue-600">GoSelf</h2>
-            <p className="text-sm text-gray-500 mt-0.5">Client Portal</p>
+            {theme.brandName && (
+              <p className="text-sm font-semibold text-gray-700 mt-0.5">{theme.brandName}</p>
+            )}
+            <p className="text-xs text-gray-400 mt-0.5">Client Portal</p>
           </div>
 
           <nav className="flex-1 overflow-y-auto py-3 px-3">
