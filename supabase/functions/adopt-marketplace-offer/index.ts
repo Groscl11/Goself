@@ -122,7 +122,7 @@ Deno.serve(async (req: Request) => {
         access_type: accessType,
         points_cost: pointsCost,
         max_per_member: maxPerMember,
-        is_active: true,
+        is_active: false, // off by default — client enables via Widget Rewards tab
       })
       .select("id")
       .single();

@@ -470,7 +470,7 @@ export default function OffersPage() {
           .eq('id', existing.id);
         if (error) throw error;
       } else {
-        // Fresh insert
+        // Fresh insert (off by default — client enables via Widget Rewards tab)
         const { error } = await supabase
           .from('offer_distributions')
           .insert({
@@ -479,7 +479,7 @@ export default function OffersPage() {
             access_type: config.access_type,
             points_cost: config.access_type === 'campaign_reward' ? null : config.points_cost,
             max_per_member: config.max_per_member,
-            is_active: true,
+            is_active: false,
           });
         if (error) throw error;
       }

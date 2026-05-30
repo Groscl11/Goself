@@ -246,7 +246,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
           access_type: form.access_type,
           points_cost: showPoints ? Number(form.points_cost) : null,
           max_per_member: Number(form.max_per_member) || 1,
-          is_active: true,
+          is_active: false, // off by default — client enables via Widget Rewards tab
         };
 
         const { data: existingDistributions, error: existingDistErr } = await (supabase as any)
