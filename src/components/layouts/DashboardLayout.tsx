@@ -1,6 +1,7 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Menu, X, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface MenuItem {
@@ -20,7 +21,12 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, menuItems, title }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { theme } = useTheme();
+  const { theme, loadTheme } = useTheme();
+  const { profile } = useAuth();
+
+  useEffect(() => {
+    if (profile?.client_id) loadTheme(profile.client_id);
+  }, [profile?.client_id, loadTheme]);
 
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const location = useLocation();
