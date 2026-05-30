@@ -26,6 +26,7 @@ interface SocialLinks {
 interface BrandingSettings {
   secondary_color: string; font_heading: string; font_body: string;
   border_radius: string;   favicon_url: string;  social_links: SocialLinks;
+  wallet_voucher_style?: 'classic' | 'detail' | 'chips' | 'ticket';
 }
 
 interface CommunicationSettings {
@@ -991,6 +992,41 @@ export function Settings() {
                       <span className="text-xs text-gray-600">{opt.label}</span>
                     </button>
                   ))}
+                </div>
+
+                {/* Wallet Voucher Style */}
+                <SectionDivider label="Loyalty Widget — Wallet Style"/>
+                <p className="text-sm text-gray-500 mb-4">
+                  Choose how vouchers appear in your members' wallet. Takes effect immediately after saving.
+                </p>
+                <div className="grid grid-cols-2 gap-3 mb-8">
+                  {([
+                    { value: 'classic', label: 'Classic',      desc: 'Simple rows with Copy button',          icon: '📋' },
+                    { value: 'detail',  label: 'Detail View',  desc: 'Tap row to open full-screen detail',    icon: '🔍' },
+                    { value: 'chips',   label: 'Action Chips', desc: 'Inline Steps / T&C / Redeem buttons',   icon: '💡' },
+                    { value: 'ticket',  label: 'Ticket Card',  desc: 'Boarding-pass style with accent stripe',icon: '🎫' },
+                  ] as const).map(opt => {
+                    const current = formData.branding_settings.wallet_voucher_style ?? 'chips';
+                    const isSelected = current === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setBranding({ wallet_voucher_style: opt.value })}
+                        className={`flex items-start gap-3 p-4 border-2 rounded-xl text-left transition-all ${
+                          isSelected ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300 bg-white'
+                        }`}
+                      >
+                        <span className="text-2xl mt-0.5 flex-shrink-0">{opt.icon}</span>
+                        <div>
+                          <div className={`text-sm font-semibold ${isSelected ? 'text-indigo-700' : 'text-gray-800'}`}>
+                            {opt.label}{opt.value === 'chips' && <span className="ml-1.5 text-xs font-normal text-gray-400">(default)</span>}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5">{opt.desc}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <SaveBar saving={appSaving} success={appSuccess} error={appError} onSave={handleSaveAppearance}/>
