@@ -1041,9 +1041,9 @@ export default function OffersPage() {
                     <table className="w-full text-sm min-w-[900px]">
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50">
-                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Reward</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-32">Reward ID</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Brand</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Offer</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Offer Type</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-16">Source</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Status</th>
@@ -1070,32 +1070,14 @@ export default function OffersPage() {
                               className={`border-b border-gray-50 transition-colors ${
                                 item.inWidget ? 'bg-white hover:bg-gray-50/50' : 'bg-gray-50/40 hover:bg-gray-50/70'
                               }`}>
-                              {/* Reward name + meta */}
-                              <td className="px-3 py-3">
-                                <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5 flex-wrap">
-                                  {item.title}
-                                  {isExpired && (
-                                    <span className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5">
-                                      ⚠ Expired
-                                    </span>
-                                  )}
-                                  {noCodesWarning && !isExpired && (
-                                    <span className="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
-                                      No codes
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-xs text-gray-400 mt-0.5 capitalize">{item.subtitle}</div>
-                              </td>
-
-                              {/* Reward ID */}
+                              {/* Reward ID — FIRST */}
                               <td className="px-3 py-3">
                                 <span className="font-mono text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 select-all whitespace-nowrap">
                                   {item.rewardShortId}
                                 </span>
                               </td>
 
-                              {/* Brand */}
+                              {/* Brand — SECOND */}
                               <td className="px-3 py-3">
                                 <div className="flex items-center gap-1.5 min-w-0">
                                   {item.brandLogo ? (
@@ -1112,6 +1094,24 @@ export default function OffersPage() {
                                     {item.brandName ?? '—'}
                                   </span>
                                 </div>
+                              </td>
+
+                              {/* Offer name + meta — THIRD */}
+                              <td className="px-3 py-3">
+                                <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5 flex-wrap">
+                                  {item.title}
+                                  {isExpired && (
+                                    <span className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5">
+                                      ⚠ Expired
+                                    </span>
+                                  )}
+                                  {noCodesWarning && !isExpired && (
+                                    <span className="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+                                      No codes
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-400 mt-0.5 capitalize">{item.subtitle}</div>
                               </td>
 
                               {/* Offer Type */}
