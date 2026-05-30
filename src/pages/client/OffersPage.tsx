@@ -1015,36 +1015,42 @@ export default function OffersPage() {
                 }
               />
             ) : (() => {
-              const filtered = widgetItems.filter(item => {
-                if (widgetFilter === 'in_widget' && !item.inWidget) return false;
-                if (widgetFilter === 'not_configured' && item.inWidget) return false;
-                if (widgetTypeFilter && item.rewardType !== widgetTypeFilter) return false;
-                if (widgetBrandFilter && item.brandName !== widgetBrandFilter) return false;
-                if (widgetSearch.trim()) {
-                  const q = widgetSearch.trim().toLowerCase();
-                  if (!item.title.toLowerCase().includes(q) &&
-                      !item.rewardShortId.toLowerCase().includes(q) &&
-                      !(item.brandName ?? '').toLowerCase().includes(q)) return false;
-                }
-                return true;
-              });
+              const filtered = widgetItems
+                .filter(item => {
+                  if (widgetFilter === 'in_widget' && !item.inWidget) return false;
+                  if (widgetFilter === 'not_configured' && item.inWidget) return false;
+                  if (widgetTypeFilter && item.rewardType !== widgetTypeFilter) return false;
+                  if (widgetBrandFilter && item.brandName !== widgetBrandFilter) return false;
+                  if (widgetSearch.trim()) {
+                    const q = widgetSearch.trim().toLowerCase();
+                    if (!item.title.toLowerCase().includes(q) &&
+                        !(item.rewardShortId ?? '').toLowerCase().includes(q) &&
+                        !(item.brandName ?? '').toLowerCase().includes(q)) return false;
+                  }
+                  return true;
+                })
+                // In-widget first, then alphabetical by title
+                .sort((a, b) => {
+                  if (a.inWidget !== b.inWidget) return a.inWidget ? -1 : 1;
+                  return a.title.localeCompare(b.title);
+                });
 
               return (
                 <>
-                  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                    <table className="w-full text-sm">
+                  <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+                    <table className="w-full text-sm min-w-[900px]">
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50">
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Reward</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Reward ID</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">Brand</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-32">Offer Type</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Source</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Status</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">In Widget</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">Points Cost</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-32">Max / Member</th>
-                          <th className="px-4 py-3 w-20" />
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Reward</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-32">Reward ID</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Brand</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Offer Type</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-16">Source</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Status</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">In Widget</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-32">Points Cost</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Max / Member</th>
+                          <th className="px-3 py-3 w-16" />
                         </tr>
                       </thead>
                       <tbody>
@@ -1065,7 +1071,7 @@ export default function OffersPage() {
                                 item.inWidget ? 'bg-white hover:bg-gray-50/50' : 'bg-gray-50/40 hover:bg-gray-50/70'
                               }`}>
                               {/* Reward name + meta */}
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-3">
                                 <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5 flex-wrap">
                                   {item.title}
                                   {isExpired && (
@@ -1083,51 +1089,51 @@ export default function OffersPage() {
                               </td>
 
                               {/* Reward ID */}
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-3">
                                 <span className="font-mono text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 select-all whitespace-nowrap">
                                   {item.rewardShortId}
                                 </span>
                               </td>
 
                               {/* Brand */}
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2 min-w-0">
+                              <td className="px-3 py-3">
+                                <div className="flex items-center gap-1.5 min-w-0">
                                   {item.brandLogo ? (
                                     <img src={item.brandLogo} alt={item.brandName ?? ''}
-                                      className="w-6 h-6 rounded object-cover flex-shrink-0 border border-gray-100" />
+                                      className="w-5 h-5 rounded object-cover flex-shrink-0 border border-gray-100" />
                                   ) : (
-                                    <div className="w-6 h-6 rounded bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-200 flex items-center justify-center flex-shrink-0">
-                                      <span className="text-[9px] font-bold text-indigo-600">
+                                    <div className="w-5 h-5 rounded bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-200 flex items-center justify-center flex-shrink-0">
+                                      <span className="text-[8px] font-bold text-indigo-600">
                                         {(item.brandName ?? '?')[0]?.toUpperCase()}
                                       </span>
                                     </div>
                                   )}
-                                  <span className="text-xs text-gray-700 truncate max-w-[90px]" title={item.brandName ?? ''}>
+                                  <span className="text-xs text-gray-700 truncate max-w-[72px]" title={item.brandName ?? ''}>
                                     {item.brandName ?? '—'}
                                   </span>
                                 </div>
                               </td>
 
                               {/* Offer Type */}
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-3">
                                 <span className="text-xs text-gray-600 capitalize whitespace-nowrap">
                                   {(item.offerType ?? '').replace(/_/g, ' ')}
                                 </span>
                               </td>
 
                               {/* Source */}
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-3">
                                 <SourceDot type={item.source} />
                               </td>
 
                               {/* Status */}
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-3">
                                 <StatusBadge status={item.rewardStatus} />
                               </td>
 
                               {/* Toggle */}
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2">
+                              <td className="px-3 py-3">
+                                <div className="flex items-center gap-1.5">
                                   <button
                                     onClick={() => toggleWidgetReward(item)}
                                     disabled={widgetToggling[item.rewardId]}
@@ -1147,9 +1153,9 @@ export default function OffersPage() {
                               </td>
 
                               {/* Points cost */}
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-3">
                                 {item.inWidget ? (
-                                  <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center gap-1">
                                     <input
                                       type="number"
                                       min={0}
@@ -1159,7 +1165,7 @@ export default function OffersPage() {
                                         ...p,
                                         [item.rewardId]: { ...p[item.rewardId], points: e.target.value },
                                       }))}
-                                      className="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-900/20 text-center"
+                                      className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-900/20 text-center"
                                     />
                                     <span className="text-xs text-gray-400">pts</span>
                                   </div>
@@ -1169,9 +1175,9 @@ export default function OffersPage() {
                               </td>
 
                               {/* Max per member */}
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-3">
                                 {item.inWidget ? (
-                                  <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center gap-1">
                                     <input
                                       type="number"
                                       min={1}
@@ -1181,7 +1187,7 @@ export default function OffersPage() {
                                         ...p,
                                         [item.rewardId]: { ...p[item.rewardId], max: e.target.value },
                                       }))}
-                                      className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-900/20 text-center"
+                                      className="w-14 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-900/20 text-center"
                                     />
                                     <span className="text-xs text-gray-400">max</span>
                                   </div>
@@ -1191,7 +1197,7 @@ export default function OffersPage() {
                               </td>
 
                               {/* Save */}
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-3">
                                 {isEdited && item.inWidget && (
                                   <button
                                     onClick={() => saveWidgetConfig(item)}
