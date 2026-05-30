@@ -19,7 +19,7 @@ type TabId = 'store' | 'partner' | 'marketplace' | 'distribution';
 // ─── Widget catalog item ──────────────────────────────────────────────────────
 interface WidgetItem {
   rewardId: string;
-  rewardShortId: string;
+  rewardShortId: string;   // human-readable RWD-XXXXXXXX
   distId: string | null;
   title: string;
   subtitle: string;
@@ -304,7 +304,7 @@ export default function OffersPage() {
     // 2. All own rewards (store + partner)
     const { data: ownRewards } = await supabase
       .from('rewards')
-      .select('id, title, reward_type, coupon_type, offer_type, available_codes, status, valid_until, image_url, owner_client_id')
+      .select('id, reward_id, title, reward_type, coupon_type, offer_type, available_codes, status, valid_until, image_url, owner_client_id')
       .eq('owner_client_id', clientId)
       .in('offer_type', ['store_discount', 'partner_voucher'])
       .order('created_at', { ascending: false });
@@ -317,7 +317,7 @@ export default function OffersPage() {
     if (adoptedIds.length > 0) {
       const { data } = await supabase
         .from('rewards')
-        .select('id, title, reward_type, coupon_type, offer_type, available_codes, status, valid_until, image_url, owner_client_id')
+        .select('id, reward_id, title, reward_type, coupon_type, offer_type, available_codes, status, valid_until, image_url, owner_client_id')
         .in('id', adoptedIds);
       externalRewards = data ?? [];
     }
@@ -343,7 +343,7 @@ export default function OffersPage() {
       const brand = brandMap.get(r.owner_client_id);
       return {
         rewardId: r.id,
-        rewardShortId: r.id.slice(0, 8),
+        rewardShortId: r.reward_id ?? r.id.slice(0, 8),
         distId: dist?.id ?? null,
         title: r.title,
         subtitle: `${(r.reward_type ?? '').replace(/_/g, ' ')} · ${r.coupon_type ?? ''}`,
@@ -1084,8 +1084,8 @@ export default function OffersPage() {
 
                               {/* Reward ID */}
                               <td className="px-4 py-3">
-                                <span className="font-mono text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 select-all">
-                                  {item.rewardShortId}…
+                                <span className="font-mono text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 select-all whitespace-nowrap">
+                                  {item.rewardShortId}
                                 </span>
                               </td>
 

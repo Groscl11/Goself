@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { RoleBasedRoute } from './components/RoleBasedRoute';
 import { PublicRoute } from './components/PublicRoute';
@@ -132,6 +133,7 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ThemeProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
@@ -258,6 +260,7 @@ function App() {
             </div>
           } />
         </Routes>
+        </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
   );
