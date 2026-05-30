@@ -18,6 +18,11 @@ import {
   Sparkles,
   Settings,
   CreditCard,
+  Link,
+  UserCheck,
+  Ticket,
+  MousePointerClick,
+  PieChart,
 } from 'lucide-react';
 
 export const clientMenuItems = [
@@ -81,7 +86,6 @@ export const clientMenuItems = [
     path: '/client/campaigns',
     icon: <Megaphone className="w-4 h-4" />,
   },
-
   {
     section: 'Rewards & Offers',
     label: 'Brand Network',
@@ -93,6 +97,32 @@ export const clientMenuItems = [
     label: 'Campaign Logs',
     path: '/client/campaign-logs',
     icon: <ScrollText className="w-4 h-4" />,
+  },
+
+  // ── AFFILIATES & ATTRIBUTION ──────────────────────────────────────────────
+  {
+    section: 'Affiliates',
+    label: 'Partners',
+    path: '/client/affiliates',
+    icon: <UserCheck className="w-4 h-4" />,
+  },
+  {
+    section: 'Affiliates',
+    label: 'Coupon Codes',
+    path: '/client/attribution/coupons',
+    icon: <Ticket className="w-4 h-4" />,
+  },
+  {
+    section: 'Affiliates',
+    label: 'UTM Links',
+    path: '/client/attribution/utm',
+    icon: <MousePointerClick className="w-4 h-4" />,
+  },
+  {
+    section: 'Affiliates',
+    label: 'Attribution Reports',
+    path: '/client/attribution/reports',
+    icon: <PieChart className="w-4 h-4" />,
   },
 
   // ── COMMUNICATIONS ────────────────────────────────────────────────────────

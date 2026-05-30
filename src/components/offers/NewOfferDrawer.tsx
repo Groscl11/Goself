@@ -4,6 +4,22 @@ import { supabase, supabaseUrl, supabaseAnonKey } from '../../lib/supabase';
 import { uploadOfferCodesDirect } from '../../lib/offerCodes';
 import { CodeSource, RewardType } from '../../types/offers';
 
+const SHOPIFY_CLIENT_ID = import.meta.env.VITE_SHOPIFY_API_KEY || '3290e6e4e5cb6711e4a7876ef40f87e8';
+const SHOPIFY_OAUTH_SCOPES = 'read_customers,read_orders,read_discounts,write_discounts,read_price_rules,write_price_rules';
+
+function buildShopifyReconnectUrl(shopDomain: string, clientId: string): string {
+  const callbackUrl = `${supabaseUrl}/functions/v1/shopify-oauth-callback`;
+  const state = btoa(JSON.stringify({ app_url: window.location.origin, client_id: clientId, ts: Date.now() }));
+  const params = new URLSearchParams({
+    client_id:    SHOPIFY_CLIENT_ID,
+    scope:        SHOPIFY_OAUTH_SCOPES,
+    redirect_uri: callbackUrl,
+    state,
+    // Deliberately NO grant_options[]=per-user → Shopify issues offline shpat_ token
+  });
+  return `https://${shopDomain}/admin/oauth/authorize?${params}`;
+}
+
 type Flow = 'shopify_generated' | 'shopify_imported' | 'generic';
 
 interface ShopifyPriceRule {
@@ -34,6 +50,23 @@ const REWARD_TYPES: { value: RewardType; label: string }[] = [
   { value: 'free_item',            label: 'Free item' },
 ];
 
+export const OFFER_CATEGORIES: { value: string; label: string }[] = [
+  { value: 'food_dining',        label: 'Food & Dining' },
+  { value: 'fashion_apparel',    label: 'Fashion & Apparel' },
+  { value: 'health_wellness',    label: 'Health & Wellness' },
+  { value: 'travel_hospitality', label: 'Travel & Hospitality' },
+  { value: 'entertainment',      label: 'Entertainment' },
+  { value: 'electronics',        label: 'Electronics' },
+  { value: 'beauty_grooming',    label: 'Beauty & Grooming' },
+  { value: 'home_living',        label: 'Home & Living' },
+  { value: 'education',          label: 'Education' },
+  { value: 'grocery',            label: 'Grocery' },
+  { value: 'automotive',         label: 'Automotive' },
+  { value: 'sports_fitness',     label: 'Sports & Fitness' },
+  { value: 'financial_services', label: 'Financial Services' },
+  { value: 'other',              label: 'Other' },
+];
+
 export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, onCreated, mode = 'store', editOffer }: NewOfferDrawerProps & { editOffer?: import('../../types/offers').Offer | null }) {
   const [flow, setFlow] = useState<Flow | null>(null);
   const [loading, setLoading] = useState(false);
@@ -46,6 +79,8 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
   const [shopifyRules, setShopifyRules] = useState<ShopifyPriceRule[]>([]);
   const [shopifyLoading, setShopifyLoading] = useState(false);
   const [shopifyError, setShopifyError] = useState('');
+  const [shopifyTokenExpired, setShopifyTokenExpired] = useState(false);
+  const [shopifyReconnectUrl, setShopifyReconnectUrl] = useState('');
   const [shopifySearch, setShopifySearch] = useState('');
   const [shopifyPicked, setShopifyPicked] = useState(false);
   const [shopifyFetched, setShopifyFetched] = useState(false);
@@ -55,6 +90,9 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     title: '',
     description: '',
     image_url: '',
+    offer_category: 'other',
+    offer_priority: '0',
+    starts_at: '',
     reward_type: 'flat_discount' as RewardType,
     discount_value: '',
     max_cap: '',
@@ -76,6 +114,14 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
   // Shopify create-discount state
   const [shopifyCreating, setShopifyCreating] = useState(false);
 
+  // Client logo — fetched once, used as default image_url fallback
+  const [clientLogoUrl, setClientLogoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!clientId) return;
+    supabase.from('clients').select('logo_url').eq('id', clientId).maybeSingle()
+      .then(({ data }) => setClientLogoUrl(data?.logo_url ?? null));
+  }, [clientId]);
+
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
   // Pre-populate form when editing an existing offer
@@ -87,6 +133,9 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         title: editOffer.title ?? '',
         description: editOffer.description ?? '',
         image_url: editOffer.image_url ?? '',
+        offer_category: (editOffer as any).offer_category ?? 'other',
+        offer_priority: String((editOffer as any).offer_priority ?? 0),
+        starts_at: (editOffer as any).starts_at ? String((editOffer as any).starts_at).slice(0, 10) : '',
         reward_type: editOffer.reward_type as RewardType,
         discount_value: editOffer.discount_value != null ? String(editOffer.discount_value) : '',
         max_cap: editOffer.max_discount_value != null ? String(editOffer.max_discount_value) : '',
@@ -111,10 +160,12 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     setFlow(null); setLoading(false); setError(''); setSuccess('');
     setParsedCodes([]);
     setShopifyRules([]); setShopifyLoading(false); setShopifyError('');
+    setShopifyTokenExpired(false); setShopifyReconnectUrl('');
     setShopifySearch(''); setShopifyPicked(false); setShopifyFetched(false);
     setShopifyCreating(false);
     setForm({
-      title: '', description: '', image_url: '', reward_type: 'flat_discount', discount_value: '',
+      title: '', description: '', image_url: '', offer_category: 'other', offer_priority: '0',
+      starts_at: '', reward_type: 'flat_discount', discount_value: '',
       max_cap: '', min_purchase_amount: '', coupon_type: 'unique', generic_coupon_code: '',
       codes_count: '10', code_paste: '', valid_until: '',
       redemption_link: '', terms_conditions: '', steps_to_redeem: '',
@@ -130,6 +181,8 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     }
     setShopifyLoading(true);
     setShopifyError('');
+    setShopifyTokenExpired(false);
+    setShopifyReconnectUrl('');
     try {
       const params = new URLSearchParams();
       if (shopDomain) params.set('shop_domain', shopDomain);
@@ -140,8 +193,24 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         { headers: { 'apikey': supabaseAnonKey, 'Authorization': `Bearer ${supabaseAnonKey}` } }
       );
       const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Failed to fetch Shopify discounts');
-      setShopifyRules(json.price_rules || []);
+      if (!json.success) {
+        if (json.token_expired) {
+          // Token expired — build reconnect OAuth URL client-side (no extra round-trip needed).
+          // Fall back to shop_domain from the response when the shopDomain prop is empty
+          // (caller used client_id for lookup; the function resolves and echoes the domain).
+          // The URL omits grant_options[]=per-user so Shopify issues a permanent shpat_ token.
+          setShopifyTokenExpired(true);
+          setShopifyError('Your Shopify store connection has expired.');
+          const effectiveShopDomain = shopDomain || json.shop_domain || '';
+          if (effectiveShopDomain && SHOPIFY_CLIENT_ID) {
+            setShopifyReconnectUrl(buildShopifyReconnectUrl(effectiveShopDomain, clientId));
+          }
+        } else {
+          throw new Error(json.error || 'Failed to fetch Shopify discounts');
+        }
+      } else {
+        setShopifyRules(json.price_rules || []);
+      }
     } catch (e: any) {
       setShopifyError(e.message);
     }
@@ -200,15 +269,17 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         title: form.title.trim(),
         description: form.description.trim() || null,
         offer_type: mode === 'marketplace' ? 'marketplace_offer' : 'store_discount',
+        offer_category: form.offer_category || 'other',
+        offer_priority: Number(form.offer_priority) || 0,
+        starts_at: form.starts_at || null,
         code_source: codeSource,
         coupon_type: resolvedCouponType,
         generic_coupon_code: resolvedCouponType === 'generic' ? form.generic_coupon_code.trim() || null : null,
-        tracking_type: 'automatic',
         reward_type: form.reward_type,
         discount_value: form.discount_value ? Number(form.discount_value) : null,
         max_discount_value: form.max_cap ? Number(form.max_cap) : null,
         min_purchase_amount: form.min_purchase_amount ? Number(form.min_purchase_amount) : 0,
-        image_url: form.image_url.trim() || null,
+        image_url: form.image_url.trim() || clientLogoUrl || null,
         valid_until: form.valid_until || null,
         redemption_link: form.redemption_link.trim() || null,
         terms_conditions: form.terms_conditions.trim() || null,
@@ -217,6 +288,78 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
 
       if (editOffer) {
         // ── UPDATE existing offer ──────────────────────────────────────────
+        const mktStatus = (editOffer as any).marketplace_status as string | undefined;
+
+        if (editOffer.offer_type === 'marketplace_offer' && mktStatus === 'approved') {
+          // Approved marketplace offer: do NOT touch the live row.
+          // Build diff of only changed fields and submit as an edit request.
+          const editableKeys = [
+            'title', 'description', 'image_url', 'offer_category', 'reward_type',
+            'discount_value', 'max_discount_value', 'min_purchase_amount',
+            'coupon_type', 'generic_coupon_code', 'valid_until',
+            'redemption_link', 'terms_conditions', 'steps_to_redeem',
+          ] as const;
+          const changedFields: Record<string, any> = {};
+          for (const key of editableKeys) {
+            const newVal = (rewardPayload as any)[key] ?? null;
+            const oldVal = (editOffer as any)[key] ?? null;
+            const normalise = (v: any) => (v === '' || v === undefined ? null : v);
+            if (normalise(newVal) !== normalise(oldVal)) {
+              changedFields[key] = newVal;
+            }
+          }
+          if (Object.keys(changedFields).length === 0) {
+            setError('No changes detected.');
+            setLoading(false);
+            return;
+          }
+          // Upsert: if there's already a pending request for this offer+client, replace it
+          const { data: existing } = await supabase
+            .from('rewards_edit_requests')
+            .select('id')
+            .eq('reward_id', editOffer.id)
+            .eq('requesting_client_id', clientId)
+            .eq('status', 'pending')
+            .maybeSingle();
+
+          if (existing) {
+            await supabase
+              .from('rewards_edit_requests')
+              .update({ proposed_changes: changedFields, updated_at: new Date().toISOString() })
+              .eq('id', existing.id);
+          } else {
+            await supabase.from('rewards_edit_requests').insert({
+              reward_id: editOffer.id,
+              requesting_client_id: clientId,
+              proposed_changes: changedFields,
+              status: 'pending',
+            });
+          }
+          setSuccess('Edit request submitted for admin review. The live offer is unchanged until approved.');
+          setTimeout(() => { onCreated(); handleClose(); }, 2000);
+          setLoading(false);
+          return;
+        }
+
+        if (editOffer.offer_type === 'marketplace_offer' && (mktStatus === 'pending' || mktStatus === 'rejected')) {
+          // Pending/rejected: direct update + reset to pending for re-review
+          const { error: updErr } = await supabase
+            .from('rewards')
+            .update({
+              ...rewardPayload,
+              marketplace_status: 'pending',
+              marketplace_rejection_reason: null,
+              marketplace_submitted_at: new Date().toISOString(),
+            })
+            .eq('id', editOffer.id);
+          if (updErr) throw updErr;
+          setSuccess('Changes saved and resubmitted for admin review.');
+          setTimeout(() => { onCreated(); handleClose(); }, 1800);
+          setLoading(false);
+          return;
+        }
+
+        // Non-marketplace offer: normal update
         const { error: updErr } = await supabase
           .from('rewards')
           .update(rewardPayload)
@@ -230,18 +373,20 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
 
       // ── CREATE new offer ───────────────────────────────────────────────
       // 1. Insert reward row
+      const isMarketplace = mode === 'marketplace';
       const { data: reward, error: rwErr } = await supabase
         .from('rewards')
         .insert({
           ...rewardPayload,
-          currency: 'INR',
-          is_active: true,
-          status: 'active',
-          is_marketplace: mode === 'marketplace',
+          // Marketplace offers start as draft+pending until admin approves
+          status: isMarketplace ? 'draft' : 'active',
+          ...(isMarketplace ? {
+            marketplace_status: 'pending',
+            marketplace_submitted_at: new Date().toISOString(),
+          } : {}),
           owner_client_id: clientId,
-          client_id: clientId,
           brand_id: brandId || null,
-          redeems_at_shop_domain: mode === 'marketplace' ? null : shopDomain,
+          redeems_at_shop_domain: isMarketplace ? null : shopDomain,
         })
         .select('id')
         .single();
@@ -304,7 +449,9 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         is_active: true,
       });
 
-      setSuccess('Offer created. Set a points cost in the Distribution & Points tab.');
+      setSuccess(isMarketplace
+        ? 'Submitted for admin review. Your offer will appear on the marketplace once approved.'
+        : 'Offer created. Set a points cost in the Distribution & Points tab.');
       setTimeout(() => { onCreated(); handleClose(); }, 1800);
     } catch (e: any) {
       setError(e.message ?? 'Something went wrong');
@@ -397,8 +544,29 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
               )}
               {shopifyError && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-3">
-                  {shopifyError}
-                  <button onClick={fetchShopifyDiscounts} className="ml-2 underline text-xs">Retry</button>
+                  {shopifyTokenExpired ? (
+                    <div className="space-y-2">
+                      <p className="font-medium">Your Shopify store connection has expired.</p>
+                      <p className="text-xs text-red-600">The access token stored for your store is no longer valid. You need to reconnect your Shopify store to continue.</p>
+                      {shopifyReconnectUrl ? (
+                        <a
+                          href={shopifyReconnectUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                          🔗 Reconnect Shopify Store →
+                        </a>
+                      ) : (
+                        <p className="text-xs text-red-500 italic">Please reinstall the Goself app from your Shopify admin.</p>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      {shopifyError}
+                      <button onClick={fetchShopifyDiscounts} className="ml-2 underline text-xs">Retry</button>
+                    </>
+                  )}
                 </div>
               )}
               {!shopifyLoading && !shopifyError && shopifyFetched && shopifyRules.length === 0 && (
@@ -494,15 +662,36 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
               className="input-base resize-none" />
           </Field>
 
-          {/* Image URL */}
-          <Field label="Offer image URL (optional)">
-            <input value={form.image_url} onChange={e => set('image_url', e.target.value)}
-              placeholder="https://cdn.yourbrand.com/offer-banner.jpg"
-              className="input-base" />
-            {form.image_url && (
-              <img src={form.image_url} alt="preview" className="mt-2 h-16 w-auto rounded-lg border border-gray-200 object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            )}
+          {/* Offer image — upload or paste URL */}
+          <Field label="Offer / Brand image (optional)">
+            <OfferImageUpload
+              value={form.image_url}
+              onChange={url => set('image_url', url)}
+              clientId={clientId}
+            />
           </Field>
+
+          {/* Offer category */}
+          <Field label="Offer category">
+            <select value={form.offer_category} onChange={e => set('offer_category', e.target.value)} className="input-base">
+              {OFFER_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </Field>
+
+          {/* Offer priority + go-live date */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Priority (0 = normal)">
+              <input type="number" min={0} value={form.offer_priority}
+                onChange={e => set('offer_priority', e.target.value)}
+                placeholder="0"
+                className="input-base" />
+            </Field>
+            <Field label="Go-live date (optional)">
+              <input type="date" value={form.starts_at}
+                onChange={e => set('starts_at', e.target.value)}
+                className="input-base" />
+            </Field>
+          </div>
 
           {/* Reward type */}
           <Field label="Discount type *">
@@ -685,6 +874,107 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</label>
       {children}
+    </div>
+  );
+}
+
+// ─── Offer image upload (upload to Supabase Storage OR paste a URL) ────────────
+function OfferImageUpload({ value, onChange, clientId }: { value: string; onChange: (url: string) => void; clientId: string }) {
+  const [uploading, setUploading] = useState(false);
+  const [urlMode, setUrlMode] = useState(!value); // start in URL mode when empty
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFile(file: File) {
+    if (!file.type.startsWith('image/')) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop() ?? 'jpg';
+      const path = `offer-images/${clientId}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage
+        .from('client-assets')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (error) throw error;
+      const { data: pub } = supabase.storage.from('client-assets').getPublicUrl(path);
+      onChange(pub.publicUrl);
+      setUrlMode(false);
+    } catch (err: any) {
+      alert('Upload failed: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* Preview if we already have a URL */}
+      {value && (
+        <div className="relative inline-block">
+          <img
+            src={value}
+            alt="offer preview"
+            className="h-20 w-auto rounded-xl border border-gray-200 object-cover"
+            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+          <button
+            type="button"
+            onClick={() => { onChange(''); setUrlMode(true); }}
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600"
+          >✕</button>
+        </div>
+      )}
+
+      {/* Upload drop zone */}
+      {!value && (
+        <div
+          onDrop={handleDrop}
+          onDragOver={e => e.preventDefault()}
+          className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:border-gray-400 transition-colors cursor-pointer"
+          onClick={() => inputRef.current?.click()}
+        >
+          {uploading ? (
+            <div className="text-xs text-gray-500">Uploading…</div>
+          ) : (
+            <>
+              <div className="text-2xl mb-1">🖼️</div>
+              <div className="text-xs font-medium text-gray-600">Click or drag to upload</div>
+              <div className="text-xs text-gray-400 mt-0.5">PNG, JPG, WebP · max 2 MB</div>
+            </>
+          )}
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+          />
+        </div>
+      )}
+
+      {/* Paste URL toggle */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setUrlMode(v => !v)}
+          className="text-xs text-blue-600 hover:underline"
+        >
+          {urlMode ? 'Hide URL field' : 'Or paste image URL'}
+        </button>
+      </div>
+      {urlMode && (
+        <input
+          type="url"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="https://example.com/brand-logo.png"
+          className="input-base text-xs"
+        />
+      )}
     </div>
   );
 }

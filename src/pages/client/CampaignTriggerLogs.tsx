@@ -380,18 +380,28 @@ export default function CampaignTriggerLogs() {
                       <div className="text-xs text-gray-500 font-mono" title={log.order_id}>
                         ID: {log.order_id}
                       </div>
-                      {log.reward_link && (
-                        <a
-                          href={log.reward_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 mt-0.5"
-                          title={log.reward_link}
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Reward link
-                        </a>
-                      )}
+                      {log.reward_link && (() => {
+                        // Rewrite stored URL to current environment's origin so that
+                        // links work correctly regardless of which domain baked the URL
+                        // (e.g. old entries may have goself.netlify.app from missing FRONTEND_URL secret)
+                        let displayLink = log.reward_link;
+                        try {
+                          const parsed = new URL(log.reward_link);
+                          displayLink = window.location.origin + parsed.pathname + parsed.search + parsed.hash;
+                        } catch {}
+                        return (
+                          <a
+                            href={displayLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 mt-0.5"
+                            title={displayLink}
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Reward link
+                          </a>
+                        );
+                      })()}
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">

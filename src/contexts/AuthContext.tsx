@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { UserRole } from '../lib/database.types';
@@ -32,6 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Tracks the most recently requested userId so stale loadProfile() results
+  // from a previous session (e.g. getSession() racing with setSession() from
+  // ShopifyCallback) are silently discarded instead of overwriting the new user.
+  const activeUserIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -48,8 +53,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
+          setLoading(true); // keep spinner while profile is being fetched
           await loadProfile(session.user.id);
         } else {
+          activeUserIdRef.current = null;
           setProfile(null);
           setLoading(false);
         }
@@ -60,6 +67,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadProfile = async (userId: string) => {
+    // Mark this call as the authoritative one; any earlier in-flight call is now stale.
+    activeUserIdRef.current = userId;
+
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -67,13 +77,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('id', userId)
         .maybeSingle();
 
+      // If a newer loadProfile() has been called while we were awaiting, discard this result.
+      if (activeUserIdRef.current !== userId) return;
+
       if (error) throw error;
       setProfile(data);
     } catch (error) {
+      if (activeUserIdRef.current !== userId) return; // stale — discard
       console.error('Error loading profile:', error);
       setProfile(null);
     } finally {
-      setLoading(false);
+      if (activeUserIdRef.current === userId) setLoading(false);
     }
   };
 

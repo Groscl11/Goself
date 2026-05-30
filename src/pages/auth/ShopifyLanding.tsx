@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 
 const SUPABASE_URL    = import.meta.env.VITE_SUPABASE_URL    || 'https://lizgppzyyljqbmzdytia.supabase.co';
@@ -36,6 +37,29 @@ export default function ShopifyLanding() {
 
   async function handleShopifyLanding() {
     if (!shop) {
+      // No Shopify shop param. Supabase may have redirected the magic link to
+      // the site root (instead of /auth/shopify-callback) because that URL
+      // wasn't in the project's redirect allowlist. By the time this runs,
+      // _initialize() has already processed the hash token and stored the
+      // session in localStorage — so we check the session directly.
+      setStatus('Checking your session...');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, client_id')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        if (profile?.role === 'client') {
+          setStatus('Welcome! Redirecting to your dashboard...');
+          window.location.replace('/client');
+          return;
+        }
+        if (profile?.role === 'admin') {
+          window.location.replace('/admin');
+          return;
+        }
+      }
       navigate('/login');
       return;
     }
@@ -46,8 +70,8 @@ export default function ShopifyLanding() {
 
     // ── Re-open flow: Shopify sends HMAC-signed params ─────────────────────
     // Navigate the browser to shopify-session-login. That edge function verifies
-    // the HMAC, generates the magic link server-side, and issues a 302 redirect.
-    // The magic link never reaches this JavaScript context.
+    // the HMAC server-side, generates the magic link, and issues a 302 redirect.
+    // The magic link URL never reaches this JavaScript context.
     if (hmac && timestamp) {
       setStatus('Authenticating with Shopify...');
       const allParams = new URLSearchParams(window.location.search);
@@ -56,9 +80,42 @@ export default function ShopifyLanding() {
       return;
     }
 
-    // ── Fallback: reached here because oauth-callback could not generate magic link ─
-    // Sign out any stale session, then trigger a fresh OAuth install.
+    // ── No HMAC: check if user already has a valid session ─────────────────
     if (!handled) {
+      setStatus('Checking your session...');
+
+      // Wait for the Supabase client to restore session from localStorage.
+      const initialSession = await new Promise<Session | null>((resolve) => {
+        let resolved = false;
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+          if (resolved) return;
+          if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+            resolved = true;
+            subscription.unsubscribe();
+            resolve(session ?? null);
+          }
+        });
+        setTimeout(() => {
+          if (!resolved) { resolved = true; subscription.unsubscribe(); resolve(null); }
+        }, 3000);
+      });
+
+      if (initialSession?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, client_id')
+          .eq('id', initialSession.user.id)
+          .maybeSingle();
+        if (profile?.role === 'client' || profile?.role === 'admin') {
+          console.log(`[ShopifyLanding] Already authenticated (${initialSession.user.email}), skipping SSO`);
+          setStatus('Already logged in! Redirecting...');
+          await new Promise(r => setTimeout(r, 500));
+          window.location.href = profile.role === 'admin' ? '/admin' : '/client';
+          return;
+        }
+      }
+
+      // Not logged in — sign out any stale session and proceed with install check
       setStatus('Preparing your account...');
       await supabase.auth.signOut();
       const url = new URL(window.location.href);
@@ -67,7 +124,7 @@ export default function ShopifyLanding() {
       return;
     }
 
-    // Check whether an installation exists (oauth may have completed but magic link failed)
+    // ── _handled=1: check for existing installation ────────────────────────
     setStatus(`Verifying ${shop}...`);
     try {
       const { data: installation } = await supabase
@@ -77,21 +134,43 @@ export default function ShopifyLanding() {
         .maybeSingle();
 
       if (installation?.installation_status === 'active') {
-        // Installation exists but magic link failed — send to manual login
+        // Installation exists but no HMAC — merchant must login manually
         console.warn('[ShopifyLanding] Installation found but no HMAC params. Sending to login.');
         navigate(`/login?shop=${shop}&from=shopify`);
         return;
       }
     } catch {}
 
-    // No installation — trigger OAuth install flow
+    // ── No installation yet — poll briefly (race condition after OAuth) ─────
+    console.log(`[ShopifyLanding] No installation for ${shop}. Retrying...`);
+    for (let i = 0; i < 12; i++) {
+      setStatus(`Connecting to ${shop}... (${i + 1}/12)`);
+      await new Promise(r => setTimeout(r, 1000));
+      try {
+        const { data: retryInstallation } = await supabase
+          .from('store_installations')
+          .select('installation_status')
+          .eq('shop_domain', shop)
+          .maybeSingle();
+        if (retryInstallation?.installation_status === 'active') {
+          console.log(`[ShopifyLanding] Installation found on retry ${i + 1}, reloading`);
+          window.location.reload();
+          return;
+        }
+      } catch {}
+    }
+
+    // ── No installation after retries — trigger OAuth install flow ──────────
     setStatus('Starting Shopify installation...');
     await new Promise(r => setTimeout(r, 400));
 
-    const scopes     = 'read_customers,read_orders,read_discounts,write_discounts';
+    // Full scopes — must match shopify.app.*.toml exactly.
+    // No grant_options[]=per-user → Shopify issues a permanent offline token (shpat_).
+    const scopes      = 'read_customers,read_orders,read_discounts,write_discounts,read_price_rules,write_price_rules';
     const redirectUri = `${SUPABASE_URL}/functions/v1/shopify-oauth-callback`;
-    const state      = btoa(JSON.stringify({ app_url: window.location.origin, ts: Date.now() }));
-    window.location.href = `https://${shop}/admin/oauth/authorize?client_id=${SHOPIFY_API_KEY}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+    const state       = btoa(JSON.stringify({ app_url: window.location.origin, ts: Date.now() }));
+    const authParams  = new URLSearchParams({ client_id: SHOPIFY_API_KEY, scope: scopes, redirect_uri: redirectUri, state });
+    window.location.href = `https://${shop}/admin/oauth/authorize?${authParams}`;
   }
 
   return (

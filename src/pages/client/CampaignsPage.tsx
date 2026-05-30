@@ -267,13 +267,14 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
       const { data: ownRewards, error: e1 } = await supabase
         .from('rewards')
         .select(`
-          id, title, description, value_description, image_url, category,
-          coupon_type, status, expiry_date, owner_client_id, available_codes,
-          offer_type,
+          id, reward_id, title, description, image_url, offer_category, offer_priority,
+          coupon_type, status, valid_until, owner_client_id, available_codes,
+          offer_type, reward_type, discount_value, min_purchase_amount,
+          terms_conditions, steps_to_redeem,
           brands ( id, name, logo_url )
         `)
         .eq('owner_client_id', clientId)
-        .or('expiry_date.is.null,expiry_date.gt.' + new Date().toISOString());
+        .or('valid_until.is.null,valid_until.gt.' + new Date().toISOString());
 
       if (e1) console.error('[loadAvailableRewards] own rewards:', e1);
 
@@ -281,13 +282,14 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
       const { data: mktRewards, error: e2 } = await supabase
         .from('rewards')
         .select(`
-          id, title, description, value_description, image_url, category,
-          coupon_type, status, expiry_date, owner_client_id, available_codes,
-          offer_type,
+          id, reward_id, title, description, image_url, offer_category, offer_priority,
+          coupon_type, status, valid_until, owner_client_id, available_codes,
+          offer_type, reward_type, discount_value, min_purchase_amount,
+          terms_conditions, steps_to_redeem,
           brands ( id, name, logo_url )
         `)
         .eq('offer_type', 'marketplace_offer')
-        .or('expiry_date.is.null,expiry_date.gt.' + new Date().toISOString());
+        .or('valid_until.is.null,valid_until.gt.' + new Date().toISOString());
 
       if (e2) console.error('[loadAvailableRewards] marketplace rewards:', e2);
 
@@ -307,14 +309,21 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
         .filter((r: any) => r.coupon_type !== 'unique' || (r.available_codes ?? 0) > 0)
         .map((r: any) => ({
           id: r.id,
+          reward_id: r.reward_id ?? null,
           title: r.title,
           description: r.description,
-          value_description: r.value_description,
           image_url: r.image_url,
-          category: r.category,
+          offer_category: r.offer_category ?? null,
+          offer_priority: r.offer_priority ?? 0,
           coupon_type: r.coupon_type || 'unique',
+          offer_type: r.offer_type ?? null,
+          reward_type: r.reward_type ?? null,
+          discount_value: r.discount_value ?? null,
+          min_purchase_amount: r.min_purchase_amount ?? null,
+          terms_conditions: r.terms_conditions ?? null,
+          steps_to_redeem: r.steps_to_redeem ?? null,
           status: r.status,
-          expiry_date: r.expiry_date,
+          expiry_date: r.valid_until ?? null,
           available_vouchers: r.available_codes ?? 0,
           brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,
         }));

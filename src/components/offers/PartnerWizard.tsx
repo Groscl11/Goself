@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Drawer } from './Drawers';
 import { supabase } from '../../lib/supabase';
 import { uploadOfferCodesDirect } from '../../lib/offerCodes';
-import { AccessType, PARTNER_CATEGORIES } from '../../types/offers';
+import { AccessType } from '../../types/offers';
+import { OFFER_CATEGORIES } from './NewOfferDrawer';
+import { PartnerPickerField } from './PartnerPickerField';
 
 interface PartnerWizardProps {
   open: boolean;
@@ -25,10 +27,20 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   const [parsedCodes, setParsedCodes] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [partnerId, setPartnerId] = useState<string | null>(null);
+
+  // Client logo — fetched once, used as default image_url fallback
+  const [clientLogoUrl, setClientLogoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!clientId) return;
+    supabase.from('clients').select('logo_url').eq('id', clientId).maybeSingle()
+      .then(({ data }) => setClientLogoUrl(data?.logo_url ?? null));
+  }, [clientId]);
+
   const [form, setForm] = useState({
     // Step 1
     partner_name: '',
-    category: 'Food & Drink',
+    offer_category: 'other',
     image_url: '',
     steps_to_redeem: '',
     redemption_link: '',
@@ -77,8 +89,9 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   function reset() {
     setStep(1); setLoading(false); setError(''); setSuccess('');
     setParsedCodes([]);
+    setPartnerId(null);
     setForm({
-      partner_name: '', category: 'Food & Drink', terms_conditions: '',
+      partner_name: '', offer_category: 'other', terms_conditions: '',
       image_url: '',
       steps_to_redeem: '', redemption_link: '',
       coupon_type: 'unique', generic_coupon_code: '', valid_until: '',
@@ -91,9 +104,10 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     if (!editTarget?.offer) return;
     const offer = editTarget.offer;
     const dist = editTarget.distribution;
+    setPartnerId(offer.partner_id ?? null);
     setForm({
       partner_name: (offer.title ?? '').split(' — ')[0] || '',
-      category: offer.tags?.[0] || 'Food & Drink',
+      offer_category: offer.offer_category || offer.tags?.[0] || 'other',
       image_url: offer.image_url ?? '',
       steps_to_redeem: offer.steps_to_redeem ?? offer.description ?? '',
       redemption_link: offer.redemption_link ?? '',
@@ -154,25 +168,26 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       const isEdit = Boolean(editTarget?.offer?.id);
       let offerId = editTarget?.offer?.id as string | undefined;
 
+      const categoryLabel = OFFER_CATEGORIES.find(c => c.value === form.offer_category)?.label ?? form.offer_category;
+
       const rewardPayload = {
-        title: `${form.partner_name} — ${form.category}`,
+        title: `${form.partner_name} — ${categoryLabel}`,
         description: form.steps_to_redeem || null,
-        image_url: form.image_url.trim() || null,
+        image_url: form.image_url.trim() || clientLogoUrl || null,
         redemption_link: form.redemption_link || null,
         terms_conditions: form.terms_conditions || null,
+        steps_to_redeem: form.steps_to_redeem || null,
         offer_type: 'partner_voucher',
+        offer_category: form.offer_category,
         code_source: 'csv_uploaded',
         coupon_type: form.coupon_type,
         generic_coupon_code: form.coupon_type === 'generic' ? form.generic_coupon_code.trim() : null,
-        tracking_type: 'manual',
         reward_type: 'other',
-        currency: 'INR',
-        is_active: true,
         status: 'active',
         owner_client_id: clientId,
-        client_id: clientId,
+        partner_id: partnerId || null,
         valid_until: form.valid_until || null,
-        tags: [form.category],
+        tags: [form.offer_category],
       };
 
       if (isEdit && offerId) {
@@ -298,23 +313,33 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       {/* Step 1 — Partner details */}
       {step === 1 && (
         <div className="space-y-4">
-          <Field label="Partner / brand name *">
+          <Field label="Select existing partner (optional)">
+            <PartnerPickerField
+              value={partnerId}
+              clientId={clientId}
+              onChange={pid => {
+                setPartnerId(pid);
+                // if clearing selection, leave the form as-is
+              }}
+            />
+            <p className="text-[11px] text-gray-400 mt-1">Leave blank to create ad-hoc — or pick from your partner list above to link the voucher to a known partner.</p>
+          </Field>
+          <Field label="Display name for this offer *">
             <input value={form.partner_name} onChange={e => set('partner_name', e.target.value)}
               placeholder="e.g. CafeZ, Nike, BookMyShow"
               className="input-base" />
           </Field>
           <Field label="Category">
-            <select value={form.category} onChange={e => set('category', e.target.value)} className="input-base">
-              {PARTNER_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            <select value={form.offer_category} onChange={e => set('offer_category', e.target.value)} className="input-base">
+              {OFFER_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </Field>
-          <Field label="Offer image URL (optional)">
-            <input value={form.image_url} onChange={e => set('image_url', e.target.value)}
-              placeholder="https://cdn.partner.com/offer-banner.jpg"
-              className="input-base" />
-            {form.image_url && (
-              <img src={form.image_url} alt="preview" className="mt-2 h-16 w-auto rounded-lg border border-gray-200 object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            )}
+          <Field label="Offer / Brand image (optional)">
+            <OfferImageUpload
+              value={form.image_url}
+              onChange={url => set('image_url', url)}
+              clientId={clientId}
+            />
           </Field>
           <Field label="Steps to Redeem">
             <textarea value={form.steps_to_redeem} onChange={e => set('steps_to_redeem', e.target.value)}
@@ -453,7 +478,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Summary</p>
             <div className="text-sm text-gray-700 space-y-1">
               <div><span className="text-gray-500">Partner:</span> {form.partner_name}</div>
-              <div><span className="text-gray-500">Category:</span> {form.category}</div>
+              <div><span className="text-gray-500">Category:</span> {OFFER_CATEGORIES.find(c => c.value === form.offer_category)?.label ?? form.offer_category}</div>
               {form.redemption_link && <div><span className="text-gray-500">Redemption URL:</span> {form.redemption_link}</div>}
               <div><span className="text-gray-500">Codes:</span>{' '}
                 {form.coupon_type === 'generic'
@@ -480,6 +505,73 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</label>
       {children}
+    </div>
+  );
+}
+
+function OfferImageUpload({ value, onChange, clientId }: { value: string; onChange: (url: string) => void; clientId: string }) {
+  const [uploading, setUploading] = useState(false);
+  const [urlMode, setUrlMode] = useState(!value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFile(file: File) {
+    if (!file.type.startsWith('image/')) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop() ?? 'jpg';
+      const path = `offer-images/${clientId}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from('client-assets').upload(path, file, { upsert: true, contentType: file.type });
+      if (error) throw error;
+      const { data: pub } = supabase.storage.from('client-assets').getPublicUrl(path);
+      onChange(pub.publicUrl);
+      setUrlMode(false);
+    } catch (err: any) {
+      alert('Upload failed: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }
+
+  return (
+    <div className="space-y-2">
+      {value && (
+        <div className="relative inline-block">
+          <img src={value} alt="preview" className="h-20 w-auto rounded-xl border border-gray-200 object-cover"
+            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <button type="button" onClick={() => { onChange(''); setUrlMode(true); }}
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600">✕</button>
+        </div>
+      )}
+      {!value && (
+        <div onDrop={handleDrop} onDragOver={e => e.preventDefault()}
+          className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:border-gray-400 transition-colors cursor-pointer"
+          onClick={() => inputRef.current?.click()}>
+          {uploading ? <div className="text-xs text-gray-500">Uploading…</div> : (
+            <>
+              <div className="text-2xl mb-1">🖼️</div>
+              <div className="text-xs font-medium text-gray-600">Click or drag to upload brand logo</div>
+              <div className="text-xs text-gray-400 mt-0.5">PNG, JPG, WebP · max 2 MB</div>
+            </>
+          )}
+          <input ref={inputRef} type="file" accept="image/*" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => setUrlMode(v => !v)} className="text-xs text-blue-600 hover:underline">
+          {urlMode ? 'Hide URL field' : 'Or paste image URL'}
+        </button>
+      </div>
+      {urlMode && (
+        <input type="url" value={value} onChange={e => onChange(e.target.value)}
+          placeholder="https://example.com/brand-logo.png" className="input-base text-xs" />
+      )}
     </div>
   );
 }

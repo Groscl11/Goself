@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Plus, Search, Building2, ExternalLink, Calendar, MapPin,
-  CheckCircle, XCircle, Clock, Gift, TrendingUp, X, ChevronRight,
+  CheckCircle, XCircle, Clock, Gift, X, ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
@@ -28,21 +28,20 @@ interface Brand {
 
 interface RewardRow {
   brand_id: string;
-  client_id: string | null;
   status: string;
-  voucher_count: number | null;
-  redeemed_count: number | null;
 }
 
-interface ClientRow {
-  id: string;
-  name: string;
+interface BrandAssocRow {
+  brand_id: string | null;
+  client_id: string;
+  status: string;
+  client: { name: string } | null;
 }
 
 export function AdminBrands() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [rewardRows, setRewardRows] = useState<RewardRow[]>([]);
-  const [clientRows, setClientRows] = useState<ClientRow[]>([]);
+  const [assocRows, setAssocRows] = useState<BrandAssocRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -53,14 +52,17 @@ export function AdminBrands() {
 
   const fetchData = async () => {
     try {
-      const [brandsRes, rewardsRes, clientsRes] = await Promise.all([
+      const [brandsRes, rewardsRes, assocRes] = await Promise.all([
         supabase.from('brands').select('*').order('created_at', { ascending: false }),
-        supabase.from('rewards').select('brand_id, client_id, status, voucher_count, redeemed_count'),
-        supabase.from('clients').select('id, name').order('name'),
+        supabase.from('rewards').select('brand_id, status'),
+        supabase
+          .from('client_brand_associations')
+          .select('brand_id, client_id, status, client:clients(name)')
+          .eq('status', 'approved'),
       ]);
       setBrands(brandsRes.data || []);
       setRewardRows(rewardsRes.data || []);
-      setClientRows(clientsRes.data || []);
+      setAssocRows((assocRes.data || []) as BrandAssocRow[]);
     } catch (error) {
       console.error('Error fetching brands:', error);
     } finally {
@@ -69,31 +71,30 @@ export function AdminBrands() {
   };
 
   const brandStats = useMemo(() => {
-    const map = new Map<string, { total: number; active: number; redeemed: number }>();
+    const map = new Map<string, { total: number; active: number }>();
     rewardRows.forEach((r) => {
-      const s = map.get(r.brand_id) || { total: 0, active: 0, redeemed: 0 };
+      if (!r.brand_id) return;
+      const s = map.get(r.brand_id) || { total: 0, active: 0 };
       s.total += 1;
       if (r.status === 'active') s.active += 1;
-      s.redeemed += r.redeemed_count || 0;
       map.set(r.brand_id, s);
     });
     return map;
   }, [rewardRows]);
 
-  // brand_id → Set of client names
+  // brand_id → approved client names (via client_brand_associations)
   const brandClientMap = useMemo(() => {
-    const clientNameMap = new Map<string, string>(clientRows.map(c => [c.id, c.name]));
     const map = new Map<string, string[]>();
-    rewardRows.forEach((r) => {
-      if (!r.client_id) return;
-      const clientName = clientNameMap.get(r.client_id);
+    assocRows.forEach((r) => {
+      if (!r.brand_id) return;
+      const clientName = r.client?.name;
       if (!clientName) return;
       const existing = map.get(r.brand_id) || [];
       if (!existing.includes(clientName)) existing.push(clientName);
       map.set(r.brand_id, existing);
     });
     return map;
-  }, [rewardRows, clientRows]);
+  }, [assocRows]);
 
   const industries = useMemo(() => [...new Set(brands.map(b => b.industry).filter(Boolean))].sort(), [brands]);
   const countries = useMemo(() => [...new Set(brands.map(b => b.country).filter(Boolean))].sort(), [brands]);
@@ -245,14 +246,13 @@ export function AdminBrands() {
                         <th className="text-left px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Location</th>
                         <th className="text-center px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Rewards</th>
                         <th className="text-center px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Active</th>
-                        <th className="text-center px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Redeemed</th>
                         <th className="text-left px-4 py-3 font-medium text-gray-500 whitespace-nowrap">Founded</th>
                         <th className="px-4 py-3 w-16"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       {filteredBrands.map((brand) => {
-                        const stats = brandStats.get(brand.id) || { total: 0, active: 0, redeemed: 0 };
+                        const stats = brandStats.get(brand.id) || { total: 0, active: 0 };
                         const brandClients = brandClientMap.get(brand.id) || [];
                         return (
                           <tr key={brand.id} className="hover:bg-gray-50/80 transition-colors">
@@ -304,12 +304,6 @@ export function AdminBrands() {
                             <td className="px-4 py-3 text-center">
                               <span className={`font-semibold ${stats.active > 0 ? 'text-green-600' : 'text-gray-300'}`}>
                                 {stats.active}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={`inline-flex items-center gap-1 font-semibold ${stats.redeemed > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
-                                <TrendingUp className="w-3.5 h-3.5" />
-                                {stats.redeemed}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-xs text-gray-400">

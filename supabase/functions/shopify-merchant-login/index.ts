@@ -82,6 +82,27 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Magic link generated for ${email}`);
 
+    // Create/update profile server-side using service role BEFORE the client follows the
+    // magic link. This ensures AuthContext can load the profile immediately on redirect
+    // to /client — no race condition between magic link and profile creation.
+    if (userId) {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({
+          id: userId,
+          email,
+          full_name: shop_owner || shop_name || email.split('@')[0],
+          role: 'client',
+          client_id: client_id || null,
+        }, { onConflict: 'id', ignoreDuplicates: false });
+      if (profileError) {
+        console.error(`Profile upsert failed for ${email}:`, profileError.message);
+        // Non-fatal: log and continue — magic link still works
+      } else {
+        console.log(`Profile upserted for ${email} (userId: ${userId})`);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         magic_link: magicLink,
