@@ -1045,7 +1045,6 @@ export default function OffersPage() {
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Brand</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Offer</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Offer Type</th>
-                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-16">Source</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-20">Status</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">In Widget</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-32">Points Cost</th>
@@ -1056,7 +1055,7 @@ export default function OffersPage() {
                       <tbody>
                         {filtered.length === 0 ? (
                           <tr>
-                            <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-400">
+                            <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">
                               No rewards match your filter.
                             </td>
                           </tr>
@@ -1119,11 +1118,6 @@ export default function OffersPage() {
                                 <span className="text-xs text-gray-600 capitalize whitespace-nowrap">
                                   {(item.offerType ?? '').replace(/_/g, ' ')}
                                 </span>
-                              </td>
-
-                              {/* Source */}
-                              <td className="px-3 py-3">
-                                <SourceDot type={item.source} />
                               </td>
 
                               {/* Status */}
