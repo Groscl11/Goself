@@ -149,7 +149,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     setError('');
     if (step === 1) {
       if (!form.title.trim()) { setError('Offer title is required'); return false; }
-      if (!form.image_url.trim()) { setError('Partner logo / offer image is required'); return false; }
+      if (!form.image_url.trim()) { setError('Partner logo image is required'); return false; }
     }
     if (step === 2) {
       if (!editTarget && form.coupon_type === 'unique' && parsedCodes.length === 0) {
@@ -400,7 +400,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
             </Field>
           </div>
 
-          <Field label="Offer / Brand image (optional)">
+          <Field label="Partner logo image" hint="Recommended: 400×400 px square, PNG or WebP, transparent background">
             <OfferImageUpload
               value={form.image_url}
               onChange={url => set('image_url', url)}
@@ -582,10 +582,11 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</label>
+      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+      {hint && <p className="text-xs text-gray-400 mb-1.5">{hint}</p>}
       {children}
     </div>
   );
@@ -636,9 +637,9 @@ function OfferImageUpload({ value, onChange, clientId }: { value: string; onChan
           onClick={() => inputRef.current?.click()}>
           {uploading ? <div className="text-xs text-gray-500">Uploading…</div> : (
             <>
-              <div className="text-2xl mb-1">🖼️</div>
-              <div className="text-xs font-medium text-gray-600">Click or drag to upload brand logo</div>
-              <div className="text-xs text-gray-400 mt-0.5">PNG, JPG, WebP · max 2 MB</div>
+              <div className="text-2xl mb-1">🏷️</div>
+              <div className="text-xs font-medium text-gray-600">Click or drag to upload partner logo</div>
+              <div className="text-xs text-gray-400 mt-0.5">400×400 px · PNG or WebP · max 2 MB</div>
             </>
           )}
           <input ref={inputRef} type="file" accept="image/*" className="hidden"
