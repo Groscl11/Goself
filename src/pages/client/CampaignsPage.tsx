@@ -646,7 +646,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                 <p className="text-sm text-gray-500">Configure reward pool and selection experience.</p>
               </div>
 
-              {mode === 'standalone' ? (
+              {(mode === 'standalone' || mode === 'instant_reward') ? (
                 <>
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward Pool</label>
