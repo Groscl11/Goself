@@ -386,7 +386,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
           } : {}),
           owner_client_id: clientId,
           brand_id: brandId || null,
-          redeems_at_shop_domain: isMarketplace ? null : shopDomain,
+          redeems_at_shop_domain: shopDomain || null,
         })
         .select('id')
         .single();

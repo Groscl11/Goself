@@ -35,14 +35,6 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
 
   const [partnerId, setPartnerId] = useState<string | null>(null);
 
-  // Client logo — fetched once, used as default image_url fallback
-  const [clientLogoUrl, setClientLogoUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!clientId) return;
-    supabase.from('clients').select('logo_url').eq('id', clientId).maybeSingle()
-      .then(({ data }) => setClientLogoUrl(data?.logo_url ?? null));
-  }, [clientId]);
-
   const [form, setForm] = useState({
     // Step 1
     title: '',
@@ -157,6 +149,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     setError('');
     if (step === 1) {
       if (!form.title.trim()) { setError('Offer title is required'); return false; }
+      if (!form.image_url.trim()) { setError('Partner logo / offer image is required'); return false; }
     }
     if (step === 2) {
       if (!editTarget && form.coupon_type === 'unique' && parsedCodes.length === 0) {
@@ -193,7 +186,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       const rewardPayload: Record<string, any> = {
         title: form.title.trim(),
         description: form.description.trim() || null,
-        image_url: form.image_url.trim() || clientLogoUrl || null,
+        image_url: form.image_url.trim() || null,
         redemption_link: form.redemption_link || null,
         terms_conditions: form.terms_conditions || null,
         steps_to_redeem: form.steps_to_redeem || null,
@@ -210,6 +203,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
         status: 'active',
         owner_client_id: clientId,
         partner_id: partnerId || null,
+        brand_id: partnerId || null,
         valid_until: form.valid_until || null,
         // tags intentionally omitted — not written to DB
       };
