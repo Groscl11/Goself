@@ -38,17 +38,24 @@ Deno.serve(async (req: Request) => {
 
   const body = await req.text();
 
-  // Verify HMAC signature
+  // SECURITY (H-16): fail closed — never process GDPR webhooks without HMAC.
+  // A missing secret must be treated as a misconfiguration, not a bypass condition.
+  // Unverified GDPR requests could trigger PII deletion or data export routines.
   const webhookSecret = Deno.env.get("SHOPIFY_WEBHOOK_SECRET") ?? "";
-  if (webhookSecret) {
-    const valid = await verifyHmac(body, hmacHeader, webhookSecret);
-    if (!valid) {
-      console.warn(`[GDPR] Invalid HMAC for ${topic} from ${shopDomain}`);
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+  if (!webhookSecret) {
+    console.error(`[GDPR] SHOPIFY_WEBHOOK_SECRET not set — rejecting ${topic} from ${shopDomain}`);
+    return new Response(JSON.stringify({ error: "Service misconfigured" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const valid = await verifyHmac(body, hmacHeader, webhookSecret);
+  if (!valid) {
+    console.error(`[GDPR] Invalid HMAC for ${topic} from ${shopDomain}`);
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   let payload: Record<string, unknown> = {};

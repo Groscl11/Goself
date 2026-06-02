@@ -22,6 +22,40 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
+    // SECURITY (H-13): this function uses service_role to mutate member tier
+    // data for an entire loyalty program. Any authenticated user could invoke it
+    // without this check. Require admin role or a verified client whose clientId
+    // matches the target program.
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const callerJwt = authHeader.replace('Bearer ', '').trim();
+    const anonKey = (Deno.env.get('SUPABASE_ANON_KEY') ?? '').trim();
+
+    if (!callerJwt || callerJwt === anonKey) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const callerClient = createClient(Deno.env.get('SUPABASE_URL')!, callerJwt);
+    const { data: { user }, error: userErr } = await callerClient.auth.getUser();
+    if (userErr || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized — invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { data: callerProfile } = await supabase
+      .from('profiles').select('client_id, role').eq('id', user.id).maybeSingle();
+
+    if (!callerProfile || !['admin', 'client'].includes(callerProfile.role)) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden — admin or client role required' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const body = await req.json();
     let programId: string | null = body.program_id || null;
 

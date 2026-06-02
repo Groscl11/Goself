@@ -220,14 +220,26 @@ export function MemberDetail() {
     if (!id) return;
     setLoading(true);
     try {
-      // Phase 1: get member first so we have the email for orders query
-      const memberRes = await supabase.from('member_users').select('*').eq('id', id).maybeSingle();
+      // Phase 1: get member first so we have the email + client_id for scoping
+      // SECURITY (H-08): scope by client_id so a user cannot load any tenant's
+      // member by UUID substitution. RLS on member_users already enforces this,
+      // but we also scope explicitly here as defence-in-depth.
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const { data: callerProfile } = authUser
+        ? await supabase.from('profiles').select('client_id').eq('id', authUser.id).maybeSingle()
+        : { data: null };
+      const callerClientId = callerProfile?.client_id ?? null;
+
+      const memberQuery = supabase.from('member_users').select('*').eq('id', id);
+      if (callerClientId) memberQuery.eq('client_id', callerClientId);
+      const memberRes = await memberQuery.maybeSingle();
       if (memberRes.error || !memberRes.data) { navigate('/client/members'); return; }
       const memberData = memberRes.data;
       const memberEmail = memberData.email;
+      const memberClientId = memberData.client_id;
       setMember(memberData);
 
-      // Phase 2: all other data in parallel
+      // Phase 2: all other data in parallel — all scoped to memberClientId
       const [
         membershipRes, allocRes, voucherRes,
         redemptionRes, txnRes, sourceRes, lsRes, pointsRes, ordersRes,
@@ -240,9 +252,10 @@ export function MemberDetail() {
         supabase.from('member_sources').select('*').eq('member_id', id).order('created_at', { ascending: true }).limit(1).maybeSingle(),
         supabase.from('member_loyalty_status').select('*, program:loyalty_programs(name)').eq('member_user_id', id).order('created_at', { ascending: false }),
         supabase.from('loyalty_points_transactions').select('*').eq('member_user_id', id).order('created_at', { ascending: false }).limit(200),
-        // Match orders by member_id OR customer_email (older orders may only have email)
+        // Match orders by member_id OR customer_email — scoped to this tenant's client_id
         supabase.from('shopify_orders')
           .select('id, order_id, order_number, total_price, currency, order_status, processed_at, created_at, customer_email')
+          .eq('client_id', memberClientId)
           .or(`member_id.eq.${id},customer_email.eq.${memberEmail}`)
           .order('created_at', { ascending: false }),
       ]);

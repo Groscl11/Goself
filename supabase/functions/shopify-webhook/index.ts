@@ -96,7 +96,15 @@ Deno.serve(async (req: Request) => {
       }
       console.log("HMAC signature verified successfully");
     } else {
-      console.warn(`No SHOPIFY_API_SECRET configured — HMAC verification skipped for ${shopDomain}`);
+      // SECURITY (H-04): fail closed — never process webhooks without HMAC.
+      // An unconfigured secret means we cannot verify the request is from Shopify.
+      // Accepting unverified webhooks would allow anyone to inject fake orders and
+      // trigger loyalty point accruals, campaign enrollments, and referral payouts.
+      console.error(`[shopify-webhook] No SHOPIFY_API_SECRET for ${shopDomain} — rejecting`);
+      return new Response(
+        JSON.stringify({ error: "Webhook secret not configured" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     await supabase.from("shopify_webhook_events").insert({

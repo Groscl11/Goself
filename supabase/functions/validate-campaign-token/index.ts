@@ -317,27 +317,30 @@ Deno.serve(async (req: Request) => {
       if (reward.coupon_type === "generic" && reward.generic_coupon_code) {
         voucherCode = reward.generic_coupon_code;
       } else {
-        // For unique-code rewards, claim one offer_codes slot
-        const { data: offerCode } = await supabase
-          .from("offer_codes").select("id, code")
-          .eq("offer_id", rewardId).eq("status", "available")
-          .limit(1).maybeSingle();
+        // For unique-code rewards, claim one offer_codes slot atomically.
+        // SECURITY (H-07): the previous two-step SELECT + UPDATE had a race condition
+        // where concurrent requests could SELECT the same code then both set voucherCode
+        // (upErr is null even when 0 rows are updated). Using UPDATE ... RETURNING gives
+        // true atomic semantics: only the request that wins the DB lock gets the row back.
+        const { data: claimResult, error: upErr } = await supabase
+          .from("offer_codes")
+          .update({
+            status: "assigned",
+            assigned_at: new Date().toISOString(),
+            assigned_to_member_id: memberId ?? null,
+            distributed_by_client_id: campaign.client_id,
+            global_user_id: memberDataForTracking?.global_user_id ?? null,
+            member_email: memberDataForTracking?.email ?? null,
+            code_source: "campaign",
+            source_rule_id: campaign.id,
+          })
+          .eq("offer_id", rewardId)
+          .eq("status", "available")
+          .select("id, code")
+          .limit(1);
 
-        if (offerCode) {
-          const { error: upErr } = await supabase
-            .from("offer_codes")
-            .update({
-              status: "assigned",
-              assigned_at: new Date().toISOString(),
-              assigned_to_member_id: memberId ?? null,
-              distributed_by_client_id: campaign.client_id,
-              global_user_id: memberDataForTracking?.global_user_id ?? null,
-              member_email: memberDataForTracking?.email ?? null,
-              code_source: "campaign",
-              source_rule_id: campaign.id,
-            })
-            .eq("id", offerCode.id).eq("status", "available");
-          if (!upErr) voucherCode = offerCode.code;
+        if (!upErr && claimResult && claimResult.length > 0) {
+          voucherCode = claimResult[0].code;
         }
 
 

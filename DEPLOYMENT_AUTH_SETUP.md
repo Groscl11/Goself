@@ -33,7 +33,7 @@ Make sure your deployment platform (Netlify/Vercel) has these variables:
 
 ```env
 VITE_SUPABASE_URL=https://lizgppzyyljqbmzdytia.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0
+VITE_SUPABASE_ANON_KEY=<VITE_SUPABASE_ANON_KEY>
 ```
 
 ### For Netlify:

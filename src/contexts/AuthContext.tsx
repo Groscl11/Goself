@@ -186,10 +186,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = async (updates: Partial<Profile>) => {
     if (!user) return { error: new Error('No user logged in') };
 
+    // SECURITY (H-12): strip server-only fields before writing to DB.
+    // Any component calling updateProfile({ role: 'admin' }) or
+    // updateProfile({ client_id: '...' }) would otherwise attempt a
+    // role elevation or tenant reassignment at the DB layer.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { role, client_id, brand_id, id: _id, ...safeUpdates } = updates as any;
+
     try {
       const { error } = await supabase
         .from('profiles')
-        .update(updates)
+        .update(safeUpdates)
         .eq('id', user.id);
 
       if (error) return { error };
