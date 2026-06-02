@@ -10,7 +10,7 @@ import { clientMenuItems } from './clientMenuItems';
  
 // ─── Types ────────────────────────────────────────────────────────────────────
 type TriggerType = 'order_value' | 'order_count' | 'signup' | 'birthday' | 'referral' | 'custom_event' | 'advanced';
-type RuleMode = 'membership' | 'standalone';
+type RuleMode = 'membership' | 'standalone' | 'instant_reward';
  
 interface CampaignRule {
   id: string;
@@ -123,6 +123,7 @@ function StatusBadge({ active, end }: { active: boolean; end?: string }) {
 // ─── Mode badge ───────────────────────────────────────────────────────────────
 function ModeBadge({ mode }: { mode: RuleMode }) {
   if (mode === 'membership') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">Membership</span>;
+  if (mode === 'instant_reward') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100">⚡ Instant</span>;
   return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-100">Reward</span>;
 }
  
@@ -349,7 +350,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
     if (!name.trim()) { setError('Campaign name is required'); return; }
     setSaving(true); setError('');
     try {
-      const finalTriggerType: TriggerType = mode === 'standalone' ? 'advanced' : triggerType;
+      const finalTriggerType: TriggerType = (mode === 'standalone' || mode === 'instant_reward') ? 'advanced' : triggerType;
       const finalTriggerConditions = mode === 'standalone'
         ? conditions
         : { min_order_value: Number(minOrder) || 0, communication: { type: 'email', enabled: true, template: '', link_type: 'one_click', valid_days: 30 } };
@@ -373,15 +374,15 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
         min_rewards_choice: minRewardsChoice,
         max_rewards_choice: maxRewardsChoice,
         trigger_conditions: finalTriggerConditions,
-        eligibility_conditions: mode === 'standalone' ? eligibilityConditions : {},
-        location_conditions: mode === 'standalone' ? locationConditions : {},
-        attribution_conditions: mode === 'standalone' ? attributionConditions : {},
+        eligibility_conditions: (mode === 'standalone' || mode === 'instant_reward') ? eligibilityConditions : {},
+        location_conditions: (mode === 'standalone' || mode === 'instant_reward') ? locationConditions : {},
+        attribution_conditions: (mode === 'standalone' || mode === 'instant_reward') ? attributionConditions : {},
         exclusion_rules: mode === 'standalone' ? exclusionRules : {
           exclude_refunded: true,
           exclude_cancelled: true,
           exclude_test_orders: true,
         },
-        reward_action: mode === 'standalone' ? {
+        reward_action: (mode === 'standalone' || mode === 'instant_reward') ? {
           expiry_days: 90,
           reward_type: rewardType,
           claim_method: 'auto',
@@ -405,7 +406,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
         campaignId = newRule.id;
       }
       // Sync reward pool to campaign_reward_pools table (used by validate-campaign-token)
-      if (mode === 'standalone') {
+      if (mode === 'standalone' || mode === 'instant_reward') {
         await (supabase as any).from('campaign_reward_pools').delete().eq('campaign_rule_id', campaignId);
         if (rewardPool.length > 0) {
           const poolInserts = rewardPool.map((r: any, i: number) => ({
@@ -428,7 +429,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
   const canNext = () => {
     if (step === 1) return true;
     if (step === 2) return !!name.trim();
-    if (step === 3 && mode === 'standalone') return rewardPool.length > 0 && minRewardsChoice > 0 && maxRewardsChoice >= minRewardsChoice;
+    if (step === 3 && (mode === 'standalone' || mode === 'instant_reward')) return rewardPool.length > 0 && minRewardsChoice > 0 && maxRewardsChoice >= minRewardsChoice;
     return true;
   };
  
@@ -481,6 +482,13 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                     desc: 'Automatically enroll members into your loyalty program when a trigger condition is met.',
                     tags: ['Auto-enroll', 'Order-based', 'Event-based'],
                   },
+                  {
+                    value: 'instant_reward' as RuleMode,
+                    icon: '⚡',
+                    title: 'Instant Reward Campaign',
+                    desc: 'Generate reward links instantly on the thank-you page — no waiting. Works with the Instant Post-Purchase Rewards plugin.',
+                    tags: ['Instant', 'Thank-you page', 'No delay'],
+                  },
                 ].map(opt => (
                   <button
                     key={opt.value}
@@ -520,7 +528,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
               <div>
                 <h3 className="text-base font-semibold text-gray-900 mb-1">Campaign details</h3>
                 <p className="text-sm text-gray-500">
-                  {mode === 'standalone' ? 'Set conditions that trigger your reward campaign.' : 'Pick what fires this campaign.'}
+                  {mode === 'standalone' ? 'Set conditions that trigger your reward campaign.' : mode === 'instant_reward' ? 'Configure your instant reward — no trigger conditions needed.' : 'Pick what fires this campaign.'}
                 </p>
               </div>
  
@@ -647,7 +655,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                 <p className="text-sm text-gray-500">Configure reward pool and selection experience.</p>
               </div>
 
-              {mode === 'standalone' ? (
+              {(mode === 'standalone' || mode === 'instant_reward') ? (
                 <>
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward Pool</label>

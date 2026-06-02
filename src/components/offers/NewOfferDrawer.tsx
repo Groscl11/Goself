@@ -386,7 +386,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
           } : {}),
           owner_client_id: clientId,
           brand_id: brandId || null,
-          redeems_at_shop_domain: isMarketplace ? null : shopDomain,
+          redeems_at_shop_domain: shopDomain || null,
         })
         .select('id')
         .single();
@@ -439,14 +439,14 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         }
       }
 
-      // 3. Insert offer_distributions placeholder
+      // 3. Insert offer_distributions placeholder (off by default — client enables via Widget Rewards tab)
       await supabase.from('offer_distributions').insert({
         offer_id: offerId,
         distributing_client_id: clientId,
         access_type: 'points_redemption',
         points_cost: null,
         max_per_member: 1,
-        is_active: true,
+        is_active: false,
       });
 
       setSuccess(isMarketplace

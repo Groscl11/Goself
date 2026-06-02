@@ -402,15 +402,17 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Fetch brand/organization name from clients table
+    // Fetch brand/organization name + widget config from clients table
     let organizationName: string | null = null;
+    let walletVoucherStyle: string | null = null;
     if (resolvedClientId) {
       const { data: clientRow } = await supabase
         .from('clients')
-        .select('name')
+        .select('name, branding_settings')
         .eq('id', resolvedClientId)
         .maybeSingle();
-      organizationName = clientRow?.name || null;
+      organizationName  = clientRow?.name || null;
+      walletVoucherStyle = clientRow?.branding_settings?.wallet_voucher_style || null;
     }
 
     return new Response(
@@ -447,6 +449,7 @@ Deno.serve(async (req: Request) => {
         recent_transactions: recentTransactions || [],
         first_name: memberFirstName,
         organization_name: organizationName,
+        wallet_voucher_style: walletVoucherStyle,
       }),
       {
         status: 200,

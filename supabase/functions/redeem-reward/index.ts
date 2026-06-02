@@ -14,6 +14,10 @@ interface RedeemRequest {
   shop_domain: string;
   customer_email?: string;
   email?: string;
+  // Attribution fields — optional, set by the caller to record where the
+  // redemption originated (surface) and which campaign triggered it.
+  redeemed_from?: string;  // e.g. "loyalty_widget" | "campaign_email" | "admin_panel" | "api"
+  campaign_id?: string;    // message_campaigns.id or campaign_rewards.id when applicable
 }
 
 async function createShopifyDiscount(
@@ -131,7 +135,12 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: RedeemRequest = await req.json();
-    let { reward_id, member_user_id, shop_domain, customer_email, email } = body;
+    let { reward_id, member_user_id, shop_domain, customer_email, email, redeemed_from, campaign_id } = body;
+
+    // Normalise attribution — default surface to "api" when not provided
+    const redemptionSource = redeemed_from ?? "api";
+    // Derive assignment_channel: campaign_id present → campaign_reward, otherwise points_redemption
+    const assignmentChannel = campaign_id ? "campaign_reward" : "points_redemption";
 
     // Validate required fields
     if (!reward_id || !shop_domain || (!member_user_id && !customer_email && !email)) {
@@ -190,7 +199,7 @@ Deno.serve(async (req: Request) => {
       .from("offer_distributions")
       .select(
         "id, offer_id, points_cost, max_per_member, access_type, distributing_client_id, " +
-        "offer:rewards(id, title, discount_value, reward_type, min_purchase_amount, coupon_type, generic_coupon_code, available_codes, offer_type, redeems_at_shop_domain, status, owner_client_id)"
+        "offer:rewards(id, title, discount_value, reward_type, min_purchase_amount, coupon_type, generic_coupon_code, available_codes, offer_type, redeems_at_shop_domain, status, owner_client_id, valid_until)"
       )
       .eq("offer_id", reward_id)
       .eq("distributing_client_id", clientId)
@@ -277,7 +286,7 @@ Deno.serve(async (req: Request) => {
           balance_after: newBalance,
           description: `Redeemed for ${reward.title} (${existingCode ?? "generic"})`,
           reference_id: existingCode,
-          metadata: { reward_id, distribution_id: offerRow.id, shop_domain },
+          metadata: { reward_id, distribution_id: offerRow.id, shop_domain, redeemed_from: redemptionSource, ...(campaign_id ? { campaign_id } : {}) },
         });
 
         await supabase
@@ -345,7 +354,11 @@ Deno.serve(async (req: Request) => {
         ? reward.owner_client_id ?? null
         : null;
 
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    // Use the earlier of: reward's valid_until OR 30 days from now.
+    // This prevents issuing codes that outlive the underlying offer.
+    const thirtyDaysOut = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const rewardExpiry  = reward.valid_until ? new Date(reward.valid_until) : null;
+    const expiresAt     = (rewardExpiry && rewardExpiry < thirtyDaysOut ? rewardExpiry : thirtyDaysOut).toISOString();
     let claimedOfferCodeId: string | null = null;
     let code: string | null = null;
 
@@ -363,11 +376,13 @@ Deno.serve(async (req: Request) => {
         .insert({
           offer_id: reward_id,
           distribution_id: offerRow.id,
-          code: null,
+          code: reward.generic_coupon_code,
           status: "assigned",
           assigned_to_member_id: member_user_id,
           assigned_at: new Date().toISOString(),
-          assignment_channel: "points_redemption",
+          assignment_channel: assignmentChannel,
+          redemption_source: redemptionSource,
+          campaign_id: campaign_id ?? null,
           distributed_by_client_id: clientId,
           global_user_id: memberData?.global_user_id ?? null,
           member_email: memberData?.email ?? null,
@@ -479,6 +494,9 @@ Deno.serve(async (req: Request) => {
         .from("offer_codes")
         .update({
           status: "assigned",
+          assignment_channel: assignmentChannel,
+          redemption_source: redemptionSource,
+          campaign_id: campaign_id ?? null,
           distributed_by_client_id: clientId,
           global_user_id: memberData?.global_user_id ?? null,
           member_email: memberData?.email ?? null,
@@ -503,7 +521,7 @@ Deno.serve(async (req: Request) => {
       balance_after: newBalance,
       description: `Redeemed for ${reward.title} (${code})`,
       reference_id: code,
-      metadata: { reward_id, distribution_id: offerRow.id, shop_domain, shopify_synced: shopifyCreated },
+      metadata: { reward_id, distribution_id: offerRow.id, shop_domain, shopify_synced: shopifyCreated, redeemed_from: redemptionSource, ...(campaign_id ? { campaign_id } : {}) },
     });
 
     await supabase

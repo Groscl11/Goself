@@ -137,14 +137,15 @@ Deno.serve(async (req: Request) => {
 
     const offerIds = distributionRows.map((row: any) => row.offer_id);
 
-    const { data: assignedRows } = offerIds.length > 0
-      ? await supabase
-          .from("offer_codes")
-          .select("offer_id, code, expires_at")
-          .eq("assigned_to_member_id", memberUserId)
-          .eq("status", "assigned")
-          .in("offer_id", offerIds)
-      : { data: [] };
+    // Fetch ALL assigned codes for this member — NOT scoped to active distributions.
+    // A member who claimed a code before a distribution was deactivated/removed from
+    // the widget must still see their code in the wallet. The catalog (what's
+    // redeemable now) is still filtered to active distributions only via `offers` below.
+    const { data: assignedRows } = await supabase
+      .from("offer_codes")
+      .select("offer_id, code, expires_at")
+      .eq("assigned_to_member_id", memberUserId)
+      .eq("status", "assigned");
 
     const existingCodes: Record<string, { code: string | null; expires_at: string | null }> = {};
     for (const row of (assignedRows ?? [])) {

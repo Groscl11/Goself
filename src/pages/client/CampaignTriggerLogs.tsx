@@ -144,9 +144,11 @@ export default function CampaignTriggerLogs() {
   const filteredLogs = logs.filter(log => {
     if (filterType === 'membership') {
       const rt = log.metadata?.rule_type;
-      if (rt === 'standalone') return false;
+      if (rt === 'standalone' || rt === 'instant_reward') return false;
     } else if (filterType === 'standalone') {
       if (log.metadata?.rule_type !== 'standalone') return false;
+    } else if (filterType === 'instant_reward') {
+      if (log.metadata?.rule_type !== 'instant_reward') return false;
     }
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
@@ -264,6 +266,7 @@ export default function CampaignTriggerLogs() {
               { key: 'all', label: 'All Types' },
               { key: 'membership', label: 'Membership' },
               { key: 'standalone', label: 'Standalone' },
+              { key: 'instant_reward', label: 'Instant Reward' },
             ].map(({ key, label }) => (
               <button
                 key={key}
@@ -366,6 +369,8 @@ export default function CampaignTriggerLogs() {
                       )}
                       {log.metadata?.rule_type === 'standalone' ? (
                         <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700 mt-1">Standalone</span>
+                      ) : log.metadata?.rule_type === 'instant_reward' ? (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 mt-1">Instant Reward</span>
                       ) : log.metadata?.rule_type === 'advanced' ? (
                         <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700 mt-1">Membership</span>
                       ) : null}
