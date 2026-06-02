@@ -204,6 +204,27 @@ Deno.serve(async (req: Request) => {
       memberId = newMember?.id || null;
     }
 
+    // ── 5b. Duplicate claim guard ────────────────────────────────────────
+    // SECURITY (H-02): prevent the same email from draining the voucher pool
+    // by claiming the same campaign multiple times.
+    if (memberId) {
+      const poolRewardIds = claimableRewards.map((r: any) => r.id);
+      if (poolRewardIds.length > 0) {
+        const { data: priorClaims } = await supabase
+          .from("member_rewards_allocation")
+          .select("id")
+          .eq("member_id", memberId)
+          .in("reward_id", poolRewardIds)
+          .limit(1);
+        if (priorClaims && priorClaims.length > 0) {
+          return new Response(
+            JSON.stringify({ success: false, reason: "already_claimed" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+    }
+
     // ── 6. Determine which reward IDs to process ──────────────────────────────
     const validIds = reward_ids.filter((id: string) => claimableRewards.some((r: any) => r.id === id));
     const selectedIds: string[] =
@@ -292,7 +313,7 @@ Deno.serve(async (req: Request) => {
   } catch (error: any) {
     console.error("claim-standalone-campaign error:", error);
     return new Response(
-      JSON.stringify({ success: false, reason: "server_error", error: error.message }),
+      JSON.stringify({ success: false, reason: "server_error", error: "Internal server error" }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

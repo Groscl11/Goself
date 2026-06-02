@@ -879,19 +879,19 @@ export default function AffiliatesPage() {
   });
 
   async function handleRemoveCode(assignmentId: string) {
-    const { error } = await supabase.from('affiliate_code_assignments').update({ status: 'removed' }).eq('id', assignmentId);
+    const { error } = await supabase.from('affiliate_code_assignments').update({ status: 'removed' }).eq('id', assignmentId).eq('client_id', clientId);
     if (!error) loadData();
   }
 
   async function handleToggleCodeStatus(assignment: CodeAssignment) {
     const next = assignment.status === 'active' ? 'paused' : 'active';
-    const { error } = await supabase.from('affiliate_code_assignments').update({ status: next }).eq('id', assignment.id);
+    const { error } = await supabase.from('affiliate_code_assignments').update({ status: next }).eq('id', assignment.id).eq('client_id', clientId);
     if (!error) loadData();
   }
 
   async function handleTogglePartnerStatus(partner: Partner) {
     const next = partner.status === 'active' ? 'paused' : 'active';
-    const { error } = await supabase.from('affiliate_partners').update({ status: next }).eq('id', partner.id);
+    const { error } = await supabase.from('affiliate_partners').update({ status: next }).eq('id', partner.id).eq('client_id', clientId);
     if (!error) loadData();
   }
 

@@ -87,6 +87,16 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // SECURITY (H-17): cap per-call adjustment to prevent bulk fraud from a
+    // compromised account. Large adjustments require a separate approval workflow.
+    const MAX_POINTS_PER_CALL = 10000;
+    if (Math.abs(pointsValue) > MAX_POINTS_PER_CALL) {
+      return new Response(
+        JSON.stringify({ error: `Points adjustment cannot exceed ±${MAX_POINTS_PER_CALL} per call` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const parsedOrderAmount = order_amount === undefined || order_amount === null || order_amount === ''
       ? null
       : Number(order_amount);
@@ -354,6 +364,26 @@ Deno.serve(async (req: Request) => {
         }
       );
     }
+
+    // Audit log — every adjustment is recorded with who did it and why
+    try {
+      await supabase.from('admin_audit_log').insert({
+        actor_user_id: callerUser.id,
+        actor_role: callerProfile.role,
+        action: 'adjust_loyalty_points',
+        target_entity: 'member_loyalty_status',
+        target_id: member?.id ?? null,
+        metadata: {
+          shop_domain,
+          points: pointsValue,
+          reason: reason ?? null,
+          email: email ?? null,
+          phone: phone ?? null,
+          order_id: order_id ?? null,
+          new_balance: null, // balance logged by the DB update itself
+        },
+      });
+    } catch { /* audit log is best-effort */ }
 
     return new Response(
       JSON.stringify({

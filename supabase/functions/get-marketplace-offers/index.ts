@@ -14,17 +14,14 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
-async function resolveClientId(supabase: any, shopDomain?: string | null, requestedClientId?: string | null) {
-  if (requestedClientId) return requestedClientId;
+async function resolveClientId(supabase: any, shopDomain?: string | null) {
   if (!shopDomain) return null;
-
   const { data: installation } = await supabase
     .from("store_installations")
     .select("client_id")
     .eq("shop_domain", shopDomain)
     .eq("installation_status", "active")
     .maybeSingle();
-
   return installation?.client_id ?? null;
 }
 
@@ -39,20 +36,41 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    let shopDomain: string | null = null;
-    let clientId: string | null = null;
+    // SECURITY (H-03): verify caller JWT — clientId must come from the
+    // authenticated profile, not from the request body, to prevent tenant
+    // impersonation (caller passing another client's client_id).
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const callerJwt = authHeader.replace("Bearer ", "").trim();
+    const anonKey = (Deno.env.get("SUPABASE_ANON_KEY") ?? "").trim();
 
+    if (!callerJwt || callerJwt === anonKey) {
+      return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+    }
+    const callerClient = createClient(Deno.env.get("SUPABASE_URL")!, callerJwt);
+    const { data: { user: callerUser }, error: userErr } = await callerClient.auth.getUser();
+    if (userErr || !callerUser) {
+      return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+    }
+    const { data: callerProfile } = await supabase
+      .from("profiles").select("client_id, role").eq("id", callerUser.id).maybeSingle();
+    if (!callerProfile) {
+      return jsonResponse({ success: false, error: "Forbidden" }, 403);
+    }
+    const isAdmin = callerProfile.role === "admin";
+
+    let shopDomain: string | null = null;
     if (req.method === "GET") {
       const url = new URL(req.url);
       shopDomain = url.searchParams.get("shop") ?? url.searchParams.get("shop_domain");
-      clientId = url.searchParams.get("client_id");
     } else {
       const body = await req.json().catch(() => ({}));
       shopDomain = body.shop_domain ?? body.shop ?? null;
-      clientId = body.client_id ?? null;
     }
 
-    clientId = await resolveClientId(supabase, shopDomain, clientId);
+    // Non-admins always use their own client_id — body value is ignored
+    const clientId = isAdmin
+      ? (await resolveClientId(supabase, shopDomain)) ?? callerProfile.client_id
+      : callerProfile.client_id;
 
     if (!clientId) {
       return jsonResponse({ success: false, error: "Unable to resolve client" }, 400);
@@ -138,6 +156,6 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ success: true, offers, total: offers.length });
   } catch (error: any) {
     console.error("get-marketplace-offers error:", error);
-    return jsonResponse({ success: false, error: error.message ?? "Internal server error" }, 500);
+    return jsonResponse({ success: false, error: "Internal server error" }, 500);
   }
 });

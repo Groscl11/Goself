@@ -467,7 +467,8 @@ export default function OffersPage() {
             max_per_member: config.max_per_member,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', existing.id);
+          .eq('id', existing.id)
+          .eq('distributing_client_id', clientId);
         if (error) throw error;
       } else {
         // Fresh insert (off by default — client enables via Widget Rewards tab)
@@ -509,14 +510,16 @@ export default function OffersPage() {
             // Keep dist but downgrade to campaign-only
             await supabase.from('offer_distributions')
               .update({ access_type: 'campaign_reward' })
-              .eq('id', item.distId);
+              .eq('id', item.distId)
+              .eq('distributing_client_id', clientId);
             setWidgetItems(prev => prev.map(i =>
               i.rewardId === item.rewardId ? { ...i, inWidget: false, distAccessType: 'campaign_reward' } : i
             ));
           } else {
             await supabase.from('offer_distributions')
               .update({ is_active: false })
-              .eq('id', item.distId);
+              .eq('id', item.distId)
+              .eq('distributing_client_id', clientId);
             setWidgetItems(prev => prev.map(i =>
               i.rewardId === item.rewardId ? { ...i, inWidget: false } : i
             ));
@@ -528,7 +531,8 @@ export default function OffersPage() {
           const newAccessType = item.distAccessType === 'campaign_reward' ? 'both' : 'points_redemption';
           await supabase.from('offer_distributions')
             .update({ is_active: true, access_type: newAccessType })
-            .eq('id', item.distId);
+            .eq('id', item.distId)
+            .eq('distributing_client_id', clientId);
           setWidgetItems(prev => prev.map(i =>
             i.rewardId === item.rewardId ? { ...i, inWidget: true, distAccessType: newAccessType } : i
           ));
@@ -563,7 +567,7 @@ export default function OffersPage() {
     const updatePayload: any = {};
     if (edit.points !== undefined) updatePayload.points_cost = edit.points === '' ? null : Number(edit.points);
     if (edit.max !== undefined) updatePayload.max_per_member = edit.max === '' ? null : Number(edit.max);
-    await supabase.from('offer_distributions').update(updatePayload).eq('id', item.distId);
+    await supabase.from('offer_distributions').update(updatePayload).eq('id', item.distId).eq('distributing_client_id', clientId);
     setWidgetItems(prev => prev.map(i =>
       i.rewardId === item.rewardId
         ? {
@@ -1430,14 +1434,14 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
         marketplace_status: 'pending',
         marketplace_submitted_at: new Date().toISOString(),
         status: 'draft',
-      }).eq('id', offer.id);
+      }).eq('id', offer.id).eq('owner_client_id', clientId);
     } else {
       // Unlist path: clear marketplace columns
       await supabase.from('rewards').update({
         offer_type: 'store_discount',
         marketplace_status: null,
         marketplace_rejection_reason: null,
-      }).eq('id', offer.id);
+      }).eq('id', offer.id).eq('owner_client_id', clientId);
     }
     setOpen(false);
     onRefresh();
@@ -1446,7 +1450,7 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
   async function togglePause() {
     await supabase.from('rewards').update({
       status: offer.status === 'paused' ? 'active' : 'paused',
-    }).eq('id', offer.id);
+    }).eq('id', offer.id).eq('owner_client_id', clientId);
     setOpen(false);
     onRefresh();
   }

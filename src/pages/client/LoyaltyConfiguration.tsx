@@ -241,7 +241,8 @@ export function LoyaltyConfiguration() {
       } else {
         const { error } = await supabase.from('loyalty_earning_rules')
           .update({ ...payload, updated_at: new Date().toISOString() })
-          .eq('id', editingId!);
+          .eq('id', editingId!)
+          .eq('client_id', clientId);
         if (error) throw error;
       }
       cancelEdit();
@@ -255,13 +256,14 @@ export function LoyaltyConfiguration() {
   async function toggleRule(rule: EarningRule) {
     const { error } = await supabase.from('loyalty_earning_rules')
       .update({ is_active: !rule.is_active, updated_at: new Date().toISOString() })
-      .eq('id', rule.id);
+      .eq('id', rule.id)
+      .eq('client_id', clientId);
     if (!error) setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r));
   }
 
   async function deleteRule(id: string) {
     if (!confirm('Delete this earning rule? This cannot be undone.')) return;
-    await supabase.from('loyalty_earning_rules').delete().eq('id', id);
+    await supabase.from('loyalty_earning_rules').delete().eq('id', id).eq('client_id', clientId);
     setRules(prev => prev.filter(r => r.id !== id));
   }
 
@@ -291,7 +293,7 @@ export function LoyaltyConfiguration() {
     setRefSaving(true);
     try {
       if (programId) {
-        await supabase.from('loyalty_programs').update({ referral_reward_trigger: refTrigger }).eq('id', programId);
+        await supabase.from('loyalty_programs').update({ referral_reward_trigger: refTrigger }).eq('id', programId).eq('client_id', clientId);
       }
       if (referralRuleId) {
         await supabase.from('loyalty_earning_rules').update({
@@ -299,7 +301,7 @@ export function LoyaltyConfiguration() {
           referral_signup_points: refSignupPts,
           referral_discount_type: refDiscountType,
           referral_discount_value: refDiscountValue,
-        }).eq('id', referralRuleId);
+        }).eq('id', referralRuleId).eq('client_id', clientId);
       }
       setRefSaved(true);
       setTimeout(() => setRefSaved(false), 2000);

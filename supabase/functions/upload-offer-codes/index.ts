@@ -51,6 +51,28 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // SECURITY (H-15): verify the caller owns the store they claim to upload for.
+    // Resolving clientId from caller-supplied shop_domain alone allows an attacker
+    // to upload codes to any tenant's offer by supplying a foreign shop_domain.
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const callerJwt = authHeader.replace("Bearer ", "").trim();
+    const anonKey = (Deno.env.get("SUPABASE_ANON_KEY") ?? "").trim();
+
+    if (!callerJwt || callerJwt === anonKey) {
+      return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+    }
+    const callerClient = createClient(Deno.env.get("SUPABASE_URL")!, callerJwt);
+    const { data: { user: callerUser }, error: userErr } = await callerClient.auth.getUser();
+    if (userErr || !callerUser) {
+      return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+    }
+    const { data: callerProfile } = await supabase
+      .from("profiles").select("client_id, role").eq("id", callerUser.id).maybeSingle();
+    if (!callerProfile) {
+      return jsonResponse({ success: false, error: "Forbidden" }, 403);
+    }
+    const isAdmin = callerProfile.role === "admin";
+
     const body = await req.json().catch(() => ({}));
     const offerId = body.offer_id as string | undefined;
     const shopDomain = (body.shop_domain ?? body.shop) as string | undefined;
@@ -66,6 +88,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const clientId = await resolveClientId(supabase, shopDomain);
+    // Verify caller owns this client (non-admins can only upload to their own store)
+    if (!isAdmin && callerProfile.client_id !== clientId) {
+      return jsonResponse({ success: false, error: "Forbidden — you do not have access to this store" }, 403);
+    }
     if (!clientId) {
       return jsonResponse({ success: false, error: "Store not found" }, 404);
     }
@@ -141,6 +167,6 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error: any) {
     console.error("upload-offer-codes error:", error);
-    return jsonResponse({ success: false, error: error.message ?? "Internal server error" }, 500);
+    return jsonResponse({ success: false, error: "Internal server error" }, 500);
   }
 });

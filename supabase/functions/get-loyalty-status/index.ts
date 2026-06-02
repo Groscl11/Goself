@@ -41,6 +41,22 @@ Deno.serve(async (req: Request) => {
       shopifyOrderId = body.shopify_order_id || null;
     }
 
+    // Strict shop_domain requirement: every request must be scoped to a shop
+    if (!shopDomain) {
+      if (shopifyOrderId) {
+        return new Response(
+          JSON.stringify({ error: 'shop_domain is required when using shopify_order_id' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (!memberUserId && !email && !phone) {
+        return new Response(
+          JSON.stringify({ error: 'shop_domain is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // If no email/member but we have a shopify_order_id, resolve member via points transaction
     if (!memberUserId && !email && !phone && shopifyOrderId) {
       const { data: txn } = await supabase
@@ -459,7 +475,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('Error getting loyalty status:', error);
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error' }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

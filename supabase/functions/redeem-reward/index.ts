@@ -528,8 +528,32 @@ Deno.serve(async (req: Request) => {
         .eq("id", claimedOfferCodeId);
     }
 
-    // Step 7: deduct points + transaction
-    const newBalance = loyaltyStatus.points_balance - pointsCost;
+    // Step 7: deduct points atomically + record transaction
+    // SECURITY (H-06): use the deduct_loyalty_points RPC which performs a
+    // single atomic UPDATE WHERE points_balance >= p_points — prevents double-spend
+    // when two concurrent requests both pass the sufficiency check before either writes.
+    const { data: deductResult } = await supabase.rpc("deduct_loyalty_points", {
+      p_status_id: loyaltyStatus.id,
+      p_points: pointsCost,
+    });
+    const deducted = Array.isArray(deductResult) ? deductResult[0] : deductResult;
+
+    if (!deducted?.success) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Insufficient points — concurrent redemption may have occurred" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const newBalance = deducted.new_balance;
+
+    // Update lifetime_points_redeemed separately (non-critical counter)
+    await supabase
+      .from("member_loyalty_status")
+      .update({
+        lifetime_points_redeemed: (loyaltyStatus.lifetime_points_redeemed ?? 0) + pointsCost,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", loyaltyStatus.id);
 
     await supabase.from("loyalty_points_transactions").insert({
       member_loyalty_status_id: loyaltyStatus.id,
@@ -541,15 +565,6 @@ Deno.serve(async (req: Request) => {
       reference_id: code,
       metadata: { reward_id, distribution_id: offerRow.id, shop_domain, shopify_synced: shopifyCreated, redeemed_from: redemptionSource, ...(campaign_id ? { campaign_id } : {}) },
     });
-
-    await supabase
-      .from("member_loyalty_status")
-      .update({
-        points_balance: newBalance,
-        lifetime_points_redeemed: (loyaltyStatus.lifetime_points_redeemed ?? 0) + pointsCost,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", loyaltyStatus.id);
 
     if (reward.coupon_type === "unique") {
       await syncOfferCounters(supabase, reward_id);
