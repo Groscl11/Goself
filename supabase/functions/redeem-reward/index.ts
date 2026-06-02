@@ -224,6 +224,24 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // ── 1b. Verify member_user_id belongs to this store's tenant ─────────────
+    // SECURITY: member_user_id comes from the caller (widget anon key). Without
+    // this check, any caller knowing a UUID could redeem points for any member
+    // on any tenant. We verify ownership before touching any financial records.
+    const { data: memberCheck } = await supabase
+      .from("member_users")
+      .select("id, client_id")
+      .eq("id", member_user_id)
+      .eq("client_id", clientId)
+      .maybeSingle();
+
+    if (!memberCheck) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Member not found for this store" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     // ── 2. Fetch member loyalty status (member_user_id = member_users.id) ──
     const { data: loyaltyStatus } = await supabase
       .from("member_loyalty_status")

@@ -94,10 +94,11 @@ Deno.serve(async (req: Request) => {
     }
 
     // Identity gate: skipped when the token was issued from a trusted Shopify session
-    // (is_pre_verified=true set by the webhook — customer was authenticated by Shopify).
-    // Also skipped when the Shopify plugin passes is_pre_verified:true in the request
-    // body (Phase 5 get-order-token flow, customer confirmed logged in on Shopify side).
-    const preVerified = !!(tokenRow as any).is_pre_verified || body.is_pre_verified === true;
+    // (is_pre_verified=true set server-side by shopify-webhook or get-order-token
+    // using the service_role key — the only trusted source for this flag).
+    // SECURITY: body.is_pre_verified is intentionally NOT trusted — a caller
+    // could pass is_pre_verified:true to bypass identity verification entirely.
+    const preVerified = !!(tokenRow as any).is_pre_verified;
     if (!preVerified) {
       if (!identity) {
         const hints: string[] = [];

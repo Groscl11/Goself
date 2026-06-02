@@ -20,6 +20,47 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
+    // ── SECURITY: Verify caller identity ─────────────────────────────────────
+    // adjust-loyalty-points uses service_role (bypasses RLS), so we must
+    // manually authenticate the caller. Only admin users or client users
+    // belonging to the target shop may adjust points.
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const callerJwt = authHeader.replace('Bearer ', '').trim();
+    const anonKey = (Deno.env.get('SUPABASE_ANON_KEY') ?? '').trim();
+
+    // Reject if the caller is using the anon key (unauthenticated widget/public)
+    if (!callerJwt || callerJwt === anonKey) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized — a logged-in user JWT is required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const callerClient = createClient(Deno.env.get('SUPABASE_URL')!, callerJwt);
+    const { data: { user: callerUser }, error: userErr } = await callerClient.auth.getUser();
+    if (userErr || !callerUser) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized — invalid or expired token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { data: callerProfile } = await supabase
+      .from('profiles')
+      .select('client_id, role')
+      .eq('id', callerUser.id)
+      .maybeSingle();
+
+    if (!callerProfile) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden — caller profile not found' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const isAdmin = callerProfile.role === 'admin';
+    // ─────────────────────────────────────────────────────────────────────────
+
     const { shop_domain, email, phone, points, reason, order_id, order_amount } = await req.json();
 
     if (!shop_domain || (!email && !phone) || points === undefined || points === null) {
@@ -83,6 +124,14 @@ Deno.serve(async (req: Request) => {
     }
 
     const clientId = storeInstall.client_id;
+
+    // SECURITY: verify the caller belongs to this shop's client (or is admin)
+    if (!isAdmin && callerProfile.client_id !== clientId) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden — you do not have access to this store' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Find member user
     let query = supabase
