@@ -17,7 +17,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 
 const SUPABASE_URL    = import.meta.env.VITE_SUPABASE_URL    || 'https://lizgppzyyljqbmzdytia.supabase.co';
-const SHOPIFY_API_KEY = import.meta.env.VITE_SHOPIFY_API_KEY || '3290e6e4e5cb6711e4a7876ef40f87e8';
+const SHOPIFY_API_KEY = import.meta.env.VITE_SHOPIFY_API_KEY || '';
 
 export default function ShopifyLanding() {
   const [searchParams] = useSearchParams();

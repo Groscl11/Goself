@@ -229,7 +229,6 @@ Deno.serve(async (req: Request) => {
           verified: true,
           campaign_id: campaign.id,
           campaign_name: campaign.name,
-          email: tokenRow.email,
           expires_at: tokenRow.expires_at,
           reward_selection_mode: campaign.reward_selection_mode,
           min_rewards: campaign.min_rewards_choice,

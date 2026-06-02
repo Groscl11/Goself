@@ -1,11 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Shopify-Topic, X-Shopify-Hmac-Sha256, X-Shopify-Shop-Domain",
-};
+const JSON_HEADER = { "Content-Type": "application/json" };
 
 // Auto-detect env: staging project ref is jblqyvicxhmqqjhostcj
 const _webhookSupabaseRef = Deno.env.get("SUPABASE_URL")?.match(/\/\/([^.]+)\.supabase\.co/)?.[1] ?? "";
@@ -15,9 +11,9 @@ const WEBHOOK_APP_URL = Deno.env.get("FRONTEND_URL") || Deno.env.get("DASHBOARD_
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: JSON_HEADER,
     });
   }
 
@@ -34,7 +30,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "Missing required Shopify headers" }),
         {
           status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: JSON_HEADER,
         }
       );
     }
@@ -64,7 +60,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "Integration not found or disconnected" }),
         {
           status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: JSON_HEADER,
         }
       );
     }
@@ -79,7 +75,7 @@ Deno.serve(async (req: Request) => {
           JSON.stringify({ error: "Missing HMAC signature" }),
           {
             status: 401,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            headers: JSON_HEADER,
           }
         );
       }
@@ -90,7 +86,7 @@ Deno.serve(async (req: Request) => {
           JSON.stringify({ error: "Invalid HMAC signature" }),
           {
             status: 401,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            headers: JSON_HEADER,
           }
         );
       }
@@ -103,7 +99,7 @@ Deno.serve(async (req: Request) => {
       console.error(`[shopify-webhook] No SHOPIFY_API_SECRET for ${shopDomain} — rejecting`);
       return new Response(
         JSON.stringify({ error: "Webhook secret not configured" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 401, headers: JSON_HEADER }
       );
     }
 
@@ -144,7 +140,7 @@ Deno.serve(async (req: Request) => {
 
       return new Response(
         JSON.stringify({ success: true, message: 'Store marked as uninstalled' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: JSON_HEADER }
       );
     }
 
@@ -301,7 +297,7 @@ Deno.serve(async (req: Request) => {
         }),
         {
           status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: JSON_HEADER,
         }
       );
     }
@@ -321,7 +317,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ message: "Webhook received and logged", topic: shopifyTopic }),
       {
         status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: JSON_HEADER,
       }
     );
   } catch (error) {
@@ -330,7 +326,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ error: "Internal server error", message: error.message }),
       {
         status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: JSON_HEADER,
       }
     );
   }

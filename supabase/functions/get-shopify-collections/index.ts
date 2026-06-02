@@ -134,7 +134,7 @@ Deno.serve(async (req: Request) => {
   } catch (error: any) {
     console.error("get-shopify-collections error:", error);
     return new Response(
-      JSON.stringify({ error: error.message, collections: [] }),
+      JSON.stringify({ error: 'Internal server error', collections: [] }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

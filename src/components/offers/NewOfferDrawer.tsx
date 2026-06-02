@@ -4,7 +4,7 @@ import { supabase, supabaseUrl, supabaseAnonKey } from '../../lib/supabase';
 import { uploadOfferCodesDirect } from '../../lib/offerCodes';
 import { CodeSource, RewardType } from '../../types/offers';
 
-const SHOPIFY_CLIENT_ID = import.meta.env.VITE_SHOPIFY_API_KEY || '3290e6e4e5cb6711e4a7876ef40f87e8';
+const SHOPIFY_CLIENT_ID = import.meta.env.VITE_SHOPIFY_API_KEY || '';
 const SHOPIFY_OAUTH_SCOPES = 'read_customers,read_orders,read_discounts,write_discounts,read_price_rules,write_price_rules';
 
 function buildShopifyReconnectUrl(shopDomain: string, clientId: string): string {

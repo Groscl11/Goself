@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) => {
 
     if (distError) {
       console.error("offer_distributions query error:", distError.message);
-      return jsonResponse({ success: false, error: distError.message }, 500);
+      return jsonResponse({ success: false, error: 'Internal server error' }, 500);
     }
 
     // Filter to only active rewards (rewards table has no is_active column — use status only)
@@ -244,6 +244,6 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error: any) {
     console.error("get-member-rewards error:", error);
-    return jsonResponse({ success: false, error: error.message ?? "Internal server error" }, 500);
+    return jsonResponse({ success: false, error: 'Internal server error' }, 500);
   }
 });

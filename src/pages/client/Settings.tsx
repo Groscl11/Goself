@@ -298,17 +298,15 @@ export function Settings() {
   const loadAll = async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: prof } = await supabase.from('profiles').select('client_id').eq('id', user.id).single();
-      if (!prof?.client_id) return;
-      setClientId(prof.client_id);
+      const clientIdValue = profile?.client_id;
+      if (!clientIdValue) return;
+      setClientId(clientIdValue);
 
       const [clientRes, assocRes] = await Promise.all([
-        supabase.from('clients').select('*').eq('id', prof.client_id).single(),
+        supabase.from('clients').select('*').eq('id', clientIdValue).single(),
         supabase.from('client_brand_associations')
           .select('id,status,submitted_name,submitted_url,proof_notes,rejection_reason,brand_id,created_at')
-          .eq('client_id', prof.client_id)
+          .eq('client_id', clientIdValue)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),

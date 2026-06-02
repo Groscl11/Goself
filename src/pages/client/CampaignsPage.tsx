@@ -880,6 +880,11 @@ export default function CampaignsPage() {
       return;
     }
 
+    // ruleIds is derived from campaign_rules scoped by .eq('client_id', clientId) above,
+    // so .in('campaign_rule_id', ruleIds) on each table below is indirectly client-scoped.
+    // campaign_reward_pools has no direct client_id column — indirect scoping via ruleIds is correct.
+    // campaign_trigger_logs has no direct client_id column — indirect scoping via ruleIds is correct.
+    // campaign_rule_evaluations has no direct client_id column — indirect scoping via ruleIds is correct.
     const [poolRes, logsRes, evalRes] = await Promise.all([
       supabase.from('campaign_reward_pools').select('campaign_rule_id, reward_id').in('campaign_rule_id', ruleIds),
       supabase.from('campaign_trigger_logs').select('campaign_rule_id, trigger_result').in('campaign_rule_id', ruleIds),

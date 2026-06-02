@@ -13,22 +13,20 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Shopify-Topic, X-Shopify-Shop-Domain, X-Shopify-Hmac-Sha256",
-};
+const JSON_HEADER = { "Content-Type": "application/json" };
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: JSON_HEADER,
+    });
   }
 
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: JSON_HEADER,
     });
   }
 
@@ -46,7 +44,7 @@ Deno.serve(async (req: Request) => {
     console.error(`[GDPR] SHOPIFY_WEBHOOK_SECRET not set — rejecting ${topic} from ${shopDomain}`);
     return new Response(JSON.stringify({ error: "Service misconfigured" }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: JSON_HEADER,
     });
   }
   const valid = await verifyHmac(body, hmacHeader, webhookSecret);
@@ -54,7 +52,7 @@ Deno.serve(async (req: Request) => {
     console.error(`[GDPR] Invalid HMAC for ${topic} from ${shopDomain}`);
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: JSON_HEADER,
     });
   }
 
@@ -106,7 +104,7 @@ Deno.serve(async (req: Request) => {
   // Shopify requirement: always return 200 quickly
   return new Response(JSON.stringify({ received: true, topic }), {
     status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: JSON_HEADER,
   });
 });
 

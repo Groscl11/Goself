@@ -292,7 +292,12 @@ Deno.serve(async (req: Request) => {
 
         access_token: accessToken,
         shopify_access_token: accessToken,
-        shopify_api_secret: Deno.env.get('SHOPIFY_API_SECRET'),
+        // SECURITY (M-15): do NOT persist the global SHOPIFY_API_SECRET to the DB.
+        // Storing it here means a DB breach or overly-permissive RLS policy exposes
+        // the shared app secret for ALL stores. HMAC verification reads it exclusively
+        // from Deno.env at runtime (shopify-webhook line 74). Per-store webhook signing
+        // secrets (when Shopify provides them) should be stored per-row instead.
+        // shopify_api_secret intentionally omitted.
         api_version: '2025-01',
         scopes: scopes,
 
@@ -435,10 +440,10 @@ Deno.serve(async (req: Request) => {
     console.error('OAuth callback error:', error);
     // Redirect to ShopifyLanding with error — NOT to a ProtectedRoute page
     const errorDashboardUrl = stateAppUrl || rawDashboardUrl || 'https://app.goself.in';
-    const errorUrl = `${errorDashboardUrl}/?shop=${shop}&error=oauth_failed&message=${encodeURIComponent(error?.message || 'Unknown error')}`;
+    const errorUrl = `${errorDashboardUrl}/?shop=${shop}&error=oauth_failed`;
     if (isFromFrontend) {
       return new Response(JSON.stringify({
-        error: error?.message || 'Unknown error',
+        error: 'Installation failed',
         shop,
         message: 'Installation failed'
       }), {

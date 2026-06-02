@@ -85,11 +85,11 @@ Deno.serve(async (req: Request) => {
 
   } catch (error) {
     console.error('Widget script error:', error);
-    return new Response(`// Error loading widget: ${error.message}`, {
-      status: 500,
+    return new Response('// Error loading widget', {
+      status: 200,
       headers: {
-        ...corsHeaders,
         'Content-Type': 'application/javascript',
+        'Cache-Control': 'no-store',
       }
     });
   }

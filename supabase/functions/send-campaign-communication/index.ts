@@ -90,7 +90,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error("Error processing communication:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error", message: error.message }),
+      JSON.stringify({ error: "Internal server error" }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -151,7 +151,7 @@ async function sendCommunication(supabase: any, communication: any) {
     return {
       success: false,
       communication_id: communication.id,
-      error: error.message,
+      error: 'Internal server error',
     };
   }
 }

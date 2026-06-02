@@ -193,7 +193,17 @@ Deno.serve(async (req: Request) => {
       // We store numbers in E.164 in the DB, so an exact match fails.
       // Using a LIKE '%digits' query matches regardless of the country-code prefix.
       const phoneDigits = (phone || '').replace(/\D/g, '');
-      const useSuffix = phoneDigits.length >= 7; // only suffix-match for plausible lengths
+      // SECURITY (M-10): phoneDigits is already stripped of non-digits by the replace above.
+      // Make the sanitized value explicit and add length validation before using in filter.
+      const phoneDigitsClean = phoneDigits.replace(/[^0-9]/g, '');
+      let useSuffix = phoneDigitsClean.length >= 7; // only suffix-match for plausible lengths
+
+      // SECURITY (M-10): validate phoneDigits length to prevent filter injection.
+      // phoneDigitsClean is already digits-only; only length validation is needed.
+      if (useSuffix && (phoneDigitsClean.length < 7 || phoneDigitsClean.length > 15)) {
+        // Malformed phone — skip suffix match, use exact match only
+        useSuffix = false;
+      }
 
       let query = supabase
         .from('member_users')
@@ -201,7 +211,7 @@ Deno.serve(async (req: Request) => {
 
       if (email && phone) {
         const phonePart = useSuffix
-          ? `phone.eq.${phone},phone.like.%${phoneDigits}`
+          ? `phone.eq.${phone},phone.like.%${phoneDigitsClean}`
           : `phone.eq.${phone}`;
         query = query.or(`email.eq.${email},${phonePart}`);
       } else if (email) {
@@ -209,7 +219,7 @@ Deno.serve(async (req: Request) => {
       } else {
         // Phone only
         if (useSuffix) {
-          query = query.or(`phone.eq.${phone},phone.like.%${phoneDigits}`);
+          query = query.or(`phone.eq.${phone},phone.like.%${phoneDigitsClean}`);
         } else {
           query = query.eq('phone', phone!);
         }

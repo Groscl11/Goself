@@ -8,6 +8,7 @@ import {
   Download, ExternalLink,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import { clientMenuItems } from './clientMenuItems';
 import { formatCurrency } from '../../lib/currency';
 
@@ -96,6 +97,7 @@ function SortIcon({ col, sort }: { col: SortKey; sort: { key: SortKey; dir: Sort
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function Orders() {
+  const { profile } = useAuth();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState<string>('');
@@ -121,16 +123,10 @@ export function Orders() {
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
-  useEffect(() => { loadClientId(); }, []);
-  useEffect(() => { if (clientId) loadOrders(); }, [clientId]);
-
-  const loadClientId = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data: profile } = await supabase
-      .from('profiles').select('client_id').eq('id', user.id).single();
+  useEffect(() => {
     if (profile?.client_id) setClientId(profile.client_id);
-  };
+  }, [profile]);
+  useEffect(() => { if (clientId) loadOrders(); }, [clientId]);
 
   const loadOrders = async () => {
     setLoading(true);
