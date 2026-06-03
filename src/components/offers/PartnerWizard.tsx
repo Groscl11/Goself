@@ -45,6 +45,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     max_discount_value: '',
     min_purchase_amount: '',
     image_url: '',
+    banner_url: '',
     steps_to_redeem: '',
     redemption_link: '',
     terms_conditions: '',
@@ -97,6 +98,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       title: '', description: '', offer_category: 'other',
       reward_type: 'flat_discount', discount_value: '', max_discount_value: '', min_purchase_amount: '',
       image_url: '',
+      banner_url: '',
       steps_to_redeem: '', redemption_link: '', terms_conditions: '',
       coupon_type: 'unique', generic_coupon_code: '', valid_until: '',
       points_cost: '', max_per_member: '1', access_type: 'points_redemption',
@@ -118,6 +120,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       max_discount_value: offer.max_discount_value != null ? String(offer.max_discount_value) : '',
       min_purchase_amount: offer.min_purchase_amount != null ? String(offer.min_purchase_amount) : '',
       image_url: offer.image_url ?? '',
+      banner_url: offer.banner_url ?? '',
       steps_to_redeem: offer.steps_to_redeem ?? '',
       redemption_link: offer.redemption_link ?? '',
       terms_conditions: offer.terms_conditions ?? '',
@@ -187,6 +190,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
         title: form.title.trim(),
         description: form.description.trim() || null,
         image_url: form.image_url.trim() || null,
+        banner_url: form.banner_url.trim() || null,
         redemption_link: form.redemption_link || null,
         terms_conditions: form.terms_conditions || null,
         steps_to_redeem: form.steps_to_redeem || null,
@@ -405,8 +409,26 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
               value={form.image_url}
               onChange={url => set('image_url', url)}
               clientId={clientId}
+              icon="🏷️"
+              uploadLabel="Click or drag to upload partner logo"
+              dimensionHint="400×400 px · PNG or WebP · max 2 MB"
+              folder="offer-images"
             />
           </Field>
+
+          <Field label="Reward banner (optional)" hint="Wide promotional banner shown in redemption screens · 1200×400 px recommended">
+            <OfferImageUpload
+              value={form.banner_url}
+              onChange={url => set('banner_url', url)}
+              clientId={clientId}
+              icon="🎨"
+              uploadLabel="Click or drag to upload reward banner"
+              dimensionHint="1200×400 px · PNG, JPG, WebP · max 4 MB"
+              previewClass="h-24 w-full max-w-sm"
+              folder="offer-banners"
+            />
+          </Field>
+
           <Field label="Steps to redeem">
             <textarea value={form.steps_to_redeem} onChange={e => set('steps_to_redeem', e.target.value)}
               rows={3} placeholder="1) Visit store 2) Add item 3) Apply voucher..."
@@ -592,7 +614,23 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-function OfferImageUpload({ value, onChange, clientId }: { value: string; onChange: (url: string) => void; clientId: string }) {
+function OfferImageUpload({
+  value, onChange, clientId,
+  icon = '🖼️',
+  uploadLabel = 'Click or drag to upload',
+  dimensionHint = 'PNG, JPG, WebP · max 2 MB',
+  previewClass = 'h-20 w-auto',
+  folder = 'offer-images',
+}: {
+  value: string;
+  onChange: (url: string) => void;
+  clientId: string;
+  icon?: string;
+  uploadLabel?: string;
+  dimensionHint?: string;
+  previewClass?: string;
+  folder?: string;
+}) {
   const [uploading, setUploading] = useState(false);
   const [urlMode, setUrlMode] = useState(!value);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -602,7 +640,7 @@ function OfferImageUpload({ value, onChange, clientId }: { value: string; onChan
     setUploading(true);
     try {
       const ext = file.name.split('.').pop() ?? 'jpg';
-      const path = `offer-images/${clientId}/${Date.now()}.${ext}`;
+      const path = `${folder}/${clientId}/${Date.now()}.${ext}`;
       const { error } = await supabase.storage.from('client-assets').upload(path, file, { upsert: true, contentType: file.type });
       if (error) throw error;
       const { data: pub } = supabase.storage.from('client-assets').getPublicUrl(path);
@@ -625,7 +663,7 @@ function OfferImageUpload({ value, onChange, clientId }: { value: string; onChan
     <div className="space-y-2">
       {value && (
         <div className="relative inline-block">
-          <img src={value} alt="preview" className="h-20 w-auto rounded-xl border border-gray-200 object-cover"
+          <img src={value} alt="preview" className={`${previewClass} rounded-xl border border-gray-200 object-cover`}
             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           <button type="button" onClick={() => { onChange(''); setUrlMode(true); }}
             className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600">✕</button>
@@ -637,9 +675,9 @@ function OfferImageUpload({ value, onChange, clientId }: { value: string; onChan
           onClick={() => inputRef.current?.click()}>
           {uploading ? <div className="text-xs text-gray-500">Uploading…</div> : (
             <>
-              <div className="text-2xl mb-1">🏷️</div>
-              <div className="text-xs font-medium text-gray-600">Click or drag to upload partner logo</div>
-              <div className="text-xs text-gray-400 mt-0.5">400×400 px · PNG or WebP · max 2 MB</div>
+              <div className="text-2xl mb-1">{icon}</div>
+              <div className="text-xs font-medium text-gray-600">{uploadLabel}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{dimensionHint}</div>
             </>
           )}
           <input ref={inputRef} type="file" accept="image/*" className="hidden"
@@ -653,7 +691,7 @@ function OfferImageUpload({ value, onChange, clientId }: { value: string; onChan
       </div>
       {urlMode && (
         <input type="url" value={value} onChange={e => onChange(e.target.value)}
-          placeholder="https://example.com/brand-logo.png" className="input-base text-xs" />
+          placeholder="https://example.com/image.png" className="input-base text-xs" />
       )}
     </div>
   );
