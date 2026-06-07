@@ -62,20 +62,22 @@ function resolveShop(): string {
   return shopFromHost(INITIAL.get('host') || s.host || '');
 }
 
+const isFramed = (() => { try { return window.top && window.top !== window.self; } catch { return true; } })();
+
 /**
  * Break out of Shopify's iframe to an external URL.
- * Prefer navigating the top frame directly (NOT window.open — that's a popup and
- * gets silently blocked, leaving the user stuck). If the iframe sandbox requires a
- * user gesture for top navigation, the visible "Continue" button (which calls this
- * from a click handler) satisfies that requirement.
+ *
+ * CRITICAL: when framed we ONLY ever navigate the TOP frame — never this iframe.
+ * Navigating the iframe itself (window.location.href) would load the dashboard
+ * EMBEDDED inside Shopify admin. And Shopify's iframe blocks *programmatic* top
+ * navigation (it requires a user gesture), so an automatic attempt may silently
+ * do nothing — that's expected; the visible "Continue" button (a native
+ * target="_top" link) lets the merchant break out with a single click.
  */
 function breakoutTo(url: string) {
-  // 1. Direct top-frame navigation (no popup).
-  try { if (window.top && window.top !== window.self) { window.top.location.href = url; return; } } catch { /* cross-origin — fall through */ }
-  // 2. Not framed, or top navigation blocked for reads — try a named-top open.
-  try { const w = window.open(url, '_top'); if (w) return; } catch { /* popup blocked */ }
-  // 3. Last resort: navigate this frame.
-  try { window.location.href = url; } catch { /* nothing else to try */ }
+  if (!isFramed) { window.location.href = url; return; } // standalone — self IS top
+  try { window.top!.location.href = url; return; } catch { /* needs user gesture */ }
+  try { window.open(url, '_top'); } catch { /* popup blocked — Continue button handles it */ }
 }
 
 /** Load App Bridge v4 and resolve once window.shopify is ready (or null on failure). */
@@ -197,29 +199,35 @@ export default function ShopifyInstall() {
       }}>
         {!error ? (
           <>
-            <div style={{
-              width: 48, height: 48, margin: '0 auto 20px', borderRadius: '50%',
-              border: '3px solid #dbeafe', borderTopColor: '#2563eb', animation: 'spin 0.8s linear infinite',
-            }} />
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>Almost there</h1>
-            <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>{status}</p>
+            {continueUrl ? (
+              <div style={{ fontSize: 44, marginBottom: 12 }}>✅</div>
+            ) : (
+              <div style={{
+                width: 48, height: 48, margin: '0 auto 20px', borderRadius: '50%',
+                border: '3px solid #dbeafe', borderTopColor: '#2563eb', animation: 'spin 0.8s linear infinite',
+              }} />
+            )}
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>
+              {continueUrl ? 'You’re all set 🎉' : 'Almost there'}
+            </h1>
+            <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
+              {continueUrl ? 'Open your GoSelf dashboard to continue.' : status}
+            </p>
             {continueUrl && (
-              <>
-                <p style={{ fontSize: 12, color: '#94a3b8', margin: '16px 0 12px' }}>
-                  If you’re not redirected automatically:
-                </p>
-                <a
-                  href={continueUrl}
-                  target="_top"
-                  onClick={(e) => { e.preventDefault(); breakoutTo(continueUrl); }}
-                  style={{
-                    display: 'inline-block', background: '#2563eb', color: '#fff', textDecoration: 'none',
-                    padding: '10px 24px', borderRadius: 8, fontSize: 14, fontWeight: 600,
-                  }}
-                >
-                  Continue to dashboard →
-                </a>
-              </>
+              // Native target="_top" anchor — a user click is the one reliable way
+              // to break out of Shopify's iframe (satisfies the user-gesture
+              // requirement for top-frame navigation). No JS override.
+              <a
+                href={continueUrl}
+                target="_top"
+                rel="noopener"
+                style={{
+                  display: 'inline-block', marginTop: 20, background: '#2563eb', color: '#fff',
+                  textDecoration: 'none', padding: '12px 28px', borderRadius: 8, fontSize: 15, fontWeight: 700,
+                }}
+              >
+                Open Dashboard →
+              </a>
             )}
             <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
           </>
