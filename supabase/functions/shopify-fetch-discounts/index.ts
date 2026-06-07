@@ -10,6 +10,7 @@
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { decryptToken } from '../_shared/token-crypto.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -75,7 +76,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const accessToken = install.access_token;
+    const accessToken = await decryptToken(install.access_token);
     const shopifyBase = `https://${shopDomain}/admin/api/2024-01`;
 
     // Fetch price rules (up to 50, sorted newest first)

@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { syncOfferCounters } from "../_shared/offer-counters.ts";
+import { decryptToken } from '../_shared/token-crypto.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -463,7 +464,9 @@ Deno.serve(async (req: Request) => {
       .eq("shop_domain", shop_domain)
       .maybeSingle();
 
-    shopifyAccessToken = storeInstall?.access_token ?? null;
+    shopifyAccessToken = storeInstall?.access_token
+      ? await decryptToken(storeInstall.access_token)
+      : null;
 
     if (shopifyAccessToken && reward.coupon_type === "unique" && reward.offer_type === "store_discount" && code) {
       const shopifyResult = await createShopifyDiscount(

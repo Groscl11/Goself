@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { decryptToken } from '../_shared/token-crypto.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -84,10 +85,12 @@ Deno.serve(async (req: Request) => {
     const { query } = await req.json().catch(() => ({ query: "" }));
     const searchQuery = (query || "").trim();
 
+    const accessToken = await decryptToken(integration.access_token);
+
     // Query both custom_collections and smart_collections in parallel
     const baseUrl = `https://${integration.shop_domain}/admin/api/2024-01`;
     const shopifyHeaders = {
-      "X-Shopify-Access-Token": integration.access_token,
+      "X-Shopify-Access-Token": accessToken,
       "Content-Type": "application/json",
     };
 

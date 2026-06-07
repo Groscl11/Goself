@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { decryptToken } from '../_shared/token-crypto.ts';
 
 const JSON_HEADER = { "Content-Type": "application/json" };
 
@@ -563,11 +564,12 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
 
       if (storeForCustomer?.access_token) {
         try {
+          const accessToken = await decryptToken(storeForCustomer.access_token);
           const customerResponse = await fetch(
             `https://${storeForCustomer.shop_domain}/admin/api/2024-01/customers/${orderData.customer.id}.json`,
             {
               headers: {
-                "X-Shopify-Access-Token": storeForCustomer.access_token,
+                "X-Shopify-Access-Token": accessToken,
               },
             }
           );
