@@ -19,6 +19,7 @@ interface LoyaltyProgram {
   is_active: boolean;
   currency: string;
   allow_redemption: boolean;
+  auto_enroll_members: boolean;
   points_expiry_days: number | null;
   welcome_bonus_points: number;
   referral_reward_trigger: string;
@@ -112,6 +113,7 @@ const EMPTY_PROGRAM: Omit<LoyaltyProgram, 'id' | 'client_id'> = {
   is_active: true,
   currency: 'INR',
   allow_redemption: true,
+  auto_enroll_members: false,
   points_expiry_days: null,
   welcome_bonus_points: 0,
   referral_reward_trigger: 'first_order',
@@ -352,6 +354,16 @@ function Step1({
           <ToggleSwitch
             checked={program.allow_redemption}
             onChange={v => onChange('allow_redemption', v)}
+          />
+        </div>
+        <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-200">
+          <div>
+            <p className="text-sm font-medium text-gray-900">Auto-enroll signed-in customers</p>
+            <p className="text-xs text-gray-500">Automatically enrol any logged-in storefront customer as a member. When off, customers join manually from the widget.</p>
+          </div>
+          <ToggleSwitch
+            checked={program.auto_enroll_members}
+            onChange={v => onChange('auto_enroll_members', v)}
           />
         </div>
       </div>
@@ -1066,6 +1078,7 @@ export default function LoyaltyProgramPage() {
             is_active: prog.is_active ?? true,
             currency: prog.currency ?? 'INR',
             allow_redemption: prog.allow_redemption ?? true,
+            auto_enroll_members: prog.auto_enroll_members ?? false,
             points_expiry_days: prog.points_expiry_days ?? null,
             welcome_bonus_points: prog.welcome_bonus_points ?? 0,
             referral_reward_trigger: prog.referral_reward_trigger ?? 'first_order',
