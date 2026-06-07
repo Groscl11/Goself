@@ -62,13 +62,20 @@ function resolveShop(): string {
   return shopFromHost(INITIAL.get('host') || s.host || '');
 }
 
-/** Navigate the TOP window (break out of Shopify's iframe) to an external URL. */
+/**
+ * Break out of Shopify's iframe to an external URL.
+ * Prefer navigating the top frame directly (NOT window.open — that's a popup and
+ * gets silently blocked, leaving the user stuck). If the iframe sandbox requires a
+ * user gesture for top navigation, the visible "Continue" button (which calls this
+ * from a click handler) satisfies that requirement.
+ */
 function breakoutTo(url: string) {
-  try { window.open(url, '_top'); }
-  catch {
-    try { (window.top || window).location.href = url; }
-    catch { window.location.href = url; }
-  }
+  // 1. Direct top-frame navigation (no popup).
+  try { if (window.top && window.top !== window.self) { window.top.location.href = url; return; } } catch { /* cross-origin — fall through */ }
+  // 2. Not framed, or top navigation blocked for reads — try a named-top open.
+  try { const w = window.open(url, '_top'); if (w) return; } catch { /* popup blocked */ }
+  // 3. Last resort: navigate this frame.
+  try { window.location.href = url; } catch { /* nothing else to try */ }
 }
 
 /** Load App Bridge v4 and resolve once window.shopify is ready (or null on failure). */
@@ -114,6 +121,9 @@ async function getSessionToken(): Promise<string> {
 export default function ShopifyInstall() {
   const [status, setStatus] = useState('Setting up your store…');
   const [error, setError] = useState('');
+  // When SSO is ready we always surface a clickable link — a user click guarantees
+  // the top-frame breakout works even if programmatic navigation is blocked.
+  const [continueUrl, setContinueUrl] = useState('');
   const ran = useRef(false);
 
   useEffect(() => {
@@ -153,6 +163,9 @@ export default function ShopifyInstall() {
         if (data?.success && data.redirect) {
           setStatus('Signing you in…');
           try { sessionStorage.removeItem(SS_KEY); } catch { /* ignore */ }
+          // Surface a clickable link immediately (popup-blocked safety net), then
+          // attempt the automatic breakout.
+          setContinueUrl(data.redirect);
           breakoutTo(data.redirect);
           return;
         }
@@ -190,6 +203,24 @@ export default function ShopifyInstall() {
             }} />
             <h1 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>Almost there</h1>
             <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>{status}</p>
+            {continueUrl && (
+              <>
+                <p style={{ fontSize: 12, color: '#94a3b8', margin: '16px 0 12px' }}>
+                  If you’re not redirected automatically:
+                </p>
+                <a
+                  href={continueUrl}
+                  target="_top"
+                  onClick={(e) => { e.preventDefault(); breakoutTo(continueUrl); }}
+                  style={{
+                    display: 'inline-block', background: '#2563eb', color: '#fff', textDecoration: 'none',
+                    padding: '10px 24px', borderRadius: 8, fontSize: 14, fontWeight: 600,
+                  }}
+                >
+                  Continue to dashboard →
+                </a>
+              </>
+            )}
             <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
           </>
         ) : (
