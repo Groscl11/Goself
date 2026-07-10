@@ -50,10 +50,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       (async () => {
+        // P0 guard: if the refreshed JWT belongs to a DIFFERENT user than the one
+        // currently active (multi-account localStorage collision), sign out immediately
+        // rather than silently switching identity mid-session.
+        if (
+          session?.user &&
+          activeUserIdRef.current !== null &&
+          session.user.id !== activeUserIdRef.current
+        ) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setProfile(null);
+          setSession(null);
+          activeUserIdRef.current = null;
+          window.location.href = '/login';
+          return;
+        }
+
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
-          setLoading(true); // keep spinner while profile is being fetched
+          setLoading(true);
           await loadProfile(session.user.id);
         } else {
           activeUserIdRef.current = null;

@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -98,6 +98,18 @@ const CouponCodesPage = lazy(() => import('./pages/client/CouponCodesPage'));
 const UTMLinksPage = lazy(() => import('./pages/client/UTMLinksPage'));
 const AttributionReportsPage = lazy(() => import('./pages/client/AttributionReportsPage'));
 
+function LogoutRoute() {
+  const { signOut } = useAuth();
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    signOut().finally(() => setDone(true));
+  }, []);
+
+  if (!done) return null;
+  return <Navigate to="/login" replace />;
+}
+
 function DashboardRouter() {
   const { profile, loading } = useAuth();
 
@@ -180,6 +192,9 @@ function App() {
           <Route path="/admin/referral-analytics" element={<RoleBasedRoute allowedRoles={['admin']}><ReferralAnalytics /></RoleBasedRoute>} />
           <Route path="/admin/billing" element={<RoleBasedRoute allowedRoles={['admin']}><AdminBilling /></RoleBasedRoute>} />
           <Route path="/admin/marketplace-approvals" element={<RoleBasedRoute allowedRoles={['admin']}><AdminMarketplaceApprovals /></RoleBasedRoute>} />
+          <Route path="/logout" element={<LogoutRoute />} />
+          <Route path="/client/dashboard" element={<Navigate to="/client" replace />} />
+          <Route path="/client/earn-rules" element={<Navigate to="/client/loyalty-config" replace />} />
           <Route path="/client/onboarding" element={<Navigate to="/client" replace />} />
           <Route path="/client" element={<RoleBasedRoute allowedRoles={['client']}><ClientDashboard /></RoleBasedRoute>} />
           <Route path="/client/programs" element={<RoleBasedRoute allowedRoles={['client']}><MembershipManagement /></RoleBasedRoute>} />

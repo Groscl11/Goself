@@ -795,11 +795,15 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Type</span>
-                  <span className="font-medium text-gray-900">{mode === 'standalone' ? 'Reward Campaign' : 'Membership Campaign'}</span>
+                  <span className="font-medium text-gray-900">
+                    {mode === 'standalone' ? 'Reward Campaign' : mode === 'instant_reward' ? 'Instant Reward Campaign' : 'Membership Campaign'}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Trigger</span>
-                  <span className="font-medium text-gray-900">{mode === 'standalone' ? `${conditions.length} condition(s)` : TRIGGER_LABELS[triggerType]}</span>
+                  <span className="font-medium text-gray-900">
+                    {mode === 'standalone' ? `${conditions.length} condition(s)` : mode === 'instant_reward' ? 'Instant (post-purchase)' : TRIGGER_LABELS[triggerType]}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Duration</span>
@@ -856,7 +860,7 @@ export default function CampaignsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<CampaignRule | null>(null);
   const [defaultMode, setDefaultMode] = useState<RuleMode>('standalone');
-  const [filter, setFilter] = useState<'all' | 'standalone' | 'membership'>('all');
+  const [filter, setFilter] = useState<'all' | 'standalone' | 'membership' | 'instant_reward'>('all');
   const [deleting, setDeleting] = useState<string | null>(null);
   const navigate = useNavigate();
   const [copiedCampaignId, setCopiedCampaignId] = useState<string | null>(null);
@@ -983,6 +987,7 @@ export default function CampaignsPage() {
     totalEnrollments: campaigns.reduce((s, c) => s + (c.current_enrollments ?? 0), 0),
     reward: campaigns.filter(c => c.rule_mode === 'standalone').length,
     membership: campaigns.filter(c => c.rule_mode === 'membership').length,
+    instant: campaigns.filter(c => c.rule_mode === 'instant_reward').length,
   };
  
   return (
@@ -1014,12 +1019,13 @@ export default function CampaignsPage() {
           </div>
  
           {/* Stats row */}
-          <div className="grid grid-cols-5 gap-3 mb-6">
+          <div className="grid grid-cols-6 gap-3 mb-6">
             {[
               { label: 'Total',       value: stats.total,           color: 'text-gray-900' },
               { label: 'Active',      value: stats.active,          color: 'text-emerald-600' },
               { label: 'Enrollments', value: stats.totalEnrollments, color: 'text-blue-600' },
               { label: 'Reward',      value: stats.reward,          color: 'text-violet-600' },
+              { label: 'Instant',     value: stats.instant,         color: 'text-orange-500' },
               { label: 'Membership',  value: stats.membership,      color: 'text-amber-600' },
             ].map(s => (
               <div key={s.label} className="bg-white border border-gray-200 rounded-xl p-3 text-center">
@@ -1032,9 +1038,10 @@ export default function CampaignsPage() {
           {/* Filter chips */}
           <div className="flex gap-2 mb-4">
             {[
-              { id: 'all',        label: `All (${stats.total})` },
-              { id: 'standalone', label: `Reward (${stats.reward})` },
-              { id: 'membership', label: `Membership (${stats.membership})` },
+              { id: 'all',           label: `All (${stats.total})` },
+              { id: 'standalone',    label: `Reward (${stats.reward})` },
+              { id: 'instant_reward', label: `Instant (${stats.instant})` },
+              { id: 'membership',    label: `Membership (${stats.membership})` },
             ].map(f => (
               <button
                 key={f.id}
