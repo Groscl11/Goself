@@ -208,7 +208,6 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
         client_id: clientId,
         owner_client_id: clientId,
         partner_id: partnerId || null,
-        brand_id: partnerId || null,
         valid_until: form.valid_until || null,
         // tags intentionally omitted — not written to DB
       };
