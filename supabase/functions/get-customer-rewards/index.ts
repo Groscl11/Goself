@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) => {
           allocated_at: allocation.allocated_at,
           expires_at: allocation.expires_at,
           redemption_link: redemptionToken
-            ? `${req.headers.get('origin') || ''}/redeem/${redemptionToken}`
+            ? `${Deno.env.get('PUBLIC_APP_URL') || 'https://app.goself.in'}/redeem/${redemptionToken}`
             : null,
         };
       })
@@ -166,7 +166,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        error: 'Internal server error',
       }),
       {
         status: 500,

@@ -10,7 +10,7 @@ POST https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/check-campaign-reward
 
 ```
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0
+Authorization: Bearer <VITE_SUPABASE_ANON_KEY>
 ```
 
 ## Request Body (Minimum)
@@ -102,7 +102,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 curl -X POST \
   https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/check-campaign-rewards \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0' \
+  -H 'Authorization: Bearer <VITE_SUPABASE_ANON_KEY>' \
   -d '{
     "order_id": "gid://shopify/Order/123456",
     "order_value": 149.99,
@@ -121,7 +121,7 @@ const checkCampaignRewards = async (orderData) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0'
+        'Authorization': 'Bearer <VITE_SUPABASE_ANON_KEY>'
       },
       body: JSON.stringify(orderData)
     }
@@ -153,7 +153,7 @@ if (result.qualifies) {
 2. URL: `https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/check-campaign-rewards`
 3. Headers:
    - `Content-Type: application/json`
-   - `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0`
+   - `Authorization: Bearer <VITE_SUPABASE_ANON_KEY>`
 4. Body (raw JSON): Copy full request example above
 5. Send
 

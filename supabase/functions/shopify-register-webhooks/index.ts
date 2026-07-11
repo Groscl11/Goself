@@ -108,7 +108,7 @@ Deno.serve(async (req: Request) => {
         results.push({
           topic,
           success: false,
-          error: error.message
+          error: 'Internal server error'
         });
       }
     }
@@ -158,7 +158,7 @@ Deno.serve(async (req: Request) => {
         }
       } catch (error) {
         console.error(`Exception registering GDPR webhook ${topic}:`, error);
-        results.push({ topic, success: false, error: error.message });
+        results.push({ topic, success: false, error: 'Internal server error' });
       }
     }
 
@@ -182,7 +182,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('Webhook registration error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'Internal server error' }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

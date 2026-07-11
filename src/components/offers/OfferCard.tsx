@@ -127,7 +127,7 @@ export function OfferCard({ offer, distribution, actions, showSource, sourceLabe
       : '',
   ].filter(Boolean).join(' · ');
 
-  const discountLabel = offer.reward_type === 'percentage_discount'
+  const discountLabel = offer.reward_type === 'percentage_discount' && offer.discount_value != null
     ? `${offer.discount_value}% off`
     : offer.discount_value
       ? `₹${offer.discount_value.toLocaleString('en-IN')} off`

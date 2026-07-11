@@ -86,17 +86,16 @@ export default function ShopifyCallback() {
     setMessage('Loading your merchant profile...');
 
     try {
-      // Safety-net upsert — edge function already did this server-side
+      // Safety-net upsert — edge function already set client_id server-side
+      // via service_role. We intentionally do NOT spread client_id from the
+      // URL here: a crafted callback URL could reassign this profile to any
+      // tenant (C-12 in the InfoSec audit). client_id is only ever set
+      // server-side by shopify-session-login / shopify-oauth-callback.
       await supabase
         .from('profiles')
         .upsert(
-          {
-            id: userId,
-            email,
-            role: 'client',
-            ...(clientId ? { client_id: clientId } : {}),
-          },
-          { onConflict: 'id', ignoreDuplicates: false }
+          { id: userId, email, role: 'client' },
+          { onConflict: 'id', ignoreDuplicates: true }  // ignoreDuplicates: don't overwrite existing fields
         );
 
       // Link store_users to this auth session

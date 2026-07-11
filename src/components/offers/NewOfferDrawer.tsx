@@ -4,7 +4,7 @@ import { supabase, supabaseUrl, supabaseAnonKey } from '../../lib/supabase';
 import { uploadOfferCodesDirect } from '../../lib/offerCodes';
 import { CodeSource, RewardType } from '../../types/offers';
 
-const SHOPIFY_CLIENT_ID = import.meta.env.VITE_SHOPIFY_API_KEY || '3290e6e4e5cb6711e4a7876ef40f87e8';
+const SHOPIFY_CLIENT_ID = import.meta.env.VITE_SHOPIFY_API_KEY || '';
 const SHOPIFY_OAUTH_SCOPES = 'read_customers,read_orders,read_discounts,write_discounts,read_price_rules,write_price_rules';
 
 function buildShopifyReconnectUrl(shopDomain: string, clientId: string): string {
@@ -90,6 +90,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     title: '',
     description: '',
     image_url: '',
+    banner_url: '',
     offer_category: 'other',
     offer_priority: '0',
     starts_at: '',
@@ -133,6 +134,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         title: editOffer.title ?? '',
         description: editOffer.description ?? '',
         image_url: editOffer.image_url ?? '',
+        banner_url: (editOffer as any).banner_url ?? '',
         offer_category: (editOffer as any).offer_category ?? 'other',
         offer_priority: String((editOffer as any).offer_priority ?? 0),
         starts_at: (editOffer as any).starts_at ? String((editOffer as any).starts_at).slice(0, 10) : '',
@@ -164,7 +166,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     setShopifySearch(''); setShopifyPicked(false); setShopifyFetched(false);
     setShopifyCreating(false);
     setForm({
-      title: '', description: '', image_url: '', offer_category: 'other', offer_priority: '0',
+      title: '', description: '', image_url: '', banner_url: '', offer_category: 'other', offer_priority: '0',
       starts_at: '', reward_type: 'flat_discount', discount_value: '',
       max_cap: '', min_purchase_amount: '', coupon_type: 'unique', generic_coupon_code: '',
       codes_count: '10', code_paste: '', valid_until: '',
@@ -280,6 +282,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         max_discount_value: form.max_cap ? Number(form.max_cap) : null,
         min_purchase_amount: form.min_purchase_amount ? Number(form.min_purchase_amount) : 0,
         image_url: form.image_url.trim() || clientLogoUrl || null,
+        banner_url: form.banner_url.trim() || null,
         valid_until: form.valid_until || null,
         redemption_link: form.redemption_link.trim() || null,
         terms_conditions: form.terms_conditions.trim() || null,
@@ -294,7 +297,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
           // Approved marketplace offer: do NOT touch the live row.
           // Build diff of only changed fields and submit as an edit request.
           const editableKeys = [
-            'title', 'description', 'image_url', 'offer_category', 'reward_type',
+            'title', 'description', 'image_url', 'banner_url', 'offer_category', 'reward_type',
             'discount_value', 'max_discount_value', 'min_purchase_amount',
             'coupon_type', 'generic_coupon_code', 'valid_until',
             'redemption_link', 'terms_conditions', 'steps_to_redeem',
@@ -662,12 +665,30 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
               className="input-base resize-none" />
           </Field>
 
-          {/* Offer image — upload or paste URL */}
-          <Field label="Offer / Brand image (optional)">
+          {/* Offer logo / brand image */}
+          <Field label="Brand logo (optional)" hint="Square · 400×400 px recommended">
             <OfferImageUpload
               value={form.image_url}
               onChange={url => set('image_url', url)}
               clientId={clientId}
+              icon="🏷️"
+              uploadLabel="Click or drag to upload brand logo"
+              dimensionHint="400×400 px · PNG, WebP · max 2 MB"
+              folder="offer-images"
+            />
+          </Field>
+
+          {/* Reward banner — wide promotional creative */}
+          <Field label="Reward banner (optional)" hint="Wide banner shown in redemption screens and emails · 1200×400 px recommended">
+            <OfferImageUpload
+              value={form.banner_url}
+              onChange={url => set('banner_url', url)}
+              clientId={clientId}
+              icon="🎨"
+              uploadLabel="Click or drag to upload reward banner"
+              dimensionHint="1200×400 px · PNG, JPG, WebP · max 4 MB"
+              previewClass="h-24 w-full max-w-sm"
+              folder="offer-banners"
             />
           </Field>
 
@@ -869,17 +890,34 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
 }
 
 // ─── Small field wrapper ──────────────────────────────────────────────────────
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</label>
+      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+      {hint && <p className="text-xs text-gray-400 mb-1.5">{hint}</p>}
       {children}
     </div>
   );
 }
 
 // ─── Offer image upload (upload to Supabase Storage OR paste a URL) ────────────
-function OfferImageUpload({ value, onChange, clientId }: { value: string; onChange: (url: string) => void; clientId: string }) {
+function OfferImageUpload({
+  value, onChange, clientId,
+  icon = '🖼️',
+  uploadLabel = 'Click or drag to upload',
+  dimensionHint = 'PNG, JPG, WebP · max 2 MB',
+  previewClass = 'h-20 w-auto',
+  folder = 'offer-images',
+}: {
+  value: string;
+  onChange: (url: string) => void;
+  clientId: string;
+  icon?: string;
+  uploadLabel?: string;
+  dimensionHint?: string;
+  previewClass?: string;
+  folder?: string;
+}) {
   const [uploading, setUploading] = useState(false);
   const [urlMode, setUrlMode] = useState(!value); // start in URL mode when empty
   const inputRef = useRef<HTMLInputElement>(null);
@@ -889,7 +927,7 @@ function OfferImageUpload({ value, onChange, clientId }: { value: string; onChan
     setUploading(true);
     try {
       const ext = file.name.split('.').pop() ?? 'jpg';
-      const path = `offer-images/${clientId}/${Date.now()}.${ext}`;
+      const path = `${folder}/${clientId}/${Date.now()}.${ext}`;
       const { error } = await supabase.storage
         .from('client-assets')
         .upload(path, file, { upsert: true, contentType: file.type });
@@ -918,7 +956,7 @@ function OfferImageUpload({ value, onChange, clientId }: { value: string; onChan
           <img
             src={value}
             alt="offer preview"
-            className="h-20 w-auto rounded-xl border border-gray-200 object-cover"
+            className={`${previewClass} rounded-xl border border-gray-200 object-cover`}
             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />
           <button
@@ -941,9 +979,9 @@ function OfferImageUpload({ value, onChange, clientId }: { value: string; onChan
             <div className="text-xs text-gray-500">Uploading…</div>
           ) : (
             <>
-              <div className="text-2xl mb-1">🖼️</div>
-              <div className="text-xs font-medium text-gray-600">Click or drag to upload</div>
-              <div className="text-xs text-gray-400 mt-0.5">PNG, JPG, WebP · max 2 MB</div>
+              <div className="text-2xl mb-1">{icon}</div>
+              <div className="text-xs font-medium text-gray-600">{uploadLabel}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{dimensionHint}</div>
             </>
           )}
           <input

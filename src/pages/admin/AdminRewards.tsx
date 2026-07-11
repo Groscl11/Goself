@@ -184,6 +184,14 @@ export function AdminRewards() {
 
           if (voucherError) throw voucherError;
         }
+
+        // Audit log for admin reward modifications
+        await (supabase as any).from('admin_audit_log').insert({
+          action: 'admin_update_reward',
+          target_entity: 'rewards',
+          target_id: editingReward?.id ?? null,
+          metadata: { reward_title: formSubmitData?.title ?? null },
+        }).catch(() => {}); // best-effort
       } else {
         const { data: newReward, error } = await supabase
           .from('rewards')
@@ -207,6 +215,14 @@ export function AdminRewards() {
 
           if (voucherError) throw voucherError;
         }
+
+        // Audit log for admin reward modifications
+        await (supabase as any).from('admin_audit_log').insert({
+          action: 'admin_create_reward',
+          target_entity: 'rewards',
+          target_id: null,
+          metadata: { reward_title: formSubmitData?.title ?? null },
+        }).catch(() => {}); // best-effort
       }
 
       setShowForm(false);

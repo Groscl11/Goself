@@ -205,6 +205,6 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error: any) {
     console.error("get-rewards-catalog error:", error);
-    return softFail(error.message ?? "Internal server error");
+    return softFail('Internal server error');
   }
 });

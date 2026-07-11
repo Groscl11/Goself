@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -8,6 +8,7 @@ import { PublicRoute } from './components/PublicRoute';
 import { Login } from './pages/Login';
 import ShopifyCallback from './pages/auth/ShopifyCallback';
 import ShopifyLanding from './pages/auth/ShopifyLanding';
+import ShopifyInstall from './pages/auth/ShopifyInstall';
 import { Signup } from './pages/Signup';
 import { ClientRegistration } from './pages/public/ClientRegistration';
 import { ProgramDiscovery } from './pages/public/ProgramDiscovery';
@@ -97,6 +98,18 @@ const CouponCodesPage = lazy(() => import('./pages/client/CouponCodesPage'));
 const UTMLinksPage = lazy(() => import('./pages/client/UTMLinksPage'));
 const AttributionReportsPage = lazy(() => import('./pages/client/AttributionReportsPage'));
 
+function LogoutRoute() {
+  const { signOut } = useAuth();
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    signOut().finally(() => setDone(true));
+  }, []);
+
+  if (!done) return null;
+  return <Navigate to="/login" replace />;
+}
+
 function DashboardRouter() {
   const { profile, loading } = useAuth();
 
@@ -138,6 +151,8 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/auth/shopify-callback" element={<ShopifyCallback />} />
+          {/* Managed-install bootstrap — Shopify App URL loads this embedded */}
+          <Route path="/shopify/install" element={<ShopifyInstall />} />
           <Route path="/join/:clientSlug" element={<PublicRoute><ClientRegistration /></PublicRoute>} />
           <Route path="/join/:clientSlug/programs" element={<ProgramDiscovery />} />
           <Route path="/redeem" element={<RewardRedemption />} />
@@ -177,6 +192,9 @@ function App() {
           <Route path="/admin/referral-analytics" element={<RoleBasedRoute allowedRoles={['admin']}><ReferralAnalytics /></RoleBasedRoute>} />
           <Route path="/admin/billing" element={<RoleBasedRoute allowedRoles={['admin']}><AdminBilling /></RoleBasedRoute>} />
           <Route path="/admin/marketplace-approvals" element={<RoleBasedRoute allowedRoles={['admin']}><AdminMarketplaceApprovals /></RoleBasedRoute>} />
+          <Route path="/logout" element={<LogoutRoute />} />
+          <Route path="/client/dashboard" element={<Navigate to="/client" replace />} />
+          <Route path="/client/earn-rules" element={<Navigate to="/client/loyalty-config" replace />} />
           <Route path="/client/onboarding" element={<Navigate to="/client" replace />} />
           <Route path="/client" element={<RoleBasedRoute allowedRoles={['client']}><ClientDashboard /></RoleBasedRoute>} />
           <Route path="/client/programs" element={<RoleBasedRoute allowedRoles={['client']}><MembershipManagement /></RoleBasedRoute>} />
@@ -195,7 +213,7 @@ function App() {
           <Route path="/client/brand-redemptions" element={<RoleBasedRoute allowedRoles={['client']}><BrandRedemptions /></RoleBasedRoute>} />
           <Route path="/client/referral-tracking" element={<RoleBasedRoute allowedRoles={['client']}><ReferralTracking /></RoleBasedRoute>} />
           <Route path="/client/loyalty-config" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyConfiguration /></RoleBasedRoute>} />
-          <Route path="/client/loyalty-program-setup" element={<LoyaltyProgramPage />} />
+          <Route path="/client/loyalty-program-setup" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading...</div>}><LoyaltyProgramPage /></Suspense></RoleBasedRoute>} />
           <Route path="/client/my-rewards" element={<RoleBasedRoute allowedRoles={['client']}><ClientRewards /></RoleBasedRoute>} />
           <Route path="/client/rewards" element={<RoleBasedRoute allowedRoles={['client']}><RewardsMarketplace /></RoleBasedRoute>} />
           <Route path="/client/campaigns" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading campaigns...</div>}><CampaignsPage /></Suspense></RoleBasedRoute>} />

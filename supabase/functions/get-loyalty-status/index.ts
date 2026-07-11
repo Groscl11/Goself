@@ -41,6 +41,22 @@ Deno.serve(async (req: Request) => {
       shopifyOrderId = body.shopify_order_id || null;
     }
 
+    // Strict shop_domain requirement: every request must be scoped to a shop
+    if (!shopDomain) {
+      if (shopifyOrderId) {
+        return new Response(
+          JSON.stringify({ error: 'shop_domain is required when using shopify_order_id' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (!memberUserId && !email && !phone) {
+        return new Response(
+          JSON.stringify({ error: 'shop_domain is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // If no email/member but we have a shopify_order_id, resolve member via points transaction
     if (!memberUserId && !email && !phone && shopifyOrderId) {
       const { data: txn } = await supabase
@@ -177,7 +193,17 @@ Deno.serve(async (req: Request) => {
       // We store numbers in E.164 in the DB, so an exact match fails.
       // Using a LIKE '%digits' query matches regardless of the country-code prefix.
       const phoneDigits = (phone || '').replace(/\D/g, '');
-      const useSuffix = phoneDigits.length >= 7; // only suffix-match for plausible lengths
+      // SECURITY (M-10): phoneDigits is already stripped of non-digits by the replace above.
+      // Make the sanitized value explicit and add length validation before using in filter.
+      const phoneDigitsClean = phoneDigits.replace(/[^0-9]/g, '');
+      let useSuffix = phoneDigitsClean.length >= 7; // only suffix-match for plausible lengths
+
+      // SECURITY (M-10): validate phoneDigits length to prevent filter injection.
+      // phoneDigitsClean is already digits-only; only length validation is needed.
+      if (useSuffix && (phoneDigitsClean.length < 7 || phoneDigitsClean.length > 15)) {
+        // Malformed phone — skip suffix match, use exact match only
+        useSuffix = false;
+      }
 
       let query = supabase
         .from('member_users')
@@ -185,7 +211,7 @@ Deno.serve(async (req: Request) => {
 
       if (email && phone) {
         const phonePart = useSuffix
-          ? `phone.eq.${phone},phone.like.%${phoneDigits}`
+          ? `phone.eq.${phone},phone.like.%${phoneDigitsClean}`
           : `phone.eq.${phone}`;
         query = query.or(`email.eq.${email},${phonePart}`);
       } else if (email) {
@@ -193,7 +219,7 @@ Deno.serve(async (req: Request) => {
       } else {
         // Phone only
         if (useSuffix) {
-          query = query.or(`phone.eq.${phone},phone.like.%${phoneDigits}`);
+          query = query.or(`phone.eq.${phone},phone.like.%${phoneDigitsClean}`);
         } else {
           query = query.eq('phone', phone!);
         }
@@ -459,7 +485,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('Error getting loyalty status:', error);
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error' }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

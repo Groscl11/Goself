@@ -125,9 +125,11 @@ export function ClientDashboard() {
     }
   };
 
+  const APP_PUBLIC_URL = 'https://app.goself.in';
+
   const copyRegistrationLink = async () => {
     if (!clientInfo) return;
-    const registrationUrl = `${window.location.origin}/join/${clientInfo.slug}`;
+    const registrationUrl = `${APP_PUBLIC_URL}/join/${clientInfo.slug}`;
     try {
       await navigator.clipboard.writeText(registrationUrl);
       setCopiedLink(true);
@@ -326,7 +328,7 @@ export function ClientDashboard() {
                 </p>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg font-mono text-xs text-gray-700 truncate">
-                    {window.location.origin}/join/{clientInfo.slug}
+                    {APP_PUBLIC_URL}/join/{clientInfo.slug}
                   </div>
                   <button
                     onClick={copyRegistrationLink}

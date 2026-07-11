@@ -11,6 +11,8 @@ interface MenuItem {
   collapsibleContent?: ReactNode;
   /** Optional section header label. When this changes between consecutive items, a section divider is rendered. */
   section?: string;
+  /** When true, only visible to users with role === 'admin' */
+  adminOnly?: boolean;
 }
 
 interface DashboardLayoutProps {
@@ -76,7 +78,7 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
 
           <nav className="flex-1 overflow-y-auto py-3 px-3">
             <ul className="space-y-0.5">
-              {menuItems.map((item) => {
+              {menuItems.filter(item => !item.adminOnly || profile?.role === 'admin').map((item) => {
                 const isActive = location.pathname === item.path ||
                   (item.path !== '/client' && location.pathname.startsWith(item.path + '/'));
                 const isExpanded = expandedItems[item.path];

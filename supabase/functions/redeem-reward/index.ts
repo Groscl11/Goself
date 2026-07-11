@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { syncOfferCounters } from "../_shared/offer-counters.ts";
+import { decryptToken } from '../_shared/token-crypto.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -221,6 +222,24 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ success: false, error: "Offer points cost is not configured" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── 1b. Verify member_user_id belongs to this store's tenant ─────────────
+    // SECURITY: member_user_id comes from the caller (widget anon key). Without
+    // this check, any caller knowing a UUID could redeem points for any member
+    // on any tenant. We verify ownership before touching any financial records.
+    const { data: memberCheck } = await supabase
+      .from("member_users")
+      .select("id, client_id")
+      .eq("id", member_user_id)
+      .eq("client_id", clientId)
+      .maybeSingle();
+
+    if (!memberCheck) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Member not found for this store" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -445,7 +464,9 @@ Deno.serve(async (req: Request) => {
       .eq("shop_domain", shop_domain)
       .maybeSingle();
 
-    shopifyAccessToken = storeInstall?.access_token ?? null;
+    shopifyAccessToken = storeInstall?.access_token
+      ? await decryptToken(storeInstall.access_token)
+      : null;
 
     if (shopifyAccessToken && reward.coupon_type === "unique" && reward.offer_type === "store_discount" && code) {
       const shopifyResult = await createShopifyDiscount(
@@ -510,8 +531,32 @@ Deno.serve(async (req: Request) => {
         .eq("id", claimedOfferCodeId);
     }
 
-    // Step 7: deduct points + transaction
-    const newBalance = loyaltyStatus.points_balance - pointsCost;
+    // Step 7: deduct points atomically + record transaction
+    // SECURITY (H-06): use the deduct_loyalty_points RPC which performs a
+    // single atomic UPDATE WHERE points_balance >= p_points — prevents double-spend
+    // when two concurrent requests both pass the sufficiency check before either writes.
+    const { data: deductResult } = await supabase.rpc("deduct_loyalty_points", {
+      p_status_id: loyaltyStatus.id,
+      p_points: pointsCost,
+    });
+    const deducted = Array.isArray(deductResult) ? deductResult[0] : deductResult;
+
+    if (!deducted?.success) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Insufficient points — concurrent redemption may have occurred" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const newBalance = deducted.new_balance;
+
+    // Update lifetime_points_redeemed separately (non-critical counter)
+    await supabase
+      .from("member_loyalty_status")
+      .update({
+        lifetime_points_redeemed: (loyaltyStatus.lifetime_points_redeemed ?? 0) + pointsCost,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", loyaltyStatus.id);
 
     await supabase.from("loyalty_points_transactions").insert({
       member_loyalty_status_id: loyaltyStatus.id,
@@ -523,15 +568,6 @@ Deno.serve(async (req: Request) => {
       reference_id: code,
       metadata: { reward_id, distribution_id: offerRow.id, shop_domain, shopify_synced: shopifyCreated, redeemed_from: redemptionSource, ...(campaign_id ? { campaign_id } : {}) },
     });
-
-    await supabase
-      .from("member_loyalty_status")
-      .update({
-        points_balance: newBalance,
-        lifetime_points_redeemed: (loyaltyStatus.lifetime_points_redeemed ?? 0) + pointsCost,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", loyaltyStatus.id);
 
     if (reward.coupon_type === "unique") {
       await syncOfferCounters(supabase, reward_id);

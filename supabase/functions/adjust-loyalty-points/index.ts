@@ -1,12 +1,16 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
-};
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req);
+
+  function jsonResponse(data: unknown, status = 200) {
+    return new Response(JSON.stringify(data), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
@@ -20,30 +24,57 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
+    // ── SECURITY: Verify caller identity ─────────────────────────────────────
+    // adjust-loyalty-points uses service_role (bypasses RLS), so we must
+    // manually authenticate the caller. Only admin users or client users
+    // belonging to the target shop may adjust points.
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const callerJwt = authHeader.replace('Bearer ', '').trim();
+    const anonKey = (Deno.env.get('SUPABASE_ANON_KEY') ?? '').trim();
+
+    // Reject if the caller is using the anon key (unauthenticated widget/public)
+    if (!callerJwt || callerJwt === anonKey) {
+      return jsonResponse({ error: 'Unauthorized — a logged-in user JWT is required' }, 401);
+    }
+
+    const callerClient = createClient(Deno.env.get('SUPABASE_URL')!, callerJwt);
+    const { data: { user: callerUser }, error: userErr } = await callerClient.auth.getUser();
+    if (userErr || !callerUser) {
+      return jsonResponse({ error: 'Unauthorized — invalid or expired token' }, 401);
+    }
+
+    const { data: callerProfile } = await supabase
+      .from('profiles')
+      .select('client_id, role')
+      .eq('id', callerUser.id)
+      .maybeSingle();
+
+    if (!callerProfile) {
+      return jsonResponse({ error: 'Forbidden — caller profile not found' }, 403);
+    }
+
+    const isAdmin = callerProfile.role === 'admin';
+    // ─────────────────────────────────────────────────────────────────────────
+
     const { shop_domain, email, phone, points, reason, order_id, order_amount } = await req.json();
 
     if (!shop_domain || (!email && !phone) || points === undefined || points === null) {
-      return new Response(
-        JSON.stringify({
-          error: 'shop_domain, (email or phone), and points are required',
-          note: 'Use positive points to add, negative to remove'
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({
+        error: 'shop_domain, (email or phone), and points are required',
+        note: 'Use positive points to add, negative to remove'
+      }, 400);
     }
 
     const pointsValue = Number(points);
     if (isNaN(pointsValue)) {
-      return new Response(
-        JSON.stringify({ error: 'points must be a valid number' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({ error: 'points must be a valid number' }, 400);
+    }
+
+    // SECURITY (H-17): cap per-call adjustment to prevent bulk fraud from a
+    // compromised account. Large adjustments require a separate approval workflow.
+    const MAX_POINTS_PER_CALL = 10000;
+    if (Math.abs(pointsValue) > MAX_POINTS_PER_CALL) {
+      return jsonResponse({ error: `Points adjustment cannot exceed ±${MAX_POINTS_PER_CALL} per call` }, 400);
     }
 
     const parsedOrderAmount = order_amount === undefined || order_amount === null || order_amount === ''
@@ -51,13 +82,7 @@ Deno.serve(async (req: Request) => {
       : Number(order_amount);
 
     if (parsedOrderAmount !== null && isNaN(parsedOrderAmount)) {
-      return new Response(
-        JSON.stringify({ error: 'order_amount must be a valid number when provided' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({ error: 'order_amount must be a valid number when provided' }, 400);
     }
 
     // Find client by shop domain
@@ -69,20 +94,19 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (integrationError || !storeInstall) {
-      return new Response(
-        JSON.stringify({
-          error: 'Shop not found or not integrated',
-          shop_domain,
-          details: integrationError?.message
-        }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({
+        error: 'Shop not found or not integrated',
+        shop_domain,
+        details: integrationError?.message
+      }, 404);
     }
 
     const clientId = storeInstall.client_id;
+
+    // SECURITY: verify the caller belongs to this shop's client (or is admin)
+    if (!isAdmin && callerProfile.client_id !== clientId) {
+      return jsonResponse({ error: 'Forbidden — you do not have access to this store' }, 403);
+    }
 
     // Find member user
     let query = supabase
@@ -99,18 +123,12 @@ Deno.serve(async (req: Request) => {
     const { data: member, error: memberError } = await query.maybeSingle();
 
     if (memberError || !member) {
-      return new Response(
-        JSON.stringify({
-          error: 'Member not found',
-          email: email || undefined,
-          phone: phone || undefined,
-          shop_domain
-        }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({
+        error: 'Member not found',
+        email: email || undefined,
+        phone: phone || undefined,
+        shop_domain
+      }, 404);
     }
 
     // Get loyalty program
@@ -122,15 +140,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (programError || !loyaltyProgram) {
-      return new Response(
-        JSON.stringify({
-          error: 'No active loyalty program found for this client'
-        }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({ error: 'No active loyalty program found for this client' }, 404);
     }
 
     // Get or create member loyalty status
@@ -142,13 +152,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (statusError && statusError.code !== 'PGRST116') {
-      return new Response(
-        JSON.stringify({ error: 'Database error', details: statusError.message }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({ error: 'Database error', details: statusError.message }, 500);
     }
 
     // Create loyalty status if doesn't exist
@@ -177,13 +181,7 @@ Deno.serve(async (req: Request) => {
         .single();
 
       if (createError) {
-        return new Response(
-          JSON.stringify({ error: 'Failed to create loyalty status', details: createError.message }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
+        return jsonResponse({ error: 'Failed to create loyalty status', details: createError.message }, 500);
       }
 
       loyaltyStatus = newStatus;
@@ -193,17 +191,11 @@ Deno.serve(async (req: Request) => {
     const newBalance = currentPoints + pointsValue;
 
     if (newBalance < 0) {
-      return new Response(
-        JSON.stringify({
-          error: 'Insufficient points',
-          current_points: currentPoints,
-          requested_adjustment: pointsValue,
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({
+        error: 'Insufficient points',
+        current_points: currentPoints,
+        requested_adjustment: pointsValue,
+      }, 400);
     }
 
     // Check for duplicate order processing if order_id is provided
@@ -218,18 +210,12 @@ Deno.serve(async (req: Request) => {
       if (dupError) {
         console.error('Error checking duplicate:', dupError);
       } else if (isDuplicate) {
-        return new Response(
-          JSON.stringify({
-            error: 'Duplicate order processing prevented',
-            message: `Points have already been awarded for order ${order_id}`,
-            order_id: order_id,
-            duplicate: true
-          }),
-          {
-            status: 409,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
+        return jsonResponse({
+          error: 'Duplicate order processing prevented',
+          message: `Points have already been awarded for order ${order_id}`,
+          order_id: order_id,
+          duplicate: true
+        }, 409);
       }
     }
 
@@ -260,13 +246,7 @@ Deno.serve(async (req: Request) => {
       .eq('id', loyaltyStatus.id);
 
     if (updateError) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to update points', details: updateError.message }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({ error: 'Failed to update points', details: updateError.message }, 500);
     }
 
     // Log transaction (transaction_reference_id will be auto-generated by trigger)
@@ -292,46 +272,48 @@ Deno.serve(async (req: Request) => {
     if (txError) {
       console.error('Failed to log transaction:', txError);
       // Return error instead of silently continuing
-      return new Response(
-        JSON.stringify({
-          error: 'Points updated but transaction logging failed',
-          details: txError.message,
-          points_updated: true,
-          new_balance: newBalance
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({
+        error: 'Points updated but transaction logging failed',
+        details: txError.message,
+        points_updated: true,
+        new_balance: newBalance
+      }, 500);
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: pointsValue > 0 ? 'Points added successfully' : 'Points removed successfully',
-        transaction_reference_id: txData?.transaction_reference_id || null,
-        member_id: member.id,
-        email: member.email,
-        phone: member.phone,
-        full_name: member.full_name,
-        previous_points: currentPoints,
-        adjustment: pointsValue,
-        new_balance: newBalance,
-        order_id: order_id || null,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    // Audit log — every adjustment is recorded with who did it and why
+    try {
+      await supabase.from('admin_audit_log').insert({
+        actor_user_id: callerUser.id,
+        actor_role: callerProfile.role,
+        action: 'adjust_loyalty_points',
+        target_entity: 'member_loyalty_status',
+        target_id: member?.id ?? null,
+        metadata: {
+          shop_domain,
+          points: pointsValue,
+          reason: reason ?? null,
+          email: email ?? null,
+          phone: phone ?? null,
+          order_id: order_id ?? null,
+          new_balance: null, // balance logged by the DB update itself
+        },
+      });
+    } catch { /* audit log is best-effort */ }
+
+    return jsonResponse({
+      success: true,
+      message: pointsValue > 0 ? 'Points added successfully' : 'Points removed successfully',
+      transaction_reference_id: txData?.transaction_reference_id || null,
+      member_id: member.id,
+      email: member.email,
+      phone: member.phone,
+      full_name: member.full_name,
+      previous_points: currentPoints,
+      adjustment: pointsValue,
+      new_balance: newBalance,
+      order_id: order_id || null,
+    });
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    return jsonResponse({ error: error.message }, 500);
   }
 });

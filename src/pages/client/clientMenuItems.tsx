@@ -157,6 +157,7 @@ export const clientMenuItems = [
     label: 'Integrations',
     path: '/client/integrations',
     icon: <Zap className="w-4 h-4" />,
+    adminOnly: true,
   },
   {
     section: 'Platform',

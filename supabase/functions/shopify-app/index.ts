@@ -386,8 +386,7 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({
-        error: "Failed to load app page",
-        details: error.message
+        error: "Failed to load app page"
       }),
       {
         status: 500,

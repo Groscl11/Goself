@@ -1,19 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { syncOfferCounters } from "../_shared/offer-counters.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
-
-function jsonResponse(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
+import { getCorsHeaders } from "../_shared/cors.ts";
 
 async function resolveClientId(supabase: any, shopDomain?: string | null) {
   if (!shopDomain) return null;
@@ -37,6 +25,15 @@ async function resolveClientId(supabase: any, shopDomain?: string | null) {
 }
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req);
+
+  function jsonResponse(data: unknown, status = 200) {
+    return new Response(JSON.stringify(data), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
@@ -51,6 +48,28 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // SECURITY (H-15): verify the caller owns the store they claim to upload for.
+    // Resolving clientId from caller-supplied shop_domain alone allows an attacker
+    // to upload codes to any tenant's offer by supplying a foreign shop_domain.
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const callerJwt = authHeader.replace("Bearer ", "").trim();
+    const anonKey = (Deno.env.get("SUPABASE_ANON_KEY") ?? "").trim();
+
+    if (!callerJwt || callerJwt === anonKey) {
+      return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+    }
+    const callerClient = createClient(Deno.env.get("SUPABASE_URL")!, callerJwt);
+    const { data: { user: callerUser }, error: userErr } = await callerClient.auth.getUser();
+    if (userErr || !callerUser) {
+      return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+    }
+    const { data: callerProfile } = await supabase
+      .from("profiles").select("client_id, role").eq("id", callerUser.id).maybeSingle();
+    if (!callerProfile) {
+      return jsonResponse({ success: false, error: "Forbidden" }, 403);
+    }
+    const isAdmin = callerProfile.role === "admin";
+
     const body = await req.json().catch(() => ({}));
     const offerId = body.offer_id as string | undefined;
     const shopDomain = (body.shop_domain ?? body.shop) as string | undefined;
@@ -61,6 +80,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const clientId = await resolveClientId(supabase, shopDomain);
+    // Verify caller owns this client (non-admins can only upload to their own store)
+    if (!isAdmin && callerProfile.client_id !== clientId) {
+      return jsonResponse({ success: false, error: "Forbidden — you do not have access to this store" }, 403);
+    }
     if (!clientId) {
       return jsonResponse({ success: false, error: "Store not found" }, 404);
     }
@@ -122,6 +145,6 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ success: true, updated, not_found: notFound });
   } catch (error: any) {
     console.error("upload-redemption-data error:", error);
-    return jsonResponse({ success: false, error: error.message ?? "Internal server error" }, 500);
+    return jsonResponse({ success: false, error: "Internal server error" }, 500);
   }
 });

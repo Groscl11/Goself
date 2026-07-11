@@ -20,6 +20,7 @@ export interface Offer {
   description?: string;
   steps_to_redeem?: string;
   image_url?: string;
+  banner_url?: string;
   terms_conditions?: string;
   redemption_link?: string;
   offer_type: OfferType;

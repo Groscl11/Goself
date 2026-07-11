@@ -1,0 +1,7 @@
+# Shopify embedded managed-install bootstrap must be iframe-able by Shopify admin.
+# frame-ancestors allows the shop + admin.shopify.com to embed /shopify/install.
+# (No X-Frame-Options here — that header would block embedding entirely.)
+/shopify/install
+  Content-Security-Policy: frame-ancestors https://*.myshopify.com https://admin.shopify.com;
+/shopify/*
+  Content-Security-Policy: frame-ancestors https://*.myshopify.com https://admin.shopify.com;
