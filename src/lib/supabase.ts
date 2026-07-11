@@ -23,5 +23,9 @@ export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     flowType: 'implicit',
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storageKey: 'goself-auth',
+    persistSession: true,
+    detectSessionInUrl: true,
   },
 });
