@@ -418,7 +418,7 @@ export default function CampaignTriggerLogs() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        ${log.order_value?.toFixed(2)}
+                        {log.order_value != null ? `₹${Number(log.order_value).toFixed(2)}` : '—'}
                       </div>
                     </td>
                     <td className="px-6 py-4">
