@@ -99,6 +99,13 @@ interface Order {
   created_at: string;
 }
 
+interface CampaignClaim {
+  token_id: string;
+  claimed_at: string;
+  shopify_order_ref: string | null;
+  rewards: { reward_id: string; reward_title: string; voucher_code: string; redemption_url: string | null }[];
+}
+
 type TabKey = 'memberships' | 'rewards' | 'vouchers' | 'points' | 'orders' | 'transactions' | 'history';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -192,6 +199,7 @@ export function MemberDetail() {
   const [loyaltyStatuses, setLoyaltyStatuses] = useState<LoyaltyStatus[]>([]);
   const [pointsTxns, setPointsTxns] = useState<PointsTxn[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [campaignClaims, setCampaignClaims] = useState<CampaignClaim[]>([]);
   const [memberSource, setMemberSource] = useState<MemberSource | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabKey>('memberships');
@@ -242,7 +250,7 @@ export function MemberDetail() {
       // Phase 2: all other data in parallel — all scoped to memberClientId
       const [
         membershipRes, allocRes, voucherRes,
-        redemptionRes, txnRes, sourceRes, lsRes, pointsRes, ordersRes,
+        redemptionRes, txnRes, sourceRes, lsRes, pointsRes, ordersRes, campaignRes,
       ] = await Promise.all([
         supabase.from('member_memberships').select('*, program:membership_programs(name)').eq('member_id', id).order('created_at', { ascending: false }),
         supabase.from('member_rewards_allocation').select('*, reward:rewards(title)').eq('member_id', id).order('allocated_at', { ascending: false }),
@@ -258,6 +266,12 @@ export function MemberDetail() {
           .eq('client_id', memberClientId)
           .or(`member_id.eq.${id},customer_email.eq.${memberEmail}`)
           .order('created_at', { ascending: false }),
+        // Campaign token claims — rewards stored as JSONB, not in vouchers table
+        supabase.from('campaign_tokens')
+          .select('id, claimed_at, claimed_rewards, shopify_order_ref')
+          .eq('is_claimed', true)
+          .or(`member_id.eq.${id},email.eq.${memberEmail}`)
+          .order('claimed_at', { ascending: false }),
       ]);
 
       setMemberships(membershipRes.data ?? []);
@@ -274,6 +288,16 @@ export function MemberDetail() {
       setPointsTxns(ptData);
 
       setOrders((ordersRes.data ?? []) as Order[]);
+
+      const claims: CampaignClaim[] = (campaignRes.data ?? [])
+        .filter((r: any) => Array.isArray(r.claimed_rewards) && r.claimed_rewards.length > 0)
+        .map((r: any) => ({
+          token_id: r.id,
+          claimed_at: r.claimed_at,
+          shopify_order_ref: r.shopify_order_ref ?? null,
+          rewards: r.claimed_rewards,
+        }));
+      setCampaignClaims(claims);
 
       // Set adjustStatusId: prefer from loyaltyStatuses, fallback to status ID inside transactions
       if (lsData.length > 0) {
@@ -609,24 +633,59 @@ export function MemberDetail() {
 
             {/* Vouchers */}
             {activeTab === 'vouchers' && (
-              <div className="space-y-3">
-                {vouchers.length === 0 ? <EmptyState text="No vouchers issued" /> : vouchers.map((v) => (
-                  <div key={v.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
-                    <div>
-                      <p className="font-semibold text-gray-900">{v.reward.title}</p>
-                      <div className="flex gap-3 mt-1 text-xs text-gray-500">
-                        <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{v.code}</span>
-                        {v.expires_at && (
-                          <span className={isExpired(v.expires_at) ? 'text-red-600 font-medium' : isExpiringSoon(v.expires_at) ? 'text-orange-600 font-medium' : ''}>
-                            {isExpired(v.expires_at) ? `Expired ${fmt(v.expires_at)}` : `Expires ${fmt(v.expires_at)}`}
-                          </span>
-                        )}
-                        {v.redeemed_at && <span>Redeemed: {fmt(v.redeemed_at)}</span>}
+              <div className="space-y-6">
+                {/* Standard vouchers */}
+                {vouchers.length > 0 && (
+                  <div className="space-y-3">
+                    {vouchers.map((v) => (
+                      <div key={v.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                        <div>
+                          <p className="font-semibold text-gray-900">{v.reward.title}</p>
+                          <div className="flex gap-3 mt-1 text-xs text-gray-500">
+                            <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{v.code}</span>
+                            {v.expires_at && (
+                              <span className={isExpired(v.expires_at) ? 'text-red-600 font-medium' : isExpiringSoon(v.expires_at) ? 'text-orange-600 font-medium' : ''}>
+                                {isExpired(v.expires_at) ? `Expired ${fmt(v.expires_at)}` : `Expires ${fmt(v.expires_at)}`}
+                              </span>
+                            )}
+                            {v.redeemed_at && <span>Redeemed: {fmt(v.redeemed_at)}</span>}
+                          </div>
+                        </div>
+                        <StatusBadge status={v.status} />
                       </div>
-                    </div>
-                    <StatusBadge status={v.status} />
+                    ))}
                   </div>
-                ))}
+                )}
+
+                {/* Campaign instant-link claimed rewards */}
+                {campaignClaims.length > 0 && (
+                  <div className="space-y-3">
+                    {vouchers.length > 0 && (
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Campaign Rewards</p>
+                    )}
+                    {campaignClaims.map((claim) =>
+                      claim.rewards.map((r) => (
+                        <div key={`${claim.token_id}-${r.reward_id}`} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                          <div>
+                            <p className="font-semibold text-gray-900">{r.reward_title}</p>
+                            <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
+                              <span className="font-mono bg-purple-50 text-purple-700 px-2 py-0.5 rounded">{r.voucher_code}</span>
+                              <span>Claimed: {fmt(claim.claimed_at)}</span>
+                              {claim.shopify_order_ref && (
+                                <span className="text-gray-400">Order: {claim.shopify_order_ref}</span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">Campaign</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {vouchers.length === 0 && campaignClaims.length === 0 && (
+                  <EmptyState text="No vouchers issued" />
+                )}
               </div>
             )}
 
