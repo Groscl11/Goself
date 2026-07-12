@@ -49,21 +49,27 @@ export default function ShopifyCallback() {
       }
     );
 
-    // ── 2. Explicit hash processing ───────────────────────────────────────────
-    // _initialize() runs once when the SPA first mounts (at /shopify/install).
-    // If React Router then navigates HERE as a client-side route change, the
-    // new #access_token hash is never seen by _initialize(). We must manually
-    // call setSession() to establish the session and fire SIGNED_IN.
+    // ── 2. Explicit setSession() for the client-side navigation case ─────────
+    // When the SPA navigates HERE via React Router (without a full page reload),
+    // _initialize() already ran at /shopify/install and won't re-process the
+    // new #access_token hash. We extract it manually and call setSession().
+    //
+    // CRITICAL: Do NOT strip the hash before setSession() resolves.
+    // _initialize() reads window.location.hash asynchronously; stripping it
+    // early (before the lock is acquired) means _initialize() finds an empty
+    // hash, fires INITIAL_SESSION(null), and leaves no session in localStorage.
+    // Strip the hash inside .then() — after the token has been processed.
     const rawHash = window.location.hash;
-    const hasTokenInHash = rawHash.includes('access_token=');
-    if (hasTokenInHash) {
+    if (rawHash.includes('access_token=')) {
       const params = new URLSearchParams(rawHash.substring(1));
       const access_token = params.get('access_token') || '';
       const refresh_token = params.get('refresh_token') || '';
       if (access_token) {
-        // Strip hash from URL before it can be bookmarked or logged
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
         supabase.auth.setSession({ access_token, refresh_token }).then(({ data }) => {
+          // Strip hash AFTER processing to prevent credential bookmarking
+          if (window.location.hash) {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          }
           if (data.session?.user && !done) {
             processSession(data.session.user.id, data.session.user.email!);
           }
@@ -72,15 +78,16 @@ export default function ShopifyCallback() {
     }
 
     // ── 3. getSession() fallback ──────────────────────────────────────────────
-    // Only relevant when there's no hash token — handles "already logged in"
-    // re-opens where a valid session already lives in localStorage.
-    if (!hasTokenInHash) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user && !done) {
-          processSession(session.user.id, session.user.email!);
-        }
-      });
-    }
+    // getSession() acquires the same internal lock as _initialize(), so it always
+    // waits for _initialize() to complete. If _initialize() processed the
+    // #access_token from the URL, this returns the merchant session immediately.
+    // This covers the race where _initialize() fires SIGNED_IN before our
+    // onAuthStateChange listener was registered (listener misses the event).
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user && !done) {
+        processSession(session.user.id, session.user.email!);
+      }
+    });
 
     // ── 4. Timeout fallback ───────────────────────────────────────────────────
     timer = setTimeout(() => {
