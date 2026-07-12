@@ -31,15 +31,15 @@ export const clientMenuItems = [
   // ── LOYALTY ───────────────────────────────────────────────────────────────
   {
     section: 'Loyalty',
-    label: 'Members',
-    path: '/client/members',
-    icon: <Users className="w-4 h-4" />,
-  },
-  {
-    section: 'Loyalty',
     label: 'Points & Tiers',
     path: '/client/loyalty-points',
     icon: <Coins className="w-4 h-4" />,
+  },
+  {
+    section: 'Loyalty',
+    label: 'Earn Rules',
+    path: '/client/loyalty-config',
+    icon: <Cog className="w-4 h-4" />,
   },
   {
     section: 'Loyalty',
@@ -49,9 +49,9 @@ export const clientMenuItems = [
   },
   {
     section: 'Loyalty',
-    label: 'Earn Rules',
-    path: '/client/loyalty-config',
-    icon: <Cog className="w-4 h-4" />,
+    label: 'Members',
+    path: '/client/members',
+    icon: <Users className="w-4 h-4" />,
   },
 
   // ── REFERRAL ──────────────────────────────────────────────────────────────
