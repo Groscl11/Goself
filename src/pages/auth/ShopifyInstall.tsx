@@ -154,7 +154,7 @@ export default function ShopifyInstall() {
         return;
       }
 
-      setStatus('Finalizing installation…');
+      setStatus('Connecting to your dashboard…');
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/shopify-token-exchange`, {
           method: 'POST',
