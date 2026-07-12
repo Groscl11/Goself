@@ -380,7 +380,7 @@ export default function CampaignTriggerLogs() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        {log.shopify_order_name || (log.order_number ? `#${log.order_number}` : '—')}
+                        {log.shopify_order_name || (log.order_number ? (log.order_number.startsWith('#') ? log.order_number : `#${log.order_number}`) : '—')}
                       </div>
                       <div className="text-xs text-gray-500 font-mono" title={log.order_id}>
                         ID: {log.order_id}
