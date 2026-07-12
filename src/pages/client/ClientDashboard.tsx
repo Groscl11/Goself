@@ -10,6 +10,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { clientMenuItems } from './clientMenuItems';
 import { OnboardingModal } from '../../components/onboarding/OnboardingModal';
+import { useShopifySession } from '../../hooks/useShopifySession';
 
 interface DashboardStats {
   totalMembers: number;
@@ -35,6 +36,7 @@ interface ClientInfo {
 export function ClientDashboard() {
   const navigate = useNavigate();
   const { profile } = useAuth();
+  useShopifySession();
   const [stats, setStats] = useState<DashboardStats>({
     totalMembers: 0,
     activeCampaigns: 0,
