@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { supabase } from '../../lib/supabase';
 
 const SUPABASE_URL    = import.meta.env.VITE_SUPABASE_URL    || '';
 const SHOPIFY_API_KEY = import.meta.env.VITE_SHOPIFY_API_KEY || '';
@@ -153,7 +154,7 @@ export default function ShopifyInstall() {
         return;
       }
 
-      setStatus('Finalizing installation…');
+      setStatus('Connecting to your dashboard…');
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/shopify-token-exchange`, {
           method: 'POST',
@@ -162,16 +163,37 @@ export default function ShopifyInstall() {
         });
         const data = await res.json().catch(() => ({}));
 
+        // ── Primary path: direct session tokens (setSession inside the iframe) ──
+        // The edge function follows the magic link server-side and returns tokens
+        // directly. We never need to leave the iframe or touch ShopifyCallback.
+        if (data?.success && data.access_token) {
+          setStatus('Signing you in…');
+          try { sessionStorage.removeItem(SS_KEY); } catch { /* ignore */ }
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: data.access_token,
+            refresh_token: data.refresh_token || '',
+          });
+          if (!sessionError) {
+            window.location.href = '/client';
+            return;
+          }
+          console.error('[ShopifyInstall] setSession failed:', sessionError.message);
+          // Fall through to redirect fallback if available
+          if (!data.redirect) {
+            setError('Sign-in failed. Please try again manually.');
+            return;
+          }
+        }
+
+        // ── Fallback: magic link redirect chain ───────────────────────────────
         if (data?.success && data.redirect) {
           setStatus('Signing you in…');
           try { sessionStorage.removeItem(SS_KEY); } catch { /* ignore */ }
-          // Surface a clickable link immediately (popup-blocked safety net), then
-          // attempt the automatic breakout.
           setContinueUrl(data.redirect);
           breakoutTo(data.redirect);
           return;
         }
-        if (data?.success && !data.redirect) {
+        if (data?.success && !data.redirect && !data.access_token) {
           breakoutTo(`${window.location.origin}/login?shop=${encodeURIComponent(shop)}&from=shopify`);
           return;
         }
