@@ -306,9 +306,13 @@ export function MemberDetail() {
   const totalPointsBalance = pointsTxns.length > 0
     ? pointsTxns[0].balance_after
     : loyaltyStatuses.reduce((s, ls) => s + (ls.points_balance ?? 0), 0);
-  const totalLifetimePts = pointsTxns.length > 0
-    ? pointsTxns.filter((t) => t.points_amount > 0).reduce((s, t) => s + t.points_amount, 0)
-    : loyaltyStatuses.reduce((s, ls) => s + (ls.lifetime_points_earned ?? 0), 0);
+  // Use DB lifetime_points_earned as primary source; fall back to summing positive txns.
+  // Clamp to at least the current balance — balance can exceed lifetime_points_earned when
+  // the balance column was patched directly (e.g. via older admin adjust paths).
+  const rawLifetimePts = loyaltyStatuses.length > 0
+    ? loyaltyStatuses.reduce((s, ls) => s + (ls.lifetime_points_earned ?? 0), 0)
+    : pointsTxns.filter((t) => t.points_amount > 0).reduce((s, t) => s + t.points_amount, 0);
+  const totalLifetimePts = Math.max(rawLifetimePts, totalPointsBalance);
   const availableVouchers = vouchers.filter((v) => v.status === 'available').length;
 
   // ─── Edit Profile ───────────────────────────────────────────────────────────
@@ -417,11 +421,11 @@ export function MemberDetail() {
   };
 
   const tabs: { key: TabKey; label: string }[] = [
+    { key: 'orders', label: 'Orders' },
+    { key: 'points', label: 'Loyalty Points' },
     { key: 'memberships', label: 'Memberships' },
     { key: 'rewards', label: 'Rewards' },
     { key: 'vouchers', label: 'Vouchers' },
-    { key: 'points', label: 'Loyalty Points' },
-    { key: 'orders', label: 'Orders' },
     { key: 'transactions', label: 'Transactions' },
     { key: 'history', label: 'History' },
   ];
