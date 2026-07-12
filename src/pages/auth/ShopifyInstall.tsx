@@ -158,7 +158,10 @@ export default function ShopifyInstall() {
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/shopify-token-exchange`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionToken}`,
+          },
           body: JSON.stringify({ session_token: sessionToken, shop, app_url: window.location.origin }),
         });
         const data = await res.json().catch(() => ({}));
