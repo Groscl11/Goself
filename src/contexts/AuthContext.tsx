@@ -48,12 +48,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       (async () => {
-        // P0 guard: if the refreshed JWT belongs to a DIFFERENT user than the one
-        // currently active (multi-account localStorage collision), sign out immediately
-        // rather than silently switching identity mid-session.
+        // P0 guard: if a background token REFRESH returns a DIFFERENT user (e.g.
+        // multi-account localStorage collision), sign out immediately. We restrict
+        // this to TOKEN_REFRESHED so that explicit SIGNED_IN events — including
+        // the Shopify SSO magic-link flow, which intentionally switches from an
+        // admin session to the merchant session — are always allowed through.
         if (
+          event === 'TOKEN_REFRESHED' &&
           session?.user &&
           activeUserIdRef.current !== null &&
           session.user.id !== activeUserIdRef.current
