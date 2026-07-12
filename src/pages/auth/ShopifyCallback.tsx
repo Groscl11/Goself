@@ -30,6 +30,7 @@ export default function ShopifyCallback() {
 
   useEffect(() => {
     let done = false;
+    let timer: ReturnType<typeof setTimeout>;
 
     async function processSession(userId: string, email: string) {
       if (done) return;
@@ -40,8 +41,6 @@ export default function ShopifyCallback() {
     }
 
     // ── 1. Register listener SYNCHRONOUSLY before any awaits ─────────────────
-    // This ensures we catch SIGNED_IN / INITIAL_SESSION even if _initialize()
-    // fires them before the component had a chance to subscribe.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (done || !session?.user) return;
@@ -50,18 +49,41 @@ export default function ShopifyCallback() {
       }
     );
 
-    // ── 2. getSession() fallback ──────────────────────────────────────────────
-    // If _initialize() already finished processing the hash before our listener
-    // was registered, SIGNED_IN already fired. getSession() will return the
-    // session that's now in localStorage.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user && !done) {
-        processSession(session.user.id, session.user.email!);
+    // ── 2. Explicit hash processing ───────────────────────────────────────────
+    // _initialize() runs once when the SPA first mounts (at /shopify/install).
+    // If React Router then navigates HERE as a client-side route change, the
+    // new #access_token hash is never seen by _initialize(). We must manually
+    // call setSession() to establish the session and fire SIGNED_IN.
+    const rawHash = window.location.hash;
+    const hasTokenInHash = rawHash.includes('access_token=');
+    if (hasTokenInHash) {
+      const params = new URLSearchParams(rawHash.substring(1));
+      const access_token = params.get('access_token') || '';
+      const refresh_token = params.get('refresh_token') || '';
+      if (access_token) {
+        // Strip hash from URL before it can be bookmarked or logged
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        supabase.auth.setSession({ access_token, refresh_token }).then(({ data }) => {
+          if (data.session?.user && !done) {
+            processSession(data.session.user.id, data.session.user.email!);
+          }
+        });
       }
-    });
+    }
 
-    // ── 3. Timeout fallback ───────────────────────────────────────────────────
-    const timer = setTimeout(() => {
+    // ── 3. getSession() fallback ──────────────────────────────────────────────
+    // Only relevant when there's no hash token — handles "already logged in"
+    // re-opens where a valid session already lives in localStorage.
+    if (!hasTokenInHash) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user && !done) {
+          processSession(session.user.id, session.user.email!);
+        }
+      });
+    }
+
+    // ── 4. Timeout fallback ───────────────────────────────────────────────────
+    timer = setTimeout(() => {
       if (!done) {
         done = true;
         subscription.unsubscribe();
