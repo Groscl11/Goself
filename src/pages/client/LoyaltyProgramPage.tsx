@@ -1065,30 +1065,6 @@ function Step4({
         </dl>
       </div>
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-6 py-2.5 text-white font-semibold rounded-lg disabled:opacity-60 disabled:cursor-not-allowed transition-opacity hover:opacity-90 shadow-sm"
-          style={{ backgroundColor: brandColor }}
-        >
-          {saving ? (
-            <>
-              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-              Saving…
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4" />
-              Save program
-            </>
-          )}
-        </button>
-      </div>
     </div>
   );
 }
@@ -1259,6 +1235,14 @@ export default function LoyaltyProgramPage() {
   // ── Save ─────────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     if (!clientId) return;
+
+    // Validate required fields before hitting the DB
+    if (!program.program_name.trim()) {
+      showToast('Please enter a program name before saving.', 'error');
+      setStep(1);
+      return;
+    }
+
     setSaving(true);
     try {
       // 1. Upsert loyalty_programs
@@ -1335,7 +1319,15 @@ export default function LoyaltyProgramPage() {
       showToast('Program saved successfully!', 'success');
     } catch (err: unknown) {
       console.error('Error saving loyalty program:', err);
-      const msg = err instanceof Error ? err.message : 'Failed to save. Please try again.';
+      let msg = 'Failed to save. Please try again.';
+      if (err instanceof Error) {
+        msg = err.message;
+      } else if (err && typeof err === 'object') {
+        const supaErr = err as Record<string, unknown>;
+        if (supaErr.message) msg = String(supaErr.message);
+        else if (supaErr.details) msg = String(supaErr.details);
+        else if (supaErr.hint) msg = String(supaErr.hint);
+      }
       showToast(msg, 'error');
     } finally {
       setSaving(false);
