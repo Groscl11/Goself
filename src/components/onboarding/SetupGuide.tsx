@@ -44,7 +44,7 @@ const STEPS = [
   {
     key: 'loyalty',
     label: 'Set up your loyalty program',
-    path: '/client/loyalty-config',
+    path: '/client/loyalty-points',
     cta: 'Configure →',
   },
   {
