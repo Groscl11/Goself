@@ -10,6 +10,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { clientMenuItems } from './clientMenuItems';
 import { OnboardingModal } from '../../components/onboarding/OnboardingModal';
+import { SetupGuide } from '../../components/onboarding/SetupGuide';
 import { useShopifySession } from '../../hooks/useShopifySession';
 
 interface DashboardStats {
@@ -25,6 +26,8 @@ interface ClientInfo {
   slug: string;
   registration_enabled: boolean;
   onboarding_completed: boolean;
+  setup_guide_dismissed: boolean;
+  onboarding_goals: string[];
   logo_url: string;
   primary_color: string;
   contact_email: string;
@@ -60,7 +63,7 @@ export function ClientDashboard() {
     try {
       const { data } = await supabase
         .from('clients')
-        .select('id, name, slug, registration_enabled, onboarding_completed, logo_url, primary_color, contact_email, contact_phone, website_url, industry')
+        .select('id, name, slug, registration_enabled, onboarding_completed, setup_guide_dismissed, onboarding_goals, logo_url, primary_color, contact_email, contact_phone, website_url, industry')
         .eq('id', profile.client_id)
         .maybeSingle();
       if (data) {
@@ -213,6 +216,7 @@ export function ClientDashboard() {
             contact_phone: clientInfo.contact_phone || '',
             website_url: clientInfo.website_url || '',
             industry: clientInfo.industry || '',
+            onboarding_goals: clientInfo.onboarding_goals || [],
           }}
           onComplete={() => {
             setShowOnboarding(false);
@@ -231,6 +235,15 @@ export function ClientDashboard() {
             <p className="text-sm text-gray-400 mt-0.5">{today}</p>
           </div>
         </div>
+
+        {/* ── Setup guide — shown until dismissed or all steps done ── */}
+        {clientInfo && !clientInfo.setup_guide_dismissed && (
+          <SetupGuide
+            clientId={clientInfo.id}
+            brandProfileDone={clientInfo.onboarding_completed}
+            onDismiss={() => setClientInfo((prev) => prev ? { ...prev, setup_guide_dismissed: true } : prev)}
+          />
+        )}
 
         {/* ── Stats row ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
