@@ -122,7 +122,7 @@ export function SetupGuide({ clientId, brandProfileDone, onDismiss }: SetupGuide
   if (collapsed) {
     return (
       <div
-        className="flex items-center gap-4 bg-white border border-gray-100 border-l-4 border-l-violet-500 rounded-xl px-4 py-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+        className="flex items-center gap-4 bg-white border border-gray-100 border-l-4 border-l-indigo-600 rounded-xl px-4 py-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
         onClick={() => setCollapsed(false)}
       >
         <div className="text-lg">🏆</div>
@@ -131,9 +131,9 @@ export function SetupGuide({ clientId, brandProfileDone, onDismiss }: SetupGuide
           <span className="text-xs text-gray-400 ml-2">— keep going to go live</span>
         </div>
         <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden flex-shrink-0">
-          <div className="h-full bg-violet-600 rounded-full transition-all" style={{ width: `${(completedCount / totalCount) * 100}%` }} />
+          <div className="h-full bg-indigo-600 rounded-full transition-all" style={{ width: `${(completedCount / totalCount) * 100}%` }} />
         </div>
-        <span className="text-xs text-violet-600 font-semibold whitespace-nowrap flex items-center gap-1">
+        <span className="text-xs text-indigo-600 font-semibold whitespace-nowrap flex items-center gap-1">
           Resume <ChevronDown className="w-3 h-3" />
         </span>
       </div>
@@ -160,7 +160,7 @@ export function SetupGuide({ clientId, brandProfileDone, onDismiss }: SetupGuide
   }
 
   return (
-    <div className="bg-gradient-to-br from-violet-700 via-violet-600 to-purple-600 rounded-2xl p-5 relative overflow-hidden shadow-lg">
+    <div className="bg-gradient-to-br from-violet-600 to-indigo-700 rounded-2xl p-5 relative overflow-hidden shadow-lg">
       {/* Decorative circles */}
       <div className="absolute -right-6 -top-10 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
       <div className="absolute right-10 -bottom-12 w-28 h-28 rounded-full bg-white/4 pointer-events-none" />
@@ -173,7 +173,7 @@ export function SetupGuide({ clientId, brandProfileDone, onDismiss }: SetupGuide
             <circle cx="28" cy="28" r="22" fill="none" stroke="rgba(255,255,255,.15)" strokeWidth="4" />
             <circle
               cx="28" cy="28" r="22" fill="none"
-              stroke="#a78bfa" strokeWidth="4" strokeLinecap="round"
+              stroke="#a5b4fc" strokeWidth="4" strokeLinecap="round"
               strokeDasharray={circumference}
               strokeDashoffset={dashOffset}
               style={{ transition: 'stroke-dashoffset .4s ease' }}
@@ -185,7 +185,7 @@ export function SetupGuide({ clientId, brandProfileDone, onDismiss }: SetupGuide
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-violet-200 text-[11px] font-semibold tracking-widest uppercase mb-1">Getting started</p>
+          <p className="text-indigo-200 text-[11px] font-semibold tracking-widest uppercase mb-1">Getting started</p>
           <p className="text-white text-base font-bold leading-tight mb-3">Finish setting up your store</p>
 
           {/* Steps */}
@@ -199,21 +199,24 @@ export function SetupGuide({ clientId, brandProfileDone, onDismiss }: SetupGuide
                   onClick={() => step.path && !done && navigate(step.path)}
                   className={[
                     'flex items-center gap-2.5 rounded-lg px-3 py-2 border transition-colors',
-                    done ? 'bg-white/8 border-white/10 opacity-60' : 'bg-white/10 border-white/15',
-                    !done && step.path ? 'cursor-pointer hover:bg-white/16' : '',
+                    done ? 'bg-white/10 border-white/15' : 'bg-white/10 border-white/15',
+                    !done && step.path ? 'cursor-pointer hover:bg-white/20' : '',
                   ].join(' ')}
                 >
                   <div className={[
                     'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0',
-                    done ? 'bg-green-400 text-white' : isCurrent ? 'bg-white text-violet-700' : 'bg-white/15 border border-white/25 text-white/50',
+                    done ? 'bg-emerald-400 text-white' : isCurrent ? 'bg-white text-indigo-700' : 'bg-white/15 border border-white/25 text-white/50',
                   ].join(' ')}>
                     {done ? '✓' : STEPS.indexOf(step) + 1}
                   </div>
-                  <span className={`text-[12.5px] flex-1 font-medium ${done ? 'line-through text-white/50' : 'text-white'}`}>
+                  <span className={`text-[12.5px] flex-1 font-medium ${done ? 'text-white/90' : 'text-white'}`}>
                     {step.label}
                   </span>
+                  {done && (
+                    <span className="text-[11px] text-emerald-300 font-semibold whitespace-nowrap">Done</span>
+                  )}
                   {!done && step.cta && (
-                    <span className="text-[11px] text-violet-200 font-semibold whitespace-nowrap">{step.cta}</span>
+                    <span className="text-[11px] text-indigo-200 font-semibold whitespace-nowrap">{step.cta}</span>
                   )}
                 </div>
               );
