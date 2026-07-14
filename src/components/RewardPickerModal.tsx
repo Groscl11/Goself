@@ -193,6 +193,27 @@ function Tooltip({ content, icon: Icon, label, color }: {
   );
 }
 
+// ── Thumbnail with broken-image fallback ─────────────────────────────────────
+
+function RewardThumbnail({ imageUrl }: { imageUrl: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (!imageUrl || failed) {
+    return (
+      <div className="w-8 h-8 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+        <Gift className="w-4 h-4 text-gray-400" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={imageUrl}
+      alt=""
+      className="w-8 h-8 rounded-md object-cover border border-gray-100"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose }: RewardPickerModalProps) {
@@ -458,13 +479,7 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
 
                     {/* 2. Thumbnail */}
                     <td className="px-2 py-3">
-                      {reward.image_url ? (
-                        <img src={reward.image_url} alt="" className="w-8 h-8 rounded-md object-cover border border-gray-100" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                          <Gift className="w-4 h-4 text-gray-400" />
-                        </div>
-                      )}
+                      <RewardThumbnail imageUrl={reward.image_url} />
                     </td>
 
                     {/* 3. Reward ID + copy */}

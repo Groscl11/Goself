@@ -163,7 +163,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
   const [allBrands, setAllBrands] = useState<{ id: string; name: string }[]>([]);
   const [showRewardPicker, setShowRewardPicker] = useState(false);
   const [rewardType, setRewardType] = useState(initial?.reward_action?.reward_type ?? 'auto');
-  const [rewardSelectionMode, setRewardSelectionMode] = useState(initial?.reward_action?.reward_selection_mode ?? 'fixed');
+  const [rewardSelectionMode, setRewardSelectionMode] = useState<'fixed' | 'choice'>(initial?.reward_action?.reward_selection_mode ?? (initial?.rule_mode === 'instant_reward' ? 'choice' : 'fixed'));
   const [minRewardsChoice, setMinRewardsChoice] = useState(initial?.reward_action?.min_rewards_choice ?? 1);
   const [maxRewardsChoice, setMaxRewardsChoice] = useState(initial?.reward_action?.max_rewards_choice ?? 1);
 
@@ -213,7 +213,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
     setMaxCust('');
     setRewardPool([]);
     setRewardType('auto');
-    setRewardSelectionMode('fixed');
+    setRewardSelectionMode(nextMode === 'instant_reward' ? 'choice' : 'fixed');
     setMinRewardsChoice(1);
     setMaxRewardsChoice(1);
     setStep(1);
@@ -348,6 +348,12 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
  
   async function save() {
     if (!name.trim()) { setError('Campaign name is required'); return; }
+    if (!startDate) { setError('Start date is required'); return; }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (startDate < todayStr) { setError('Start date cannot be in the past'); return; }
+    if (!endDate) { setError('End date is required'); return; }
+    if (endDate <= startDate) { setError('End date must be after start date'); return; }
+    if (!linkExpiry || Number(linkExpiry) < 1) { setError('Reward link expiry is required (minimum 1 hr)'); return; }
     setSaving(true); setError('');
     try {
       const finalTriggerType: TriggerType = (mode === 'standalone' || mode === 'instant_reward') ? 'advanced' : triggerType;
@@ -469,6 +475,13 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
               <div className="grid gap-3">
                 {[
                   {
+                    value: 'instant_reward' as RuleMode,
+                    icon: '⚡',
+                    title: 'Instant Reward Campaign',
+                    desc: 'Generate reward links instantly on the thank-you page — no waiting. Works with the Instant Post-Purchase Rewards plugin.',
+                    tags: ['Instant', 'Thank-you page', 'No delay'],
+                  },
+                  {
                     value: 'standalone' as RuleMode,
                     icon: '🎁',
                     title: 'Reward Campaign',
@@ -482,17 +495,13 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                     desc: 'Automatically enroll members into your loyalty program when a trigger condition is met.',
                     tags: ['Auto-enroll', 'Order-based', 'Event-based'],
                   },
-                  {
-                    value: 'instant_reward' as RuleMode,
-                    icon: '⚡',
-                    title: 'Instant Reward Campaign',
-                    desc: 'Generate reward links instantly on the thank-you page — no waiting. Works with the Instant Post-Purchase Rewards plugin.',
-                    tags: ['Instant', 'Thank-you page', 'No delay'],
-                  },
                 ].map(opt => (
                   <button
                     key={opt.value}
-                    onClick={() => setMode(opt.value)}
+                    onClick={() => {
+                      setMode(opt.value);
+                      setRewardSelectionMode(opt.value === 'instant_reward' ? 'choice' : 'fixed');
+                    }}
                     className={`text-left p-4 rounded-xl border-2 transition-all ${
                       mode === opt.value
                         ? 'border-gray-900 bg-gray-50'
@@ -734,13 +743,15 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Start date</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Start date *</label>
                   <input type="date" value={startDate} onChange={e => setStart(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
                     className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">End date</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">End date *</label>
                   <input type="date" value={endDate} onChange={e => setEnd(e.target.value)}
+                    min={startDate || new Date().toISOString().slice(0, 10)}
                     className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
                 </div>
               </div>
@@ -752,8 +763,8 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                     className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward link expiry (hrs)</label>
-                  <input type="number" value={linkExpiry} onChange={e => setLinkExp(e.target.value)} placeholder="72"
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward link expiry (hrs) *</label>
+                  <input type="number" value={linkExpiry} onChange={e => setLinkExp(e.target.value)} placeholder="72" min="1"
                     className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
                 </div>
               </div>
