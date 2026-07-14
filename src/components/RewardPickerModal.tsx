@@ -195,20 +195,50 @@ function Tooltip({ content, icon: Icon, label, color }: {
 
 // ── Thumbnail with broken-image fallback ─────────────────────────────────────
 
-function RewardThumbnail({ imageUrl }: { imageUrl: string | null }) {
-  const [failed, setFailed] = useState(false);
-  if (!imageUrl || failed) {
+function RewardThumbnail({ imageUrl, logoUrl }: { imageUrl: string | null; logoUrl?: string | null }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  const primary = !imgFailed ? imageUrl : null;
+  const fallback = !logoFailed ? logoUrl : null;
+
+  if (primary) {
     return (
-      <div className="w-8 h-8 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-        <Gift className="w-4 h-4 text-gray-400" />
-      </div>
+      <img
+        src={primary}
+        alt=""
+        className="w-8 h-8 rounded-md object-cover border border-gray-100"
+        onError={() => setImgFailed(true)}
+      />
+    );
+  }
+  if (fallback) {
+    return (
+      <img
+        src={fallback}
+        alt=""
+        className="w-8 h-8 rounded-md object-contain border border-gray-100 bg-white p-0.5"
+        onError={() => setLogoFailed(true)}
+      />
     );
   }
   return (
+    <div className="w-8 h-8 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+      <Gift className="w-4 h-4 text-gray-400" />
+    </div>
+  );
+}
+
+// ── Small inline brand logo ───────────────────────────────────────────────────
+
+function BrandLogo({ url, name }: { url: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
     <img
-      src={imageUrl}
-      alt=""
-      className="w-8 h-8 rounded-md object-cover border border-gray-100"
+      src={url}
+      alt={name}
+      className="w-4 h-4 rounded object-contain flex-shrink-0"
       onError={() => setFailed(true)}
     />
   );
@@ -479,7 +509,7 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
 
                     {/* 2. Thumbnail */}
                     <td className="px-2 py-3">
-                      <RewardThumbnail imageUrl={reward.image_url} />
+                      <RewardThumbnail imageUrl={reward.image_url} logoUrl={reward.brand?.logo_url} />
                     </td>
 
                     {/* 3. Reward ID + copy */}
@@ -500,7 +530,12 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
                       <div className="flex items-center gap-2">
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-gray-900 truncate leading-snug">{reward.title}</p>
-                          <p className="text-xs text-gray-400 truncate">{reward.brand?.name ?? 'No Brand'}</p>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            {reward.brand?.logo_url && (
+                              <BrandLogo url={reward.brand.logo_url} name={reward.brand.name} />
+                            )}
+                            <p className="text-xs text-gray-400 truncate">{reward.brand?.name ?? 'No Brand'}</p>
+                          </div>
                         </div>
                         <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold border ${
                           isGeneric
