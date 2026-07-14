@@ -310,18 +310,20 @@ function Step1({
         <p className="text-sm text-gray-500">Set your program name, currency, and global settings.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div className="md:col-span-2">
-          <FieldLabel>Program name</FieldLabel>
-          <TextInput
-            value={program.program_name}
-            onChange={v => onChange('program_name', v)}
-            placeholder="e.g. Houme Coins, Gems Rewards"
-          />
-        </div>
+      {/* Row 1: Program name — full width */}
+      <div>
+        <FieldLabel>Program name</FieldLabel>
+        <TextInput
+          value={program.program_name}
+          onChange={v => onChange('program_name', v)}
+          placeholder="e.g. Houme Coins, Gems Rewards"
+        />
+      </div>
 
+      {/* Row 2: Points name pair — same label height, align naturally */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
-          <FieldLabel hint="(plural)">Points name</FieldLabel>
+          <FieldLabel>Points name <span className="text-xs font-normal text-gray-400">(plural)</span></FieldLabel>
           <TextInput
             value={program.points_name}
             onChange={v => onChange('points_name', v)}
@@ -329,15 +331,19 @@ function Step1({
           />
         </div>
         <div>
-          <FieldLabel hint="(singular)">Points name singular</FieldLabel>
+          <FieldLabel>Points name <span className="text-xs font-normal text-gray-400">(singular)</span></FieldLabel>
           <TextInput
             value={program.points_name_singular}
             onChange={v => onChange('points_name_singular', v)}
             placeholder="e.g. Gem"
           />
         </div>
+      </div>
+
+      {/* Row 3: Welcome bonus + Points expiry — both plain 1-line labels */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
-          <FieldLabel hint="(awarded on join / first activity)">Welcome bonus points</FieldLabel>
+          <FieldLabel>Welcome bonus points</FieldLabel>
           <TextInput
             type="number"
             value={program.welcome_bonus_points}
@@ -345,6 +351,7 @@ function Step1({
             min={0}
             placeholder="0"
           />
+          <p className="mt-1 text-xs text-gray-400">Awarded once on join or first activity</p>
         </div>
         <div>
           <FieldLabel>Points expiry</FieldLabel>
@@ -357,6 +364,10 @@ function Step1({
             ))}
           </DropdownSelect>
         </div>
+      </div>
+
+      {/* Row 4: Currency — half width */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
           <FieldLabel>Currency</FieldLabel>
           <DropdownSelect value={program.currency} onChange={v => onChange('currency', v)}>
@@ -365,6 +376,10 @@ function Step1({
             <option value="AED">AED (د.إ)</option>
           </DropdownSelect>
         </div>
+      </div>
+
+      {/* Row 5–6: Toggles — each full width so they don't fight columns */}
+      <div className="space-y-3">
         <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-200">
           <div>
             <p className="text-sm font-medium text-gray-900">Allow redemption</p>
@@ -1344,7 +1359,7 @@ export default function LoyaltyProgramPage() {
 
         <div className="flex gap-6 items-start">
           {/* Left step sidebar */}
-          <nav className="hidden md:flex flex-col gap-1 w-52 shrink-0 sticky top-8">
+          <nav className="hidden md:flex flex-col gap-1 w-60 shrink-0 sticky top-8">
             {STEPS.map(s => {
               const Icon = s.icon;
               const isActive = step === s.id;
