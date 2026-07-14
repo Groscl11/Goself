@@ -153,6 +153,23 @@ function makeDefaultTier(level: number, isDefault: boolean): LoyaltyTier {
   };
 }
 
+// ─── Brand color utilities ───────────────────────────────────────────────────────
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const c = (hex || '#7c3aed').replace('#', '');
+  return {
+    r: parseInt(c.slice(0, 2), 16) || 0,
+    g: parseInt(c.slice(2, 4), 16) || 0,
+    b: parseInt(c.slice(4, 6), 16) || 0,
+  };
+}
+function brandBg(color: string, alpha = 0.1): string {
+  const { r, g, b } = hexToRgb(color);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+const MULTIPLIER_PRESETS = [1, 1.25, 1.5, 2];
+
 // ─── Steps config ───────────────────────────────────────────────────────────────
 
 const STEPS = [
@@ -235,8 +252,12 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
   );
 }
 
-function LiveHint({ children }: { children: React.ReactNode }) {
-  return <p className="mt-1 text-xs text-indigo-600 bg-indigo-50 rounded px-2 py-1">{children}</p>;
+function LiveHint({ children, color = '#7c3aed' }: { children: React.ReactNode; color?: string }) {
+  return (
+    <p className="mt-1 text-xs rounded px-2 py-1" style={{ color, backgroundColor: brandBg(color, 0.08) }}>
+      {children}
+    </p>
+  );
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -376,12 +397,14 @@ function Step1({
 function Step2({
   program,
   onChange,
+  brandColor = '#7c3aed',
 }: {
   program: Omit<LoyaltyProgram, 'id' | 'client_id'>;
   onChange: <K extends keyof Omit<LoyaltyProgram, 'id' | 'client_id'>>(
     k: K,
     v: Omit<LoyaltyProgram, 'id' | 'client_id'>[K]
   ) => void;
+  brandColor?: string;
 }) {
   const { base_earn_rate, base_earn_divisor, base_points_value, points_name, currency } = program;
   const curr = currency === 'INR' ? '₹' : currency === 'USD' ? '$' : 'د.إ';
@@ -435,11 +458,11 @@ function Step2({
         </div>
       </div>
 
-      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-5 flex items-start gap-3">
-        <Info className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
+      <div className="rounded-xl p-5 flex items-start gap-3 border" style={{ backgroundColor: brandBg(brandColor, 0.07), borderColor: brandBg(brandColor, 0.25) }}>
+        <Info className="w-4 h-4 mt-0.5 shrink-0" style={{ color: brandColor }} />
         <div>
-          <p className="text-sm font-semibold text-indigo-900">Live preview</p>
-          <p className="text-sm text-indigo-700 mt-1">
+          <p className="text-sm font-semibold" style={{ color: brandColor }}>Live preview</p>
+          <p className="text-sm mt-1" style={{ color: brandColor }}>
             For a {curr}{exampleSpend.toLocaleString()} order, a member earns{' '}
             <span className="font-bold">{earned.toFixed(0)} {points_name || 'pts'}</span>{' '}
             worth{' '}
@@ -508,6 +531,7 @@ function TierCard({
   onUpdate,
   onRemove,
   canRemove,
+  brandColor = '#7c3aed',
 }: {
   tier: LoyaltyTier;
   index: number;
@@ -516,6 +540,7 @@ function TierCard({
   onUpdate: (patch: Partial<LoyaltyTier>) => void;
   onRemove: () => void;
   canRemove: boolean;
+  brandColor?: string;
 }) {
   const [expanded, setExpanded] = useState(index === 0);
   const { base_earn_rate, base_earn_divisor, points_name, currency } = program;
@@ -648,21 +673,48 @@ function TierCard({
               </div>
             ) : (
               <div className="max-w-xs">
-                <FieldLabel hint="(min 1.0, step 0.5)">Earn multiplier</FieldLabel>
+                <FieldLabel>Earn multiplier</FieldLabel>
+                {/* Quick-select preset chips */}
+                <div className="flex gap-2 mb-2 flex-wrap">
+                  {MULTIPLIER_PRESETS.map(preset => {
+                    const isSelected = tier.earn_multiplier === preset;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => onUpdate({ earn_multiplier: preset, points_earn_rate: base_earn_rate * preset })}
+                        className="px-3 py-1 text-xs font-semibold rounded-full border transition-colors"
+                        style={
+                          isSelected
+                            ? { backgroundColor: brandColor, color: '#fff', borderColor: brandColor }
+                            : { backgroundColor: '#f9fafb', color: '#374151', borderColor: '#d1d5db' }
+                        }
+                      >
+                        {preset}×
+                      </button>
+                    );
+                  })}
+                  {!MULTIPLIER_PRESETS.includes(tier.earn_multiplier) && (
+                    <span
+                      className="px-3 py-1 text-xs font-semibold rounded-full border"
+                      style={{ backgroundColor: brandColor, color: '#fff', borderColor: brandColor }}
+                    >
+                      {tier.earn_multiplier}× custom
+                    </span>
+                  )}
+                </div>
+                {/* Custom value input */}
                 <TextInput
                   type="number"
                   value={tier.earn_multiplier}
                   onChange={v => {
                     const m = Math.max(1, Number(v));
-                    onUpdate({
-                      earn_multiplier: m,
-                      points_earn_rate: base_earn_rate * m,
-                    });
+                    onUpdate({ earn_multiplier: m, points_earn_rate: base_earn_rate * m });
                   }}
                   min={1}
-                  step={0.5}
+                  step={0.25}
                 />
-                <LiveHint>= {derivedRate} {points_name || 'pts'} per {curr}{base_earn_divisor}</LiveHint>
+                <LiveHint color={brandColor}>= {derivedRate} {points_name || 'pts'} per {curr}{base_earn_divisor}</LiveHint>
               </div>
             )}
           </div>
@@ -838,12 +890,14 @@ function Step3({
   onUpdate,
   onAdd,
   onRemove,
+  brandColor = '#7c3aed',
 }: {
   tiers: LoyaltyTier[];
   program: Omit<LoyaltyProgram, 'id' | 'client_id'>;
   onUpdate: (index: number, patch: Partial<LoyaltyTier>) => void;
   onAdd: () => void;
   onRemove: (index: number) => void;
+  brandColor?: string;
 }) {
   return (
     <div className="space-y-5">
@@ -855,7 +909,8 @@ function Step3({
         <button
           type="button"
           onClick={onAdd}
-          className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shrink-0"
+          className="flex items-center gap-1.5 px-3 py-2 text-white text-sm font-medium rounded-lg transition-opacity hover:opacity-90 shrink-0"
+          style={{ backgroundColor: brandColor }}
         >
           <Plus className="w-4 h-4" />
           Add tier
@@ -878,6 +933,7 @@ function Step3({
                 onUpdate={patch => onUpdate(originalIndex, patch)}
                 onRemove={() => onRemove(originalIndex)}
                 canRemove={!tier.is_default && tiers.length > 1}
+                brandColor={brandColor}
               />
             );
           })}
@@ -893,11 +949,13 @@ function Step4({
   tiers,
   saving,
   onSave,
+  brandColor = '#7c3aed',
 }: {
   program: Omit<LoyaltyProgram, 'id' | 'client_id'>;
   tiers: LoyaltyTier[];
   saving: boolean;
   onSave: () => void;
+  brandColor?: string;
 }) {
   const entryTier = tiers.find(t => t.is_default) ?? tiers[0];
   const { points_name, currency, base_earn_rate, base_earn_divisor } = program;
@@ -997,7 +1055,8 @@ function Step4({
           type="button"
           onClick={onSave}
           disabled={saving}
-          className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors shadow-sm"
+          className="flex items-center gap-2 px-6 py-2.5 text-white font-semibold rounded-lg disabled:opacity-60 disabled:cursor-not-allowed transition-opacity hover:opacity-90 shadow-sm"
+          style={{ backgroundColor: brandColor }}
         >
           {saving ? (
             <>
@@ -1044,6 +1103,7 @@ export default function LoyaltyProgramPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [brandColor, setBrandColor] = useState('#7c3aed');
 
   const [programId, setProgramId] = useState<string | null>(null);
   const [program, setProgram] = useState<Omit<LoyaltyProgram, 'id' | 'client_id'>>(EMPTY_PROGRAM);
@@ -1063,6 +1123,14 @@ export default function LoyaltyProgramPage() {
     (async () => {
       setLoading(true);
       try {
+        // Fetch brand color from client profile
+        const { data: client } = await supabase
+          .from('clients')
+          .select('primary_color')
+          .eq('id', clientId)
+          .maybeSingle();
+        if (client?.primary_color) setBrandColor(client.primary_color);
+
         const { data: prog } = await supabase
           .from('loyalty_programs')
           .select('*')
@@ -1299,22 +1367,24 @@ export default function LoyaltyProgramPage() {
                   key={s.id}
                   type="button"
                   onClick={() => setStep(s.id)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left ${
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left"
+                  style={
                     isActive
-                      ? 'bg-indigo-50 text-indigo-700'
+                      ? { backgroundColor: brandBg(brandColor, 0.1), color: brandColor }
                       : isDone
-                      ? 'text-gray-600 hover:bg-gray-100'
-                      : 'text-gray-400 hover:bg-gray-50'
-                  }`}
+                      ? { color: '#4b5563' }
+                      : { color: '#9ca3af' }
+                  }
                 >
                   <div
-                    className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+                    style={
                       isActive
-                        ? 'bg-indigo-600 text-white'
+                        ? { backgroundColor: brandColor, color: '#fff' }
                         : isDone
-                        ? 'bg-green-500 text-white'
-                        : 'bg-gray-200 text-gray-400'
-                    }`}
+                        ? { backgroundColor: '#22c55e', color: '#fff' }
+                        : { backgroundColor: '#e5e7eb', color: '#9ca3af' }
+                    }
                   >
                     {isDone ? <Check className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />}
                   </div>
@@ -1336,9 +1406,12 @@ export default function LoyaltyProgramPage() {
                   key={s.id}
                   type="button"
                   onClick={() => setStep(s.id)}
-                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                    step === s.id ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
-                  }`}
+                  className="shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-opacity"
+                  style={
+                    step === s.id
+                      ? { backgroundColor: brandColor, color: '#fff' }
+                      : { backgroundColor: '#f3f4f6', color: '#4b5563' }
+                  }
                 >
                   {s.id}. {s.label}
                 </button>
@@ -1347,7 +1420,7 @@ export default function LoyaltyProgramPage() {
 
             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
               {step === 1 && <Step1 program={program} onChange={updateProgram} />}
-              {step === 2 && <Step2 program={program} onChange={updateProgram} />}
+              {step === 2 && <Step2 program={program} onChange={updateProgram} brandColor={brandColor} />}
               {step === 3 && (
                 <Step3
                   tiers={tiers}
@@ -1355,10 +1428,11 @@ export default function LoyaltyProgramPage() {
                   onUpdate={updateTier}
                   onAdd={addTier}
                   onRemove={removeTier}
+                  brandColor={brandColor}
                 />
               )}
               {step === 4 && (
-                <Step4 program={program} tiers={tiers} saving={saving} onSave={handleSave} />
+                <Step4 program={program} tiers={tiers} saving={saving} onSave={handleSave} brandColor={brandColor} />
               )}
             </div>
 
@@ -1376,7 +1450,8 @@ export default function LoyaltyProgramPage() {
                 <button
                   type="button"
                   onClick={() => setStep(s => Math.min(4, s + 1))}
-                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: brandColor }}
                 >
                   Next →
                 </button>
@@ -1385,7 +1460,8 @@ export default function LoyaltyProgramPage() {
                   type="button"
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-60 disabled:cursor-not-allowed transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: brandColor }}
                 >
                   <Save className="w-4 h-4" />
                   {saving ? 'Saving…' : 'Save program'}
