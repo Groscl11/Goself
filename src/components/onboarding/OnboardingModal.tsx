@@ -1,16 +1,23 @@
 /**
  * OnboardingModal
  *
- * Shown as an overlay on top of the client dashboard when
- * `clients.onboarding_completed = false`. The merchant fills in 3 quick
- * steps (Brand → Contact → Industry) without leaving the dashboard.
- * Clicking the ✕ or "Skip" marks onboarding complete immediately.
- * Shopify connection is skipped — the merchant arrived via SSO so it's
- * already established.
+ * Shown as an overlay on the client dashboard when
+ * `clients.onboarding_completed = false`.
+ *
+ * Steps:
+ *  0 – Goal selection   (new — which track(s) to set up)
+ *  1 – Brand basics     (store name, logo, brand colour)
+ *  2 – Contact details  (email, phone, website)
+ *  3 – Industry         (category pick)
+ *
+ * Completing step 3 sets onboarding_completed = true and persists the
+ * chosen goals to onboarding_goals[]. Clicking ✕ / Skip marks complete
+ * immediately without saving goals.
  */
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { StepGoalSelect } from './StepGoalSelect';
 import { StepBrandBasics } from './StepBrandBasics';
 import { StepContact } from './StepContact';
 import { StepIndustry } from './StepIndustry';
@@ -25,64 +32,73 @@ interface OnboardingModalProps {
     contact_phone: string;
     website_url: string;
     industry: string;
+    onboarding_goals: string[];
   };
-  onComplete: () => void; // called after finish OR skip
+  onComplete: () => void;
 }
 
-type Step = 0 | 1 | 2;
-const STEP_LABELS = ['Brand', 'Contact', 'Industry'];
+type Step = 0 | 1 | 2 | 3;
+const STEP_LABELS = ['Goals', 'Brand', 'Contact', 'Industry'];
 
 export function OnboardingModal({ clientId, initialData, onComplete }: OnboardingModalProps) {
   const [step, setStep] = useState<Step>(0);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(initialData);
 
-  async function savePartial(patch: Partial<typeof form>) {
+  async function savePartial(patch: Record<string, unknown>) {
     await supabase.from('clients').update(patch).eq('id', clientId);
   }
 
-  async function markComplete() {
+  async function markComplete(goals?: string[]) {
     if (saving) return;
     setSaving(true);
     try {
-      await supabase.from('clients').update({ onboarding_completed: true }).eq('id', clientId);
+      const patch: Record<string, unknown> = { onboarding_completed: true };
+      if (goals) patch.onboarding_goals = goals;
+      await supabase.from('clients').update(patch).eq('id', clientId);
     } finally {
       setSaving(false);
       onComplete();
     }
   }
 
-  function handleBrandNext(data: { name: string; logo_url: string; primary_color: string }) {
-    setForm((f) => ({ ...f, ...data }));
-    savePartial(data);
+  function handleGoalsNext(goals: string[]) {
+    setForm((f) => ({ ...f, onboarding_goals: goals }));
+    savePartial({ onboarding_goals: goals });
     setStep(1);
   }
 
-  function handleContactNext(data: { contact_email: string; contact_phone: string; website_url: string }) {
+  function handleBrandNext(data: { name: string; logo_url: string; primary_color: string }) {
     setForm((f) => ({ ...f, ...data }));
     savePartial(data);
     setStep(2);
   }
 
+  function handleContactNext(data: { contact_email: string; contact_phone: string; website_url: string }) {
+    setForm((f) => ({ ...f, ...data }));
+    savePartial(data);
+    setStep(3);
+  }
+
   async function handleIndustryNext(industry: string) {
     setForm((f) => ({ ...f, industry }));
     await savePartial({ industry });
-    await markComplete();
+    await markComplete(form.onboarding_goals);
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
 
-        {/* ── Modal header + step progress ── */}
+        {/* Header + step progress */}
         <div className="px-6 pt-6 pb-4 border-b border-gray-100">
           <div className="flex items-start justify-between mb-5">
             <div>
-              <h2 className="text-lg font-bold text-gray-900">Complete your store profile</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Takes less than 2 minutes · you can skip anytime</p>
+              <h2 className="text-lg font-bold text-gray-900">Set up your store</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Takes less than 3 minutes · you can skip anytime</p>
             </div>
             <button
-              onClick={markComplete}
+              onClick={() => markComplete()}
               disabled={saving}
               className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0 ml-3"
               title="Skip setup"
@@ -118,27 +134,33 @@ export function OnboardingModal({ clientId, initialData, onComplete }: Onboardin
           </div>
         </div>
 
-        {/* ── Step content ── */}
+        {/* Step content */}
         <div className="p-6 max-h-[70vh] overflow-y-auto">
           {step === 0 && (
+            <StepGoalSelect
+              initial={form.onboarding_goals}
+              onNext={handleGoalsNext}
+            />
+          )}
+          {step === 1 && (
             <StepBrandBasics
               clientId={clientId}
               initial={{ name: form.name, logo_url: form.logo_url, primary_color: form.primary_color }}
               onNext={handleBrandNext}
             />
           )}
-          {step === 1 && (
+          {step === 2 && (
             <StepContact
               initial={{ contact_email: form.contact_email, contact_phone: form.contact_phone, website_url: form.website_url }}
               onNext={handleContactNext}
-              onBack={() => setStep(0)}
+              onBack={() => setStep(1)}
             />
           )}
-          {step === 2 && (
+          {step === 3 && (
             <StepIndustry
               initial={form.industry}
               onNext={handleIndustryNext}
-              onBack={() => setStep(1)}
+              onBack={() => setStep(2)}
             />
           )}
         </div>

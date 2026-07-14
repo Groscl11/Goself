@@ -10,6 +10,8 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { clientMenuItems } from './clientMenuItems';
 import { OnboardingModal } from '../../components/onboarding/OnboardingModal';
+import { SetupGuide } from '../../components/onboarding/SetupGuide';
+import { useShopifySession } from '../../hooks/useShopifySession';
 
 interface DashboardStats {
   totalMembers: number;
@@ -24,6 +26,8 @@ interface ClientInfo {
   slug: string;
   registration_enabled: boolean;
   onboarding_completed: boolean;
+  setup_guide_dismissed: boolean;
+  onboarding_goals: string[];
   logo_url: string;
   primary_color: string;
   contact_email: string;
@@ -35,6 +39,7 @@ interface ClientInfo {
 export function ClientDashboard() {
   const navigate = useNavigate();
   const { profile } = useAuth();
+  useShopifySession();
   const [stats, setStats] = useState<DashboardStats>({
     totalMembers: 0,
     activeCampaigns: 0,
@@ -57,7 +62,7 @@ export function ClientDashboard() {
     try {
       const { data } = await supabase
         .from('clients')
-        .select('id, name, slug, registration_enabled, onboarding_completed, logo_url, primary_color, contact_email, contact_phone, website_url, industry')
+        .select('id, name, slug, registration_enabled, onboarding_completed, setup_guide_dismissed, onboarding_goals, logo_url, primary_color, contact_email, contact_phone, website_url, industry')
         .eq('id', profile.client_id)
         .maybeSingle();
       if (data) {
@@ -124,9 +129,11 @@ export function ClientDashboard() {
     }
   };
 
+  const APP_PUBLIC_URL = 'https://app.goself.in';
+
   const copyRegistrationLink = async () => {
     if (!clientInfo) return;
-    const registrationUrl = `${window.location.origin}/join/${clientInfo.slug}`;
+    const registrationUrl = `${APP_PUBLIC_URL}/join/${clientInfo.slug}`;
     try {
       await navigator.clipboard.writeText(registrationUrl);
       setCopiedLink(true);
@@ -208,6 +215,7 @@ export function ClientDashboard() {
             contact_phone: clientInfo.contact_phone || '',
             website_url: clientInfo.website_url || '',
             industry: clientInfo.industry || '',
+            onboarding_goals: clientInfo.onboarding_goals || [],
           }}
           onComplete={() => {
             setShowOnboarding(false);
@@ -226,6 +234,15 @@ export function ClientDashboard() {
             <p className="text-sm text-gray-400 mt-0.5">{today}</p>
           </div>
         </div>
+
+        {/* ── Setup guide — shown until dismissed or all steps done ── */}
+        {clientInfo && !clientInfo.setup_guide_dismissed && (
+          <SetupGuide
+            clientId={clientInfo.id}
+            brandProfileDone={clientInfo.onboarding_completed}
+            onDismiss={() => setClientInfo((prev) => prev ? { ...prev, setup_guide_dismissed: true } : prev)}
+          />
+        )}
 
         {/* ── Stats row ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -325,7 +342,7 @@ export function ClientDashboard() {
                 </p>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg font-mono text-xs text-gray-700 truncate">
-                    {window.location.origin}/join/{clientInfo.slug}
+                    {APP_PUBLIC_URL}/join/{clientInfo.slug}
                   </div>
                   <button
                     onClick={copyRegistrationLink}
