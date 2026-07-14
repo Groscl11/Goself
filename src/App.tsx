@@ -205,7 +205,7 @@ function App() {
           <Route path="/client/members/import" element={<RoleBasedRoute allowedRoles={['client']}><ImportMembers /></RoleBasedRoute>} />
           <Route path="/client/members/:id" element={<RoleBasedRoute allowedRoles={['client']}><MemberDetail /></RoleBasedRoute>} />
           <Route path="/client/members/:id/edit" element={<RoleBasedRoute allowedRoles={['client']}><MemberForm /></RoleBasedRoute>} />
-          <Route path="/client/loyalty-points" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyProgram /></RoleBasedRoute>} />
+          <Route path="/client/loyalty-points" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading...</div>}><LoyaltyProgramPage /></Suspense></RoleBasedRoute>} />
           <Route path="/client/loyalty-members" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyMembers /></RoleBasedRoute>} />
           <Route path="/client/loyalty-transactions" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyTransactions /></RoleBasedRoute>} />
           <Route path="/client/offers" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading offers...</div>}><OffersPage /></Suspense></RoleBasedRoute>} />
