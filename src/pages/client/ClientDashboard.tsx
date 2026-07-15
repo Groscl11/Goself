@@ -226,18 +226,28 @@ export function ClientDashboard() {
     },
   ];
 
-  const PLUGIN_BLOCKS = [
-    { slug: 'loyalty-widget',                name: 'Loyalty Rewards Widget',      desc: 'Floating sidebar with points balance, tiers & rewards' },
-    { slug: 'loyalty-page',                  name: 'Loyalty Landing Page',        desc: 'Full-page loyalty hub embedded in your storefront' },
-    { slug: 'cart-points',                   name: 'Cart Points Banner',           desc: 'Shows points to be earned on the cart page' },
-    { slug: 'cart-drawer-points',            name: 'Cart Drawer Points',           desc: 'Points preview inside the cart drawer / slide-out' },
-    { slug: 'product-points',               name: 'Product Points Banner',        desc: 'Points earned shown on each product page' },
-    { slug: 'collection-points',            name: 'Collection Points Banner',     desc: 'Points preview on collection / category pages' },
-    { slug: 'pre-purchase-homepage-hero',   name: 'PPR – Homepage Hero',          desc: 'Pre-purchase rewards banner in the homepage hero' },
-    { slug: 'pre-purchase-sticky-banner',   name: 'PPR – Sticky Banner',          desc: 'Sticky top/bottom rewards announcement bar' },
-    { slug: 'pre-purchase-collection-banner', name: 'PPR – Collection Banner',    desc: 'Pre-purchase rewards callout on collection pages' },
-    { slug: 'pre-purchase-product-strip',   name: 'PPR – Product Strip',          desc: 'Inline rewards strip on product pages' },
-    { slug: 'refer-a-friend',               name: 'Refer a Friend',               desc: 'Referral widget for sharing codes & tracking rewards' },
+  // Storefront widgets — placed in Online Store theme, auto-detected via theme asset scan
+  const STOREFRONT_BLOCKS = [
+    { slug: 'loyalty-widget',                  name: 'Loyalty Rewards Widget',        desc: 'Floating sidebar with points balance, tiers & rewards' },
+    { slug: 'loyalty-page',                    name: 'Loyalty Landing Page',          desc: 'Full-page loyalty hub embedded in your storefront' },
+    { slug: 'cart-points',                     name: 'Cart Points Banner',             desc: 'Shows points to be earned on the cart page' },
+    { slug: 'cart-drawer-points',              name: 'Cart Drawer Points',             desc: 'Points preview inside the cart drawer / slide-out' },
+    { slug: 'product-points',                  name: 'Product Points Banner',          desc: 'Points earned shown on each product page' },
+    { slug: 'collection-points',               name: 'Collection Points Banner',       desc: 'Points preview on collection / category pages' },
+    { slug: 'pre-purchase-homepage-hero',      name: 'PPR – Homepage Hero',            desc: 'Pre-purchase rewards banner in the homepage hero' },
+    { slug: 'pre-purchase-sticky-banner',      name: 'PPR – Sticky Banner',            desc: 'Sticky top/bottom rewards announcement bar' },
+    { slug: 'pre-purchase-collection-banner',  name: 'PPR – Collection Banner',        desc: 'Pre-purchase rewards callout on collection pages' },
+    { slug: 'pre-purchase-product-strip',      name: 'PPR – Product Strip',            desc: 'Inline rewards strip on product pages' },
+    { slug: 'refer-a-friend',                  name: 'Refer a Friend',                 desc: 'Referral widget for sharing codes & tracking rewards' },
+  ];
+
+  // Checkout widgets — placed via Shopify Checkout Editor (Thank You / Order Status page)
+  // Shopify does not expose checkout extension placement via Admin API; status cannot be auto-detected.
+  const CHECKOUT_BLOCKS = [
+    { handle: 'campaign-reward-banner',    name: 'Post Purchase Rewards',           desc: 'Promotes a campaign reward on the Thank You & Order Status pages' },
+    { handle: 'instant-thankyou-widget',   name: 'Instant Post-Purchase Rewards',   desc: 'Instant reward claim widget shown after order confirmation' },
+    { handle: 'order-status-rewards',      name: 'Loyalty Points On Order',         desc: 'Shows points earned from the current order on confirmation page' },
+    { handle: 'referral-widget',           name: 'Referral Widget',                 desc: 'Lets customers share their referral link right after checkout' },
   ];
 
   const quickActions = [
@@ -378,68 +388,113 @@ export function ClientDashboard() {
         </div>
 
         {/* ── Plugin Widgets ── */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest">Plugin Widgets</h2>
-              {widgetPlacements.theme_name && (
-                <p className="text-xs text-gray-400 mt-0.5">Active theme: {widgetPlacements.theme_name}</p>
-              )}
-            </div>
-            <button
-              onClick={loadWidgetPlacements}
-              disabled={widgetPlacements.loadingWidgets}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${widgetPlacements.loadingWidgets ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest">Plugin Widgets</h2>
           </div>
 
-          {widgetPlacements.connected === false ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
-              <Puzzle className="w-5 h-5 text-amber-500 flex-shrink-0" />
-              <p className="text-sm text-amber-700">No Shopify store connected. Install the Loyalty by Goself app to see widget placement status.</p>
+          {/* ── Storefront widgets (auto-detected) ── */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">Storefront Widgets</p>
+                {widgetPlacements.theme_name && (
+                  <p className="text-xs text-gray-400 mt-0.5">Theme: {widgetPlacements.theme_name}</p>
+                )}
+              </div>
+              <button
+                onClick={loadWidgetPlacements}
+                disabled={widgetPlacements.loadingWidgets}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${widgetPlacements.loadingWidgets ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {PLUGIN_BLOCKS.map((block) => {
-                const isPlaced = widgetPlacements.placed.includes(block.slug);
-                const isLoading = widgetPlacements.loadingWidgets || widgetPlacements.connected === null;
-                return (
-                  <div
-                    key={block.slug}
-                    className={`bg-white border rounded-xl p-4 flex items-start gap-3 shadow-sm ${
-                      isLoading ? 'opacity-60' : ''
-                    } ${isPlaced ? 'border-green-200' : 'border-gray-100'}`}
-                  >
-                    <div className={`mt-0.5 flex-shrink-0 ${isPlaced ? 'text-green-500' : 'text-gray-300'}`}>
-                      {isLoading ? (
-                        <div className="w-5 h-5 rounded-full bg-gray-100 animate-pulse" />
-                      ) : isPlaced ? (
-                        <CheckCircle2 className="w-5 h-5" />
-                      ) : (
-                        <XCircle className="w-5 h-5" />
-                      )}
+
+            {widgetPlacements.connected === false ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
+                <Puzzle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                <p className="text-sm text-amber-700">No Shopify store connected. Install the Loyalty by Goself app to see widget placement status.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {STOREFRONT_BLOCKS.map((block) => {
+                  const isPlaced = widgetPlacements.placed.includes(block.slug);
+                  const isLoading = widgetPlacements.loadingWidgets || widgetPlacements.connected === null;
+                  return (
+                    <div
+                      key={block.slug}
+                      className={`bg-white border rounded-xl p-4 flex items-start gap-3 shadow-sm ${
+                        isLoading ? 'opacity-60' : ''
+                      } ${isPlaced ? 'border-green-200' : 'border-gray-100'}`}
+                    >
+                      <div className={`mt-0.5 flex-shrink-0 ${isPlaced ? 'text-green-500' : 'text-gray-300'}`}>
+                        {isLoading ? (
+                          <div className="w-5 h-5 rounded-full bg-gray-100 animate-pulse" />
+                        ) : isPlaced ? (
+                          <CheckCircle2 className="w-5 h-5" />
+                        ) : (
+                          <XCircle className="w-5 h-5" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 leading-tight">{block.name}</p>
+                        <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{block.desc}</p>
+                        {!isLoading && (
+                          <span className={`inline-block mt-2 text-xs font-medium px-2 py-0.5 rounded-full ${
+                            isPlaced ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {isPlaced ? 'Active in theme' : 'Not placed'}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 leading-tight">{block.name}</p>
-                      <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{block.desc}</p>
-                      {!isLoading && (
-                        <span className={`inline-block mt-2 text-xs font-medium px-2 py-0.5 rounded-full ${
-                          isPlaced
-                            ? 'bg-green-50 text-green-700'
-                            : 'bg-gray-100 text-gray-500'
-                        }`}>
-                          {isPlaced ? 'Active in theme' : 'Not placed'}
-                        </span>
-                      )}
-                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── Checkout widgets (placed via Shopify Checkout Editor) ── */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">Checkout Widgets</p>
+                <p className="text-xs text-gray-400 mt-0.5">Placed via Shopify Checkout Editor → Thank You / Order Status</p>
+              </div>
+              {clientInfo?.slug && (
+                <a
+                  href="https://admin.shopify.com/store/settings/checkout"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Open Checkout Editor
+                  <ArrowRight className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {CHECKOUT_BLOCKS.map((block) => (
+                <div
+                  key={block.handle}
+                  className="bg-white border border-blue-100 rounded-xl p-4 flex items-start gap-3 shadow-sm"
+                >
+                  <div className="mt-0.5 flex-shrink-0 text-blue-400">
+                    <Puzzle className="w-5 h-5" />
                   </div>
-                );
-              })}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 leading-tight">{block.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{block.desc}</p>
+                    <span className="inline-block mt-2 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                      Managed in Shopify
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
         </div>
 
       </div>
