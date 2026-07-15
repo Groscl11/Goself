@@ -43,6 +43,9 @@ export function useShopifySession() {
         return;
       }
 
+      const shopDomain = (bridge as any).config?.shop as string | undefined;
+      if (!shopDomain) return;
+
       if (cancelled) return;
 
       try {
@@ -52,7 +55,7 @@ export function useShopifySession() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${sessionToken}`,
           },
-          body: JSON.stringify({ session_token: sessionToken }),
+          body: JSON.stringify({ session_token: sessionToken, shop: shopDomain }),
         });
 
         if (!res.ok || cancelled) return;
