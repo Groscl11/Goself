@@ -41,7 +41,8 @@ export function ClientDashboard() {
   const [widgetPlacements, setWidgetPlacements] = useState<{
     connected: boolean | null;
     placed: string[];
-    theme_name?: string;
+    theme_name?: string | null;
+    scope_missing?: boolean;
     loadingWidgets: boolean;
   }>({ connected: null, placed: [], loadingWidgets: false });
 
@@ -81,7 +82,8 @@ export function ClientDashboard() {
         setWidgetPlacements({
           connected: data.connected ?? false,
           placed: data.placed ?? [],
-          theme_name: data.theme_name,
+          theme_name: data.theme_name ?? null,
+          scope_missing: data.scope_missing ?? false,
           loadingWidgets: false,
         });
       } else {
@@ -416,6 +418,14 @@ export function ClientDashboard() {
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
                 <Puzzle className="w-5 h-5 text-amber-500 flex-shrink-0" />
                 <p className="text-sm text-amber-700">No Shopify store connected. Install the Loyalty by Goself app to see widget placement status.</p>
+              </div>
+            ) : widgetPlacements.scope_missing ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+                <Puzzle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-blue-800">Permission update required</p>
+                  <p className="text-sm text-blue-700 mt-1">The app needs a new "read themes" permission to detect widget placements. Please reinstall or re-authorize the Loyalty by Goself app in your Shopify store.</p>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
