@@ -5,7 +5,6 @@ import {
   Receipt,
   Cog,
   GitBranch,
-  Link2,
   Tag,
   Megaphone,
   Building2,
@@ -15,7 +14,6 @@ import {
   BarChart3,
   ShoppingCart,
   Zap,
-  Sparkles,
   Settings,
   CreditCard,
   Link,
@@ -65,12 +63,6 @@ export const clientMenuItems = [
     label: 'Referral Tracking',
     path: '/client/referral-tracking',
     icon: <GitBranch className="w-4 h-4" />,
-  },
-  {
-    section: 'Referral',
-    label: 'Reward Links',
-    path: '/client/tokenized-links',
-    icon: <Link2 className="w-4 h-4" />,
   },
 
   // ── REWARDS & OFFERS ──────────────────────────────────────────────────────
@@ -158,12 +150,6 @@ export const clientMenuItems = [
     path: '/client/integrations',
     icon: <Zap className="w-4 h-4" />,
     adminOnly: true,
-  },
-  {
-    section: 'Platform',
-    label: 'Widgets & Embed',
-    path: '/client/widgets',
-    icon: <Sparkles className="w-4 h-4" />,
   },
 
   // ── ACCOUNT ───────────────────────────────────────────────────────────────

@@ -193,6 +193,75 @@ function Tooltip({ content, icon: Icon, label, color }: {
   );
 }
 
+// ── Thumbnail with broken-image fallback ─────────────────────────────────────
+
+const AVATAR_COLORS = [
+  'bg-violet-100 text-violet-700',
+  'bg-blue-100 text-blue-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-amber-100 text-amber-700',
+  'bg-rose-100 text-rose-700',
+  'bg-teal-100 text-teal-700',
+  'bg-indigo-100 text-indigo-700',
+  'bg-orange-100 text-orange-700',
+];
+
+function letterColor(title: string) {
+  let h = 0;
+  for (let i = 0; i < title.length; i++) h = (h * 31 + title.charCodeAt(i)) & 0xffffffff;
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+
+function RewardThumbnail({ imageUrl, logoUrl, title }: { imageUrl: string | null; logoUrl?: string | null; title: string }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  const primary = !imgFailed ? imageUrl : null;
+  const fallback = !logoFailed ? logoUrl : null;
+
+  if (primary) {
+    return (
+      <img
+        src={primary}
+        alt=""
+        className="w-9 h-9 rounded-lg object-cover border border-gray-100 flex-shrink-0"
+        onError={() => setImgFailed(true)}
+      />
+    );
+  }
+  if (fallback) {
+    return (
+      <img
+        src={fallback}
+        alt=""
+        className="w-9 h-9 rounded-lg object-contain border border-gray-100 bg-white p-0.5 flex-shrink-0"
+        onError={() => setLogoFailed(true)}
+      />
+    );
+  }
+  const initial = (title || '?')[0].toUpperCase();
+  return (
+    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 font-bold text-sm ${letterColor(title)}`}>
+      {initial}
+    </div>
+  );
+}
+
+// ── Small inline brand logo ───────────────────────────────────────────────────
+
+function BrandLogo({ url, name }: { url: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <img
+      src={url}
+      alt={name}
+      className="w-4 h-4 rounded object-contain flex-shrink-0"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose }: RewardPickerModalProps) {
@@ -391,7 +460,7 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
                   />
                 </th>
                 {/* 2. Thumbnail */}
-                <th className="w-10 px-2 py-2.5" />
+                <th className="w-12 px-2 py-2.5" />
                 {/* 3. Reward ID */}
                 <th className="w-36 px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Reward ID</th>
                 {/* 4. Reward name */}
@@ -458,13 +527,7 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
 
                     {/* 2. Thumbnail */}
                     <td className="px-2 py-3">
-                      {reward.image_url ? (
-                        <img src={reward.image_url} alt="" className="w-8 h-8 rounded-md object-cover border border-gray-100" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                          <Gift className="w-4 h-4 text-gray-400" />
-                        </div>
-                      )}
+                      <RewardThumbnail imageUrl={reward.image_url} logoUrl={reward.brand?.logo_url} title={reward.title} />
                     </td>
 
                     {/* 3. Reward ID + copy */}
@@ -485,7 +548,12 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
                       <div className="flex items-center gap-2">
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-gray-900 truncate leading-snug">{reward.title}</p>
-                          <p className="text-xs text-gray-400 truncate">{reward.brand?.name ?? 'No Brand'}</p>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            {reward.brand?.logo_url && (
+                              <BrandLogo url={reward.brand.logo_url} name={reward.brand.name} />
+                            )}
+                            <p className="text-xs text-gray-400 truncate">{reward.brand?.name ?? 'No Brand'}</p>
+                          </div>
                         </div>
                         <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold border ${
                           isGeneric
