@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Ca
 import {
   Users, Coins, Megaphone, GitBranch, Tag, ArrowRight,
   Link as LinkIcon, Copy, CheckCircle, Cog, BarChart3,
+  CheckCircle2, XCircle, Puzzle, RefreshCw,
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, supabaseUrl } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { clientMenuItems } from './clientMenuItems';
 
@@ -37,13 +38,59 @@ export function ClientDashboard() {
   const [clientInfo, setClientInfo] = useState<ClientInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [widgetPlacements, setWidgetPlacements] = useState<{
+    connected: boolean | null;
+    placed: string[];
+    theme_name?: string;
+    loadingWidgets: boolean;
+  }>({ connected: null, placed: [], loadingWidgets: false });
 
   useEffect(() => {
     if (profile?.client_id) {
       loadClientInfo();
       loadStats();
+      loadWidgetPlacements();
     }
   }, [profile]);
+
+  const loadWidgetPlacements = async () => {
+    setWidgetPlacements((p) => ({ ...p, loadingWidgets: true }));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) return;
+
+      const abort = new AbortController();
+      const timeout = setTimeout(() => abort.abort(), 10000);
+      let res: Response | null = null;
+      try {
+        res = await fetch(`${supabaseUrl}/functions/v1/get-widget-placements`, {
+          signal: abort.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      } catch {
+        // timeout or network error
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (res?.ok) {
+        const data = await res.json();
+        setWidgetPlacements({
+          connected: data.connected ?? false,
+          placed: data.placed ?? [],
+          theme_name: data.theme_name,
+          loadingWidgets: false,
+        });
+      } else {
+        setWidgetPlacements((p) => ({ ...p, loadingWidgets: false }));
+      }
+    } catch {
+      setWidgetPlacements((p) => ({ ...p, loadingWidgets: false }));
+    }
+  };
 
   const loadClientInfo = async () => {
     if (!profile?.client_id) return;
@@ -177,6 +224,20 @@ export function ClientDashboard() {
       secondaryAction: { label: 'Browse Offers', path: '/client/offers' },
       accent: 'border-l-orange-500',
     },
+  ];
+
+  const PLUGIN_BLOCKS = [
+    { slug: 'loyalty-widget',                name: 'Loyalty Rewards Widget',      desc: 'Floating sidebar with points balance, tiers & rewards' },
+    { slug: 'loyalty-page',                  name: 'Loyalty Landing Page',        desc: 'Full-page loyalty hub embedded in your storefront' },
+    { slug: 'cart-points',                   name: 'Cart Points Banner',           desc: 'Shows points to be earned on the cart page' },
+    { slug: 'cart-drawer-points',            name: 'Cart Drawer Points',           desc: 'Points preview inside the cart drawer / slide-out' },
+    { slug: 'product-points',               name: 'Product Points Banner',        desc: 'Points earned shown on each product page' },
+    { slug: 'collection-points',            name: 'Collection Points Banner',     desc: 'Points preview on collection / category pages' },
+    { slug: 'pre-purchase-homepage-hero',   name: 'PPR – Homepage Hero',          desc: 'Pre-purchase rewards banner in the homepage hero' },
+    { slug: 'pre-purchase-sticky-banner',   name: 'PPR – Sticky Banner',          desc: 'Sticky top/bottom rewards announcement bar' },
+    { slug: 'pre-purchase-collection-banner', name: 'PPR – Collection Banner',    desc: 'Pre-purchase rewards callout on collection pages' },
+    { slug: 'pre-purchase-product-strip',   name: 'PPR – Product Strip',          desc: 'Inline rewards strip on product pages' },
+    { slug: 'refer-a-friend',               name: 'Refer a Friend',               desc: 'Referral widget for sharing codes & tracking rewards' },
   ];
 
   const quickActions = [
@@ -313,6 +374,71 @@ export function ClientDashboard() {
                 </p>
               </CardContent>
             </Card>
+          )}
+        </div>
+
+        {/* ── Plugin Widgets ── */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest">Plugin Widgets</h2>
+              {widgetPlacements.theme_name && (
+                <p className="text-xs text-gray-400 mt-0.5">Active theme: {widgetPlacements.theme_name}</p>
+              )}
+            </div>
+            <button
+              onClick={loadWidgetPlacements}
+              disabled={widgetPlacements.loadingWidgets}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${widgetPlacements.loadingWidgets ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
+
+          {widgetPlacements.connected === false ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
+              <Puzzle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+              <p className="text-sm text-amber-700">No Shopify store connected. Install the Loyalty by Goself app to see widget placement status.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {PLUGIN_BLOCKS.map((block) => {
+                const isPlaced = widgetPlacements.placed.includes(block.slug);
+                const isLoading = widgetPlacements.loadingWidgets || widgetPlacements.connected === null;
+                return (
+                  <div
+                    key={block.slug}
+                    className={`bg-white border rounded-xl p-4 flex items-start gap-3 shadow-sm ${
+                      isLoading ? 'opacity-60' : ''
+                    } ${isPlaced ? 'border-green-200' : 'border-gray-100'}`}
+                  >
+                    <div className={`mt-0.5 flex-shrink-0 ${isPlaced ? 'text-green-500' : 'text-gray-300'}`}>
+                      {isLoading ? (
+                        <div className="w-5 h-5 rounded-full bg-gray-100 animate-pulse" />
+                      ) : isPlaced ? (
+                        <CheckCircle2 className="w-5 h-5" />
+                      ) : (
+                        <XCircle className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 leading-tight">{block.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{block.desc}</p>
+                      {!isLoading && (
+                        <span className={`inline-block mt-2 text-xs font-medium px-2 py-0.5 rounded-full ${
+                          isPlaced
+                            ? 'bg-green-50 text-green-700'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {isPlaced ? 'Active in theme' : 'Not placed'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
