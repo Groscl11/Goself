@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GoSelf · Campaign Reward Templates v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b}
+.page-header{background:#0f172a;color:#fff;padding:18px 32px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;border-bottom:1px solid #1e293b}
+.page-header .logo{font-size:18px;font-weight:700;letter-spacing:-0.5px}
+.page-header .logo span{color:#34d399}
+.page-header .subtitle{font-size:12px;color:#94a3b8;margin-left:auto}
+.page-body{padding:40px 24px;max-width:1400px;margin:0 auto}
+.template-section{margin-bottom:72px}
+.template-header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.template-title{font-size:22px;font-weight:700;color:#0f172a}
+.template-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;letter-spacing:0.3px}
+.badge-popular{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+.badge-animated{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd}
+.badge-conversion{background:#dcfce7;color:#14532d;border:1px solid #86efac}
+.template-desc{font-size:13px;color:#64748b;margin-bottom:24px}
+.frames-row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+.frame-wrapper{display:flex;flex-direction:column;align-items:center;gap:12px}
+.frame-label{font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.5px}
+
+/* PHONE FRAME */
+.phone-outer{width:375px;height:812px;background:#1a1a1a;border-radius:52px;padding:12px;box-shadow:0 0 0 1px #333,0 30px 80px rgba(0,0,0,0.4);position:relative;overflow:hidden;flex-shrink:0}
+.phone-notch{width:120px;height:28px;background:#1a1a1a;border-radius:0 0 18px 18px;position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:20}
+.phone-screen{width:100%;height:100%;background:#fff;border-radius:42px;overflow:hidden;position:relative}
+
+/* Phone scale wrapper - stack selection + redemption vertically */
+.phone-scroll{width:375px;height:100%;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
+.phone-scroll::-webkit-scrollbar{display:none}
+
+/* Screen divider inside phone */
+.screen-divider{width:100%;padding:8px 16px;background:#e2e8f0;display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.5px}
+.screen-divider::before,.screen-divider::after{content:'';flex:1;height:1px;background:#cbd5e1}
+
+/* DESKTOP FRAME */
+.desktop-outer-wrap{flex-shrink:0}
+.desktop-scale-box{width:600px;height:450px;overflow:hidden;position:relative;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,0.2)}
+.desktop-outer{width:1200px;height:900px;transform:scale(0.5);transform-origin:top left;background:#fff;border-radius:10px;overflow:hidden}
+.desktop-chrome{background:#e5e7eb;padding:10px 16px 0;display:flex;flex-direction:column;gap:8px}
+.chrome-dots{display:flex;gap:6px}
+.chrome-dot{width:12px;height:12px;border-radius:50%}
+.dot-r{background:#ef4444}.dot-y{background:#f59e0b}.dot-g{background:#22c55e}
+.chrome-bar{background:#fff;border-radius:6px;height:28px;display:flex;align-items:center;padding:0 12px;font-size:12px;color:#6b7280;gap:8px}
+.chrome-lock{font-size:10px}
+.desktop-screen{height:calc(100% - 72px);overflow-y:auto;overflow-x:hidden}
+.desktop-screen::-webkit-scrollbar{width:6px}
+.desktop-screen::-webkit-scrollbar-track{background:#f1f5f9}
+.desktop-screen::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+
+.select-btn{background:#0f172a;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:16px;transition:background 0.2s}
+.select-btn:hover{background:#1e293b}
+
+/* ===================== TEMPLATE 1 STYLES ===================== */
+/* T1 Selection */
+.t1-sel{font-family:'Inter',sans-serif;background:#fff;min-height:812px}
+.t1-topbar{background:#fff;border-bottom:1px solid #e2e8f0;padding:0}
+.t1-client-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 8px;border-bottom:1px solid #f1f5f9}
+.t1-client-logo{display:flex;align-items:center;gap:8px}
+.t1-client-logo-img{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800}
+.t1-client-name{font-size:13px;font-weight:700;color:#0f172a}
+.t1-powered{font-size:9px;color:#94a3b8;text-align:right;letter-spacing:0.2px}
+.t1-powered span{color:#059669;font-weight:600}
+.t1-progress-wrap{padding:10px 16px 10px}
+.t1-progress-label{font-size:11px;color:#64748b;margin-bottom:5px}
+.t1-progress-bar{height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden}
+.t1-progress-fill{width:50%;height:100%;background:linear-gradient(90deg,#059669,#34d399);border-radius:3px}
+.t1-timer{display:flex;align-items:center;gap:4px;font-size:11px;color:#ef4444;margin-top:6px;font-weight:500}
+.t1-headline{padding:16px 16px 8px;font-size:18px;font-weight:700;color:#0f172a}
+.t1-sub{padding:0 16px 16px;font-size:13px;color:#64748b}
+
+.t1-section-header{display:flex;align-items:center;gap:8px;padding:12px 16px 8px;font-size:14px;font-weight:700;color:#0f172a}
+.t1-count-pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px}
+.t1-store-pill{background:#dcfce7;color:#166534}
+.t1-brand-pill{background:#ede9fe;color:#5b21b6}
+
+.t1-card-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:4px 16px 12px}
+.t1-card{background:#fff;border:2px solid #e2e8f0;border-radius:12px;padding:12px;position:relative;cursor:pointer;transition:all 0.2s}
+.t1-card.selected{border-color:#059669;background:#f0fdf4}
+.t1-card .cat-ribbon{position:absolute;top:8px;right:8px;font-size:9px;font-weight:600;padding:2px 6px;border-radius:6px;text-transform:uppercase;letter-spacing:0.3px}
+.ribbon-health{background:#cffafe;color:#0e7490}
+.ribbon-fashion{background:#ede9fe;color:#6d28d9}
+.ribbon-food{background:#ffedd5;color:#c2410c}
+.t1-card .scarcity{position:absolute;top:8px;left:8px;font-size:9px;font-weight:700;padding:2px 6px;border-radius:6px;background:#fef2f2;color:#dc2626}
+.t1-card .scarcity.zero{background:#f1f5f9;color:#94a3b8}
+.t1-card-brand{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;margin-bottom:8px;margin-top:20px}
+.t1-card-title{font-size:12px;font-weight:600;color:#0f172a;line-height:1.3;margin-bottom:4px}
+.t1-card-sub{font-size:11px;color:#64748b}
+.t1-card .checkmark{position:absolute;bottom:8px;right:8px;width:20px;height:20px;background:#059669;border-radius:50%;display:none;align-items:center;justify-content:center;color:#fff;font-size:11px}
+.t1-card.selected .checkmark{display:flex}
+
+.t1-sticky-footer{position:sticky;bottom:0;background:#fff;border-top:1px solid #e2e8f0;padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
+.t1-claim-btn{background:#059669;color:#fff;border:none;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:600;flex:1;cursor:pointer}
+.t1-claim-btn.disabled{background:#e2e8f0;color:#94a3b8}
+.t1-sel-count{font-size:12px;color:#64748b;margin-right:12px;white-space:nowrap}
+
+/* T1 Redemption */
+.t1-red{font-family:'Inter',sans-serif;background:#f8fafc;min-height:812px}
+.t1-red-header{background:linear-gradient(135deg,#064e3b,#059669);padding:28px 16px 24px;text-align:center;color:#fff}
+.t1-red-icon{font-size:40px;margin-bottom:8px}
+.t1-red-title{font-size:22px;font-weight:800;margin-bottom:4px}
+.t1-red-sub{font-size:13px;opacity:0.85}
+.t1-red-cards{padding:16px}
+.t1-red-card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;border:1px solid #e2e8f0}
+.t1-red-card-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.t1-red-brand-logo{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff}
+.t1-red-card-info{flex:1}
+.t1-red-card-title{font-size:13px;font-weight:600;color:#0f172a}
+.t1-red-card-cat{font-size:10px;font-weight:600;padding:2px 6px;border-radius:6px;display:inline-block;margin-top:2px}
+.t1-code-box{background:#f8fafc;border:1.5px dashed #cbd5e1;border-radius:8px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.t1-code-text{font-family:monospace;font-size:15px;font-weight:700;color:#0f172a;letter-spacing:2px}
+.t1-copy-btn{background:#059669;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer}
+.t1-visit-btn{width:100%;background:#fff;border:1.5px solid #059669;color:#059669;padding:10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:8px}
+.t1-validity{display:flex;align-items:center;gap:6px;font-size:12px;color:#64748b;margin-bottom:10px}
+.t1-accordion{border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:8px}
+.t1-acc-header{padding:10px 12px;font-size:12px;font-weight:600;color:#374151;display:flex;justify-content:space-between;cursor:pointer;background:#f8fafc}
+.t1-acc-body{padding:10px 12px;font-size:11px;color:#64748b;line-height:1.6;border-top:1px solid #e2e8f0}
+.t1-share-row{display:flex;gap:8px;padding:0 16px 24px}
+.t1-share-btn{flex:1;padding:10px;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;font-size:12px;font-weight:600;color:#374151;cursor:pointer;text-align:center}
+
+/* ===================== TEMPLATE 2 STYLES ===================== */
+.t2-sel{font-family:'Inter',sans-serif;background:#faf8f5;min-height:812px}
+.t2-topbar{background:#faf8f5;padding:16px 16px 0;border-bottom:1px solid #e8e4de}
+.t2-headline{font-size:18px;font-weight:800;color:#1a1a1a;margin-bottom:4px}
+.t2-sub{font-size:12px;color:#78716c;margin-bottom:12px}
+.t2-tab-bar{display:flex;gap:6px;overflow-x:auto;padding-bottom:12px;-webkit-overflow-scrolling:touch}
+.t2-tab-bar::-webkit-scrollbar{display:none}
+.t2-tab{padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;border:1.5px solid #e5e7eb;background:#fff;color:#64748b;flex-shrink:0}
+.t2-tab.active{background:#0f172a;color:#fff;border-color:#0f172a}
+.t2-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 16px}
+.t2-card{background:#fff;border-radius:14px;overflow:hidden;position:relative;cursor:pointer;transition:all 0.2s;border:2px solid transparent;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.t2-card.brand-card{border:2px solid transparent;background:linear-gradient(#fff,#fff) padding-box,linear-gradient(135deg,#c4b5fd,#a78bfa,#c4b5fd) border-box}
+.t2-card.selected{box-shadow:0 0 0 2px #059669}
+.t2-card-banner{height:60px;display:flex;align-items:center;justify-content:center;position:relative}
+.t2-card-logo{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.2)}
+.t2-ribbon-corner{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 52px 52px 0}
+.t2-ribbon-text{position:absolute;top:4px;right:2px;font-size:8px;font-weight:700;color:#fff;transform:rotate(45deg);white-space:nowrap;line-height:1}
+.t2-card-body{padding:8px 10px 10px}
+.t2-card-title{font-size:11px;font-weight:600;color:#1a1a1a;line-height:1.3;margin-bottom:4px}
+.t2-card-sub{font-size:10px;color:#78716c}
+.t2-scarcity{display:flex;align-items:center;gap:4px;font-size:10px;color:#dc2626;font-weight:500;margin-top:4px}
+.t2-scarcity-dot{width:6px;height:6px;border-radius:50%;background:#dc2626;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.t2-sel-count-bar{position:sticky;bottom:0;background:linear-gradient(transparent,#faf8f5 30%);padding:20px 16px 16px}
+.t2-claim-btn{width:100%;background:#0f172a;color:#fff;border:none;padding:14px;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer}
+
+/* T2 Redemption */
+.t2-red{font-family:'Inter',sans-serif;background:#fff;min-height:812px}
+.t2-red-header{background:#fff;padding:24px 16px 16px;border-bottom:1px solid #f1f5f9;text-align:center}
+.t2-red-icon{font-size:44px;margin-bottom:8px}
+.t2-red-title{font-size:20px;font-weight:800;color:#0f172a;margin-bottom:4px}
+.t2-red-sub{font-size:12px;color:#64748b}
+.t2-red-cards{padding:16px;display:flex;flex-direction:column;gap:12px}
+.t2-red-card{border-radius:12px;overflow:hidden;border:1px solid #e2e8f0}
+.t2-red-card-stripe{height:4px}
+.t2-red-card-body{padding:12px}
+.t2-red-card-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.t2-red-brand-logo{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
+.t2-red-card-title{font-size:13px;font-weight:600;color:#0f172a}
+.t2-red-card-cat{font-size:10px;color:#64748b;margin-top:1px}
+.t2-code-pill{border-radius:30px;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.t2-code-text{font-family:monospace;font-size:15px;font-weight:700;letter-spacing:2px}
+.t2-copy-btn{background:rgba(0,0,0,0.15);color:#fff;border:none;padding:5px 10px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer}
+.t2-redeem-btn{width:100%;padding:10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;border:none;margin-bottom:8px;color:#fff}
+.t2-validity{font-size:11px;color:#64748b;display:flex;align-items:center;gap:4px;margin-bottom:8px}
+.t2-tc-link{font-size:11px;color:#6366f1;cursor:pointer;text-decoration:underline}
+.t2-tc-body{font-size:10px;color:#94a3b8;margin-top:6px;line-height:1.6;display:none}
+.t2-share-row{display:flex;gap:8px;padding:4px 16px 24px;justify-content:center}
+.t2-share-btn{padding:8px 16px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;font-size:11px;font-weight:600;color:#374151;cursor:pointer}
+
+/* ===================== TEMPLATE 3 STYLES ===================== */
+.t3-sel{font-family:'Inter',sans-serif;background:#fff;min-height:812px}
+.t3-dark-header{background:#0f172a;padding:20px 16px 16px;color:#fff}
+.t3-title{font-size:18px;font-weight:800;margin-bottom:4px}
+.t3-sub{font-size:12px;color:#94a3b8;margin-bottom:12px}
+.t3-progress-dots{display:flex;gap:4px;margin-bottom:12px}
+.t3-dot{width:24px;height:6px;border-radius:3px;background:#1e3a5f}
+.t3-dot.filled{background:#34d399}
+.t3-filter-bar{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.t3-filter-bar::-webkit-scrollbar{display:none}
+.t3-filter{padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;border:1.5px solid #334155;background:transparent;color:#94a3b8;flex-shrink:0}
+.t3-filter.active{background:#34d399;color:#0f172a;border-color:#34d399}
+.t3-body{padding:12px 16px}
+.t3-section-label{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px}
+.t3-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.t3-card{background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px;position:relative;cursor:pointer;transition:all 0.2s}
+.t3-card.selected{background:#0d9488;border-color:#0d9488;color:#fff}
+.t3-card-value{font-size:22px;font-weight:900;color:#0f172a;line-height:1;margin-bottom:4px}
+.t3-card.selected .t3-card-value{color:#fff}
+.t3-card-brand{font-size:11px;font-weight:600;color:#475569;margin-bottom:2px}
+.t3-card.selected .t3-card-brand{color:rgba(255,255,255,0.8)}
+.t3-card-cat{font-size:10px;color:#94a3b8}
+.t3-card.selected .t3-card-cat{color:rgba(255,255,255,0.7)}
+.t3-card-badge{position:absolute;top:8px;right:8px;font-size:9px;font-weight:700;padding:2px 6px;border-radius:6px;background:#f1f5f9;color:#475569}
+.t3-card.selected .t3-card-badge{background:rgba(255,255,255,0.2);color:#fff}
+.t3-card-scarcity{font-size:10px;color:#ef4444;margin-top:6px;font-weight:500}
+.t3-card.selected .t3-card-scarcity{color:rgba(255,255,255,0.9)}
+.t3-sticky-bottom{position:sticky;bottom:0;background:#fff;border-top:1px solid #e2e8f0;padding:12px 16px}
+.t3-bottom-inner{display:flex;align-items:center;gap:10px}
+.t3-selected-logos{display:flex;gap:-4px}
+.t3-sel-logo{width:28px;height:28px;border-radius:8px;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;margin-left:-4px}
+.t3-claim-btn{background:#0d9488;color:#fff;border:none;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:700;flex:1;cursor:pointer}
+
+/* T3 Redemption */
+.t3-red{font-family:'Inter',sans-serif;background:#f8fafc;min-height:812px;overflow:hidden}
+.confetti-area{height:80px;background:linear-gradient(135deg,#0f172a,#1e3a5f);position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:0 16px}
+.confetti-dot{position:absolute;width:6px;height:6px;border-radius:50%;animation:confetti-fall 3s infinite}
+@keyframes confetti-fall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(100px) rotate(360deg);opacity:0}}
+.t3-red-title{font-size:22px;font-weight:800;color:#fff;text-align:center}
+.t3-red-sub{font-size:12px;color:#94a3b8;text-align:center;margin-top:4px}
+.t3-red-cards{padding:16px;display:flex;flex-direction:column;gap:12px}
+.t3-red-card{background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;display:flex}
+.t3-red-card-stripe{width:5px;flex-shrink:0}
+.t3-red-card-content{flex:1;padding:14px}
+.t3-red-card-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.t3-red-brand-logo{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.t3-red-card-info .brand{font-size:13px;font-weight:700;color:#0f172a}
+.t3-red-card-info .cat{font-size:10px;color:#94a3b8}
+.t3-big-code{font-family:monospace;font-size:18px;font-weight:800;color:#0f172a;letter-spacing:3px;margin-bottom:10px;background:#f8fafc;padding:10px 12px;border-radius:8px;border:1.5px dashed #cbd5e1}
+.t3-open-btn{width:100%;border:none;padding:10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:#fff;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:6px}
+.t3-validity-badge{display:inline-flex;align-items:center;gap:4px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:20px;padding:4px 10px;font-size:10px;font-weight:600;margin-bottom:8px}
+.t3-tc-link{font-size:11px;color:#6366f1;cursor:pointer}
+.t3-tc-body{font-size:10px;color:#94a3b8;margin-top:4px;line-height:1.6;display:none}
+.t3-email-section{margin:0 16px 24px;background:#fff;border-radius:12px;padding:14px;border:1px solid #e2e8f0}
+.t3-email-label{font-size:12px;font-weight:600;color:#0f172a;margin-bottom:8px}
+.t3-email-row{display:flex;gap:8px}
+.t3-email-input{flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:12px;font-family:'Inter',sans-serif}
+.t3-email-btn{background:#0d9488;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
+
+/* DESKTOP T1 */
+.dt1{font-family:'Inter',sans-serif;background:#fff;height:100%}
+.dt1-topnav{background:#fff;border-bottom:1px solid #e2e8f0;padding:0 40px;height:64px;display:flex;align-items:center;justify-content:space-between}
+.dt1-logo{font-size:18px;font-weight:800;color:#0f172a}
+.dt1-logo span{color:#059669}
+.dt1-nav-links{display:flex;gap:24px;font-size:14px;color:#64748b}
+.dt1-body{max-width:900px;margin:0 auto;padding:32px 24px}
+.dt1-header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.dt1-step-indicator{display:flex;align-items:center;gap:8px}
+.dt1-step-circle{width:28px;height:28px;border-radius:50%;background:#059669;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.dt1-step-label{font-size:14px;font-weight:600;color:#0f172a}
+.dt1-step-timer{display:flex;align-items:center;gap:4px;font-size:13px;color:#ef4444;font-weight:500}
+.dt1-progress{height:6px;background:#e2e8f0;border-radius:3px;margin-bottom:28px}
+.dt1-progress-fill{width:50%;height:100%;background:linear-gradient(90deg,#059669,#34d399);border-radius:3px}
+.dt1-headline{font-size:28px;font-weight:800;color:#0f172a;margin-bottom:4px}
+.dt1-sub{font-size:15px;color:#64748b;margin-bottom:28px}
+.dt1-sec-hdr{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.dt1-sec-title{font-size:16px;font-weight:700;color:#0f172a}
+.dt1-cards-2col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:24px}
+.dt1-card{background:#fff;border:2px solid #e2e8f0;border-radius:14px;padding:16px;position:relative;cursor:pointer;transition:all 0.2s}
+.dt1-card.selected{border-color:#059669;background:#f0fdf4}
+.dt1-card .cat-ribbon{position:absolute;top:10px;right:10px;font-size:9px;font-weight:600;padding:2px 8px;border-radius:6px;text-transform:uppercase}
+.dt1-card .scarcity{position:absolute;top:10px;left:10px;font-size:9px;font-weight:700;padding:2px 8px;border-radius:6px;background:#fef2f2;color:#dc2626}
+.dt1-card .scarcity.zero{background:#f1f5f9;color:#94a3b8}
+.dt1-brand-logo{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;margin-top:20px;margin-bottom:10px}
+.dt1-card-title{font-size:13px;font-weight:600;color:#0f172a;line-height:1.3;margin-bottom:4px}
+.dt1-card-sub{font-size:11px;color:#64748b}
+.dt1-card .checkmark{position:absolute;bottom:10px;right:10px;width:22px;height:22px;background:#059669;border-radius:50%;display:none;align-items:center;justify-content:center;color:#fff;font-size:12px}
+.dt1-card.selected .checkmark{display:flex}
+.dt1-bottom-bar{background:#fff;border-top:1px solid #e2e8f0;padding:16px 40px;display:flex;align-items:center;justify-content:space-between;position:sticky;bottom:0}
+.dt1-sel-summary{font-size:14px;color:#64748b}
+.dt1-claim-btn-lg{background:#059669;color:#fff;border:none;padding:14px 36px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer}
+
+/* DESKTOP T2 */
+.dt2{font-family:'Inter',sans-serif;background:#faf8f5;height:100%}
+.dt2-topnav{background:#faf8f5;border-bottom:1px solid #e8e4de;padding:0 40px;height:64px;display:flex;align-items:center;justify-content:space-between}
+.dt2-logo{font-size:18px;font-weight:800;color:#1a1a1a}
+.dt2-body{max-width:960px;margin:0 auto;padding:32px 24px}
+.dt2-headline{font-size:28px;font-weight:800;color:#1a1a1a;margin-bottom:8px}
+.dt2-sub{font-size:14px;color:#78716c;margin-bottom:20px}
+.dt2-tab-bar{display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.dt2-tab{padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;border:1.5px solid #e5e7eb;background:#fff;color:#64748b}
+.dt2-tab.active{background:#0f172a;color:#fff;border-color:#0f172a}
+.dt2-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.dt2-card{background:#fff;border-radius:16px;overflow:hidden;position:relative;cursor:pointer;transition:all 0.2s;border:2px solid transparent;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.dt2-card.brand-card{background:linear-gradient(#fff,#fff) padding-box,linear-gradient(135deg,#c4b5fd,#a78bfa,#c4b5fd) border-box}
+.dt2-card.selected{box-shadow:0 0 0 3px #059669}
+.dt2-card-banner{height:80px;display:flex;align-items:center;justify-content:center;position:relative}
+.dt2-card-logo{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.2)}
+.dt2-ribbon-corner{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 60px 60px 0}
+.dt2-ribbon-text{position:absolute;top:6px;right:3px;font-size:9px;font-weight:700;color:#fff;transform:rotate(45deg);white-space:nowrap}
+.dt2-card-body{padding:10px 12px 12px}
+.dt2-card-title{font-size:12px;font-weight:600;color:#1a1a1a;line-height:1.3;margin-bottom:4px}
+.dt2-scarcity{display:flex;align-items:center;gap:4px;font-size:11px;color:#dc2626;font-weight:500;margin-top:4px}
+.dt2-scarcity-dot{width:6px;height:6px;border-radius:50%;background:#dc2626;animation:pulse 1.5s infinite}
+.dt2-bottom-bar{background:#faf8f5;border-top:1px solid #e8e4de;padding:16px 40px;display:flex;align-items:center;justify-content:space-between;position:sticky;bottom:0}
+.dt2-claim-btn{background:#0f172a;color:#fff;border:none;padding:14px 36px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer}
+
+/* DESKTOP T3 */
+.dt3{font-family:'Inter',sans-serif;background:#fff;height:100%}
+.dt3-topnav{background:#0f172a;padding:0 40px;height:64px;display:flex;align-items:center;justify-content:space-between}
+.dt3-logo{font-size:18px;font-weight:800;color:#fff}
+.dt3-logo span{color:#34d399}
+.dt3-nav{display:flex;gap:6px}
+.dt3-filter{padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;border:1.5px solid #334155;background:transparent;color:#94a3b8}
+.dt3-filter.active{background:#34d399;color:#0f172a;border-color:#34d399}
+.dt3-body{max-width:960px;margin:0 auto;padding:32px 40px}
+.dt3-header-row{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px}
+.dt3-headline{font-size:28px;font-weight:800;color:#0f172a;margin-bottom:8px}
+.dt3-progress-dots{display:flex;gap:6px}
+.dt3-dot{width:32px;height:8px;border-radius:4px;background:#e2e8f0}
+.dt3-dot.filled{background:#0d9488}
+.dt3-sel-label{font-size:13px;color:#64748b;margin-bottom:8px}
+.dt3-sec-label{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px}
+.dt3-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+.dt3-card{background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;cursor:pointer;transition:all 0.2s;position:relative}
+.dt3-card.selected{background:#0d9488;border-color:#0d9488;color:#fff}
+.dt3-card-value{font-size:26px;font-weight:900;color:#0f172a;line-height:1;margin-bottom:6px}
+.dt3-card.selected .dt3-card-value{color:#fff}
+.dt3-card-brand{font-size:12px;font-weight:600;color:#475569}
+.dt3-card.selected .dt3-card-brand{color:rgba(255,255,255,0.85)}
+.dt3-card-scarcity{font-size:11px;color:#ef4444;margin-top:6px}
+.dt3-card.selected .dt3-card-scarcity{color:rgba(255,255,255,0.9)}
+.dt3-bottom-bar{background:#fff;border-top:1px solid #e2e8f0;padding:16px 40px;display:flex;align-items:center;gap:16px;position:sticky;bottom:0}
+.dt3-sel-logos{display:flex}
+.dt3-sel-logo{width:32px;height:32px;border-radius:8px;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;margin-left:-6px}
+.dt3-sel-logo:first-child{margin-left:0}
+.dt3-claim-btn-lg{background:#0d9488;color:#fff;border:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;flex:1}
+.dt3-sel-count-label{font-size:14px;color:#64748b}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div class="logo">Go<span>Self</span></div>
+  <div style="width:1px;height:20px;background:#334155;margin:0 4px"></div>
+  <div style="font-size:14px;font-weight:500;color:#e2e8f0">Campaign Reward Templates v2</div>
+  <div class="subtitle">3 Templates · Selection + Redemption · Mobile + Desktop</div>
+</div>
+
+<div class="page-body">
+
+<!-- =================== TEMPLATE 1 =================== -->
+<div class="template-section">
+  <div class="template-header">
+    <div class="template-title">Template 1 — Sectioned Split</div>
+    <span class="template-badge badge-popular">⭐ Most Popular</span>
+  </div>
+  <div class="template-desc">White background · Store vs Brand sections · Green accent · Progress bar + timer · Sticky claim footer</div>
+  <div class="frames-row">
+
+    <!-- MOBILE T1 -->
+    <div class="frame-wrapper">
+      <div class="frame-label">📱 Mobile · 375px</div>
+      <div class="phone-outer">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="phone-scroll">
+
+            <!-- SELECTION -->
+            <div class="t1-sel">
+              <div class="t1-topbar">
+                <!-- Client logo bar + Powered by GoSelf -->
+                <div class="t1-client-bar">
+                  <div class="t1-client-logo">
+                    <div class="t1-client-logo-img">Z</div>
+                    <div class="t1-client-name">Zouk</div>
+                  </div>
+                  <div class="t1-powered">Powered by <span>GoSelf</span></div>
+                </div>
+                <div class="t1-progress-wrap">
+                  <div class="t1-progress-label">Step 1 of 2 — Pick your rewards</div>
+                  <div class="t1-progress-bar"><div class="t1-progress-fill"></div></div>
+                  <div class="t1-timer">⏱ 09:47 remaining</div>
+                </div>
+              </div>
+              <div class="t1-headline">Your exclusive rewards 🎁</div>
+              <div class="t1-sub">Choose 1–5 rewards from your campaign</div>
+
+              <div class="t1-section-header">🏪 Store Rewards <span class="t1-count-pill t1-store-pill">4</span></div>
+              <div class="t1-card-grid">
+                <div class="t1-card selected">
+                  <span class="scarcity">3 left</span>
+                  <span class="cat-ribbon ribbon-fashion">Fashion</span>
+                  <div class="t1-card-brand" style="background:#7c3aed">Z</div>
+                  <div class="t1-card-title">₹150 Off on ₹799+</div>
+                  <div class="t1-card-sub">Zouk</div>
+                  <div class="checkmark">✓</div>
+                </div>
+                <div class="t1-card">
+                  <span class="scarcity">2 left</span>
+                  <span class="cat-ribbon ribbon-fashion">Fashion</span>
+                  <div class="t1-card-brand" style="background:#6d28d9">G</div>
+                  <div class="t1-card-title">₹150 Off First Order</div>
+                  <div class="t1-card-sub">Gehen</div>
+                  <div class="checkmark">✓</div>
+                </div>
+                <div class="t1-card selected">
+                  <span class="scarcity">1 left</span>
+                  <span class="cat-ribbon ribbon-fashion">Fashion</span>
+                  <div class="t1-card-brand" style="background:#7c3aed">Z</div>
+                  <div class="t1-card-title">₹100 Off Next Purchase</div>
+                  <div class="t1-card-sub">Zouk</div>
+                  <div class="checkmark">✓</div>
+                </div>
+                <div class="t1-card">
+                  <span class="scarcity zero">Out of stock</span>
+                  <span class="cat-ribbon ribbon-fashion">Fashion</span>
+                  <div class="t1-card-brand" style="background:#a78bfa">Z</div>
+                  <div class="t1-card-title">10% Off Unique Code</div>
+                  <div class="t1-card-sub">Zouk</div>
+                  <div class="checkmark">✓</div>
+                </div>
+              </div>
+
+              <div class="t1-section-header">🤝 Brand Partner Rewards <span class="t1-count-pill t1-brand-pill">4</span></div>
+              <div class="t1-card-grid">
+                <div class="t1-card selected">
+                  <span class="scarcity">5 left</span>
+                  <span class="cat-ribbon ribbon-health">Health</span>
+                  <div class="t1-card-brand" style="background:#0891b2">M</div>
+                  <div class="t1-card-title">MediBuddy 15% Off</div>
+                  <div class="t1-card-sub">Health Voucher</div>
+                  <div class="checkmark">✓</div>
+                </div>
+                <div class="t1-card">
+                  <span class="scarcity zero">0 left</span>
+                  <span class="cat-ribbon ribbon-health">Health</span>
+                  <div class="t1-card-brand" style="background:#0e7490">M</div>
+                  <div class="t1-card-title">Free Doctor Consult</div>
+                  <div class="t1-card-sub">MediBuddy · New User</div>
+                  <div class="checkmark">✓</div>
+                </div>
+                <div class="t1-card">
+                  <span class="scarcity">2 left</span>
+                  <span class="cat-ribbon ribbon-health">Health</span>
+                  <div class="t1-card-brand" style="background:#0891b2">M</div>
+                  <div class="t1-card-title">20% Off Health Checkup</div>
+                  <div class="t1-card-sub">MediBuddy</div>
+                  <div class="checkmark">✓</div>
+                </div>
+                <div class="t1-card">
+                  <span class="scarcity">4 left</span>
+                  <span class="cat-ribbon ribbon-health">Health</span>
+                  <div class="t1-card-brand" style="background:#0891b2">M</div>
+                  <div class="t1-card-title">₹100 Off MediBuddy App</div>
+                  <div class="t1-card-sub">MediBuddy</div>
+                  <div class="checkmark">✓</div>
+                </div>
+              </div>
+
+              <div class="t1-sticky-footer">
+                <div class="t1-sel-count">3 of 5 selected</div>
+                <button class="t1-claim-btn">Claim 3 Rewards →</button>
+              </div>
+            </div>
+
+            <div class="screen-divider">Redemption Screen</div>
+
+            <!-- REDEMPTION -->
+            <div class="t1-red">
+              <!-- Client logo bar on redemption screen too -->
+              <div style="background:#fff;border-bottom:1px solid #f1f5f9;padding:10px 16px;display:flex;align-items:center;justify-content:space-between">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800">Z</div>
+                  <span style="font-size:13px;font-weight:700;color:#0f172a">Zouk</span>
+                </div>
+                <div style="font-size:9px;color:#94a3b8">Powered by <span style="color:#059669;font-weight:600">GoSelf</span></div>
+              </div>
+              <div class="t1-red-header">
+                <div class="t1-red-icon">🎉</div>
+                <div class="t1-red-title">Rewards claimed!</div>
+                <div class="t1-red-sub">3 rewards added to your account</div>
+              </div>
+              <div class="t1-red-cards">
+                <div class="t1-red-card">
+                  <div class="t1-red-card-top">
+                    <div class="t1-red-brand-logo" style="background:#7c3aed">Z</div>
+                    <div class="t1-red-card-info">
+                      <div class="t1-red-card-title">Zouk · ₹150 Off on ₹799+</div>
+                      <span class="t1-red-card-cat ribbon-fashion">Fashion</span>
+                    </div>
+                  </div>
+                  <div class="t1-code-box">
+                    <span class="t1-code-text">ZOUK150</span>
+                    <button class="t1-copy-btn">Copy</button>
+                  </div>
+                  <button class="t1-visit-btn">🛍 Visit Zouk to Redeem →</button>
+                  <div class="t1-validity">📅 Valid until: 30 Jun 2026</div>
+                  <div class="t1-accordion">
+                    <div class="t1-acc-header">📋 Steps to Redeem <span>▾</span></div>
+                    <div class="t1-acc-body" style="display:block">
+                      <div style="display:flex;gap:8px;margin-bottom:6px"><span style="min-width:18px;height:18px;background:#059669;color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">1</span><span>Copy the code above</span></div>
+                      <div style="display:flex;gap:8px;margin-bottom:6px"><span style="min-width:18px;height:18px;background:#059669;color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">2</span><span>Visit Zouk &amp; add items worth ₹799+</span></div>
+                      <div style="display:flex;gap:8px;margin-bottom:6px"><span style="min-width:18px;height:18px;background:#059669;color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">3</span><span>Paste code at checkout</span></div>
+                      <div style="display:flex;gap:8px"><span style="min-width:18px;height:18px;background:#059669;color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">4</span><span>Discount applied instantly 🎉</span></div>
+                    </div>
+                  </div>
+                  <div class="t1-accordion" style="margin-top:6px">
+                    <div class="t1-acc-header">Terms & Conditions <span>▾</span></div>
+                    <div class="t1-acc-body">Valid on first purchase only. Not combinable with other offers. Minimum cart value ₹799. Expires 30 Jun 2026.</div>
+                  </div>
+                </div>
+
+                <div class="t1-red-card">
+                  <div class="t1-red-card-top">
+                    <div class="t1-red-brand-logo" style="background:#7c3aed">Z</div>
+                    <div class="t1-red-card-info">
+                      <div class="t1-red-card-title">Zouk · ₹100 Off Next Purchase</div>
+                      <span class="t1-red-card-cat ribbon-fashion">Fashion</span>
+                    </div>
+                  </div>
+                  <div class="t1-code-box">
+                    <span class="t1-code-text">ZK100NXT</span>
+                    <button class="t1-copy-btn">Copy</button>
+                  </div>
+                  <button class="t1-visit-btn">🛍 Visit Zouk to Redeem →</button>
+                  <div class="t1-validity">📅 Valid until: 30 Jun 2026</div>
+                  <div class="t1-accordion">
+                    <div class="t1-acc-header">📋 Steps to Redeem <span>▾</span></div>
+                    <div class="t1-acc-body" style="display:block">
+                      <div style="display:flex;gap:8px;margin-bottom:6px"><span style="min-width:18px;height:18px;background:#059669;color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">1</span><span>Copy the code above</span></div>
+                      <div style="display:flex;gap:8px;margin-bottom:6px"><span style="min-width:18px;height:18px;background:#059669;color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">2</span><span>Add items to cart on Zouk</span></div>
+                      <div style="display:flex;gap:8px"><span style="min-width:18px;height:18px;background:#059669;color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">3</span><span>Enter code at checkout</span></div>
+                    </div>
+                  </div>
+                  <div class="t1-accordion" style="margin-top:6px">
+                    <div class="t1-acc-header">Terms & Conditions <span>▾</span></div>
+                    <div class="t1-acc-body">Valid on all products. Min cart ₹500. Cannot be combined with sale items.</div>
+                  </div>
+                </div>
+
+                <div class="t1-red-card">
+                  <div class="t1-red-card-top">
+                    <div class="t1-red-brand-logo" style="background:#0891b2">M</div>
+                    <div class="t1-red-card-info">
+                      <div class="t1-red-card-title">MediBuddy 15% Off</div>
+                      <span class="t1-red-card-cat ribbon-health">Health</span>
+                    </div>
+                  </div>
+                  <div class="t1-code-box">
+                    <span class="t1-code-text">MEDI15GS</span>
+                    <button class="t1-copy-btn">Copy</button>
+                  </div>
+                  <button class="t1-visit-btn" style="border-color:#0891b2;color:#0891b2">🏥 Visit MediBuddy →</button>
+                  <div class="t1-validity">📅 Valid until: 30 Jun 2026</div>
+                  <div class="t1-accordion">
+                    <div class="t1-acc-header">📋 Steps to Redeem <span>▾</span></div>
+                    <div class="t1-acc-body" style="display:block">
+                      <div style="display:flex;gap:8px;margin-bottom:6px"><span style="min-width:18px;height:18px;background:#0891b2;color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">1</span><span>Copy the voucher code</span></div>
+                      <div style="display:flex;gap:8px;margin-bottom:6px"><span style="min-width:18px;height:18px;background:#0891b2;color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">2</span><span>Visit MediBuddy app or website</span></div>
+                      <div style="display:flex;gap:8px;margin-bottom:6px"><span style="min-width:18px;height:18px;background:#0891b2;color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">3</span><span>Select a health checkup package</span></div>
+                      <div style="display:flex;gap:8px"><span style="min-width:18px;height:18px;background:#0891b2;color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">4</span><span>Apply code at payment</span></div>
+                    </div>
+                  </div>
+                  <div class="t1-accordion" style="margin-top:6px">
+                    <div class="t1-acc-header">Terms & Conditions <span>▾</span></div>
+                    <div class="t1-acc-body">Valid for health checkup packages. 1 redemption per user. Not valid on doctor consultations.</div>
+                  </div>
+                </div>
+              </div>
+              <div class="t1-share-row">
+                <button class="t1-share-btn">💬 WhatsApp</button>
+                <button class="t1-share-btn">📧 Email</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESKTOP T1 -->
+    <div class="frame-wrapper">
+      <div class="frame-label">🖥 Desktop · 1200px (scaled 50%)</div>
+      <div class="desktop-outer-wrap">
+        <div class="desktop-scale-box">
+          <div class="desktop-outer">
+            <div class="desktop-chrome">
+              <div class="chrome-dots"><div class="chrome-dot dot-r"></div><div class="chrome-dot dot-y"></div><div class="chrome-dot dot-g"></div></div>
+              <div class="chrome-bar"><span class="chrome-lock">🔒</span> app.goself.in/campaign/rewards</div>
+            </div>
+            <div class="desktop-screen">
+              <div class="dt1">
+                <div class="dt1-topnav">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800">Z</div>
+                    <div>
+                      <div style="font-size:15px;font-weight:700;color:#0f172a;line-height:1">Zouk</div>
+                      <div style="font-size:10px;color:#94a3b8;margin-top:1px">Powered by <span style="color:#059669;font-weight:600">GoSelf</span></div>
+                    </div>
+                  </div>
+                  <div class="dt1-nav-links"><span>Dashboard</span><span>Campaigns</span><span>Rewards</span></div>
+                </div>
+                <div style="padding:0 40px;padding-top:20px">
+                  <div class="dt1-header-row">
+                    <div class="dt1-step-indicator">
+                      <div class="dt1-step-circle">1</div>
+                      <div class="dt1-step-label">Pick your rewards</div>
+                    </div>
+                    <div class="dt1-step-timer">⏱ 09:47 remaining</div>
+                  </div>
+                  <div class="dt1-progress"><div class="dt1-progress-fill"></div></div>
+                  <div class="dt1-headline">Your exclusive rewards 🎁</div>
+                  <div class="dt1-sub">Complete your campaign — choose 1 to 5 rewards below</div>
+
+                  <div class="dt1-sec-hdr">
+                    <span style="font-size:18px">🏪</span>
+                    <span class="dt1-sec-title">Store Rewards</span>
+                    <span class="t1-count-pill t1-store-pill">4 rewards</span>
+                  </div>
+                  <div class="dt1-cards-2col">
+                    <div class="dt1-card selected">
+                      <span class="scarcity">3 left</span>
+                      <span class="cat-ribbon ribbon-fashion">Fashion</span>
+                      <div class="dt1-brand-logo" style="background:#7c3aed">Z</div>
+                      <div class="dt1-card-title">₹150 Off on ₹799+</div>
+                      <div class="dt1-card-sub">Zouk Store Discount</div>
+                      <div class="checkmark">✓</div>
+                    </div>
+                    <div class="dt1-card">
+                      <span class="scarcity">2 left</span>
+                      <span class="cat-ribbon ribbon-fashion">Fashion</span>
+                      <div class="dt1-brand-logo" style="background:#6d28d9">G</div>
+                      <div class="dt1-card-title">₹150 Off First Order</div>
+                      <div class="dt1-card-sub">Gehen</div>
+                      <div class="checkmark">✓</div>
+                    </div>
+                    <div class="dt1-card selected">
+                      <span class="scarcity">1 left</span>
+                      <span class="cat-ribbon ribbon-fashion">Fashion</span>
+                      <div class="dt1-brand-logo" style="background:#7c3aed">Z</div>
+                      <div class="dt1-card-title">₹100 Off Next Purchase</div>
+                      <div class="dt1-card-sub">Zouk</div>
+                      <div class="checkmark">✓</div>
+                    </div>
+                  </div>
+
+                  <div class="dt1-sec-hdr">
+                    <span style="font-size:18px">🤝</span>
+                    <span class="dt1-sec-title">Brand Partner Rewards</span>
+                    <span class="t1-count-pill t1-brand-pill">4 rewards</span>
+                  </div>
+                  <div class="dt1-cards-2col">
+                    <div class="dt1-card selected">
+                      <span class="scarcity">5 left</span>
+                      <span class="cat-ribbon ribbon-health">Health</span>
+                      <div class="dt1-brand-logo" style="background:#0891b2">M</div>
+                      <div class="dt1-card-title">MediBuddy 15% Off</div>
+                      <div class="dt1-card-sub">Health Voucher</div>
+                      <div class="checkmark">✓</div>
+                    </div>
+                    <div class="dt1-card">
+                      <span class="scarcity zero">0 left</span>
+                      <span class="cat-ribbon ribbon-health">Health</span>
+                      <div class="dt1-brand-logo" style="background:#0e7490">M</div>
+                      <div class="dt1-card-title">Free Doctor Consultation</div>
+                      <div class="dt1-card-sub">MediBuddy · New User</div>
+                      <div class="checkmark">✓</div>
+                    </div>
+                    <div class="dt1-card">
+                      <span class="scarcity">4 left</span>
+                      <span class="cat-ribbon ribbon-health">Health</span>
+                      <div class="dt1-brand-logo" style="background:#0891b2">M</div>
+                      <div class="dt1-card-title">₹100 Off MediBuddy App</div>
+                      <div class="dt1-card-sub">MediBuddy</div>
+                      <div class="checkmark">✓</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dt1-bottom-bar">
+                  <div class="dt1-sel-summary">3 of 5 rewards selected</div>
+                  <button class="dt1-claim-btn-lg">Claim 3 Rewards →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <button class="select-btn">Select Template 1</button>
+</div>
+
+<!-- =================== TEMPLATE 2 =================== -->
+<div class="template-section">
+  <div class="template-header">
+    <div class="template-title">Template 2 — Visual Cards</div>
+    <span class="template-badge badge-animated">✨ Animated</span>
+  </div>
+  <div class="template-desc">Warm background #faf8f5 · Category tab bar · Tinted card banners · Diagonal ribbon corners · Purple shimmer for brand partners</div>
+  <div class="frames-row">
+
+    <!-- MOBILE T2 -->
+    <div class="frame-wrapper">
+      <div class="frame-label">📱 Mobile · 375px</div>
+      <div class="phone-outer">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="phone-scroll">
+
+            <div class="t2-sel">
+              <div class="t2-topbar">
+                <!-- Client logo bar + Powered by GoSelf -->
+                <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid #e8e4de;margin-bottom:12px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800">Z</div>
+                    <span style="font-size:13px;font-weight:700;color:#1a1a1a">Zouk</span>
+                  </div>
+                  <div style="font-size:9px;color:#a8a29e">Powered by <span style="color:#059669;font-weight:600">GoSelf</span></div>
+                </div>
+                <div class="t2-headline">Pick your rewards 🎁</div>
+                <div class="t2-sub">Choose 1–5 · Complete your campaign rewards</div>
+                <div class="t2-tab-bar">
+                  <div class="t2-tab active">All</div>
+                  <div class="t2-tab">🏪 Store</div>
+                  <div class="t2-tab">🤝 Brand Partners</div>
+                  <div class="t2-tab">💊 Health</div>
+                  <div class="t2-tab">👗 Fashion</div>
+                </div>
+              </div>
+              <div class="t2-grid">
+                <!-- Store cards -->
+                <div class="t2-card selected">
+                  <div class="t2-card-banner" style="background:#f3e8ff">
+                    <div class="t2-ribbon-corner" style="border-color:transparent #7c3aed transparent transparent"></div>
+                    <span class="t2-ribbon-text">Fashion</span>
+                    <div class="t2-card-logo" style="background:#7c3aed">Z</div>
+                  </div>
+                  <div class="t2-card-body">
+                    <div class="t2-card-title">₹150 Off on ₹799+</div>
+                    <div style="font-size:10px;color:#78716c">Zouk</div>
+                    <div class="t2-scarcity"><span class="t2-scarcity-dot"></span> 3 left</div>
+                  </div>
+                </div>
+                <div class="t2-card">
+                  <div class="t2-card-banner" style="background:#ede9fe">
+                    <div class="t2-ribbon-corner" style="border-color:transparent #6d28d9 transparent transparent"></div>
+                    <span class="t2-ribbon-text">Fashion</span>
+                    <div class="t2-card-logo" style="background:#6d28d9">G</div>
+                  </div>
+                  <div class="t2-card-body">
+                    <div class="t2-card-title">₹150 Off First Order</div>
+                    <div style="font-size:10px;color:#78716c">Gehen</div>
+                    <div class="t2-scarcity"><span class="t2-scarcity-dot"></span> 2 left</div>
+                  </div>
+                </div>
+                <!-- Brand partner cards -->
+                <div class="t2-card brand-card selected">
+                  <div class="t2-card-banner" style="background:#cffafe">
+                    <div class="t2-ribbon-corner" style="border-color:transparent #0891b2 transparent transparent"></div>
+                    <span class="t2-ribbon-text">Health</span>
+                    <div class="t2-card-logo" style="background:#0891b2">M</div>
+                  </div>
+                  <div class="t2-card-body">
+                    <div class="t2-card-title">MediBuddy 15% Off</div>
+                    <div style="font-size:10px;color:#78716c">Health Voucher</div>
+                    <div class="t2-scarcity"><span class="t2-scarcity-dot"></span> 5 left</div>
+                  </div>
+                </div>
+                <div class="t2-card brand-card">
+                  <div class="t2-card-banner" style="background:#ecfdf5">
+                    <div class="t2-ribbon-corner" style="border-color:transparent #0891b2 transparent transparent"></div>
+                    <span class="t2-ribbon-text">Health</span>
+                    <div class="t2-card-logo" style="background:#0891b2">M</div>
+                  </div>
+                  <div class="t2-card-body">
+                    <div class="t2-card-title">Free Doctor Consult</div>
+                    <div style="font-size:10px;color:#78716c">MediBuddy · New User</div>
+                    <div style="font-size:10px;color:#94a3b8;margin-top:4px">Out of stock</div>
+                  </div>
+                </div>
+                <div class="t2-card">
+                  <div class="t2-card-banner" style="background:#f3e8ff">
+                    <div class="t2-ribbon-corner" style="border-color:transparent #7c3aed transparent transparent"></div>
+                    <span class="t2-ribbon-text">Fashion</span>
+                    <div class="t2-card-logo" style="background:#7c3aed">Z</div>
+                  </div>
+                  <div class="t2-card-body">
+                    <div class="t2-card-title">₹100 Off Next Purchase</div>
+                    <div style="font-size:10px;color:#78716c">Zouk</div>
+                    <div class="t2-scarcity"><span class="t2-scarcity-dot"></span> 1 left</div>
+                  </div>
+                </div>
+                <div class="t2-card brand-card selected">
+                  <div class="t2-card-banner" style="background:#cffafe">
+                    <div class="t2-ribbon-corner" style="border-color:transparent #0891b2 transparent transparent"></div>
+                    <span class="t2-ribbon-text">Health</span>
+                    <div class="t2-card-logo" style="background:#0891b2">M</div>
+                  </div>
+                  <div class="t2-card-body">
+                    <div class="t2-card-title">20% Off Health Checkup</div>
+                    <div style="font-size:10px;color:#78716c">MediBuddy</div>
+                    <div class="t2-scarcity"><span class="t2-scarcity-dot"></span> 2 left</div>
+                  </div>
+                </div>
+              </div>
+              <div class="t2-sel-count-bar">
+                <button class="t2-claim-btn">Claim 3 Rewards →</button>
+              </div>
+            </div>
+
+            <div class="screen-divider">Redemption Screen</div>
+
+            <div class="t2-red">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid #f1f5f9;background:#fff">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800">Z</div>
+                  <span style="font-size:13px;font-weight:700;color:#0f172a">Zouk</span>
+                </div>
+                <div style="font-size:9px;color:#94a3b8">Powered by <span style="color:#059669;font-weight:600">GoSelf</span></div>
+              </div>
+              <div class="t2-red-header">
+                <div class="t2-red-icon">🎊</div>
+                <div class="t2-red-title">Rewards claimed!</div>
+                <div class="t2-red-sub">3 rewards ready to use</div>
+              </div>
+              <div class="t2-red-cards">
+                <div class="t2-red-card">
+                  <div class="t2-red-card-stripe" style="background:#7c3aed"></div>
+                  <div class="t2-red-card-body">
+                    <div class="t2-red-card-top">
+                      <div class="t2-red-brand-logo" style="background:#7c3aed">Z</div>
+                      <div>
+                        <div class="t2-red-card-title">Zouk · ₹150 Off on ₹799+</div>
+                        <div class="t2-red-card-cat">👗 Fashion</div>
+                      </div>
+                    </div>
+                    <div class="t2-code-pill" style="background:#7c3aed">
+                      <span class="t2-code-text" style="color:#fff">ZOUK150</span>
+                      <button class="t2-copy-btn">Copy</button>
+                    </div>
+                    <button class="t2-redeem-btn" style="background:#7c3aed">Redeem Now at Zouk →</button>
+                    <div style="background:#faf5ff;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+                      <div style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:5px">📋 STEPS TO REDEEM</div>
+                      <div style="font-size:10px;color:#475569;line-height:1.7">1. Copy code &nbsp;2. Visit Zouk, cart ₹799+ &nbsp;3. Paste at checkout</div>
+                    </div>
+                    <div class="t2-validity">⏰ Expires in 25 days · 30 Jun 2026</div>
+                    <div><span class="t2-tc-link" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'">View Terms & Conditions</span>
+                    <div class="t2-tc-body">Valid on ₹799+ cart. Not valid on discounted items. One use per account.</div></div>
+                  </div>
+                </div>
+                <div class="t2-red-card">
+                  <div class="t2-red-card-stripe" style="background:#0891b2"></div>
+                  <div class="t2-red-card-body">
+                    <div class="t2-red-card-top">
+                      <div class="t2-red-brand-logo" style="background:#0891b2">M</div>
+                      <div>
+                        <div class="t2-red-card-title">MediBuddy 15% Off</div>
+                        <div class="t2-red-card-cat">💊 Health & Wellness</div>
+                      </div>
+                    </div>
+                    <div class="t2-code-pill" style="background:#0891b2">
+                      <span class="t2-code-text" style="color:#fff">MEDI15GS</span>
+                      <button class="t2-copy-btn">Copy</button>
+                    </div>
+                    <button class="t2-redeem-btn" style="background:#0891b2">Redeem Now at MediBuddy →</button>
+                    <div style="background:#ecfeff;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+                      <div style="font-size:10px;font-weight:700;color:#0891b2;margin-bottom:5px">📋 STEPS TO REDEEM</div>
+                      <div style="font-size:10px;color:#475569;line-height:1.7">1. Copy code &nbsp;2. Open MediBuddy app &nbsp;3. Apply at payment</div>
+                    </div>
+                    <div class="t2-validity">⏰ Expires in 25 days · 30 Jun 2026</div>
+                    <div><span class="t2-tc-link" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'">View Terms & Conditions</span>
+                    <div class="t2-tc-body">Valid on health checkup packages only. 1 redemption per user.</div></div>
+                  </div>
+                </div>
+                <div class="t2-red-card">
+                  <div class="t2-red-card-stripe" style="background:#0891b2"></div>
+                  <div class="t2-red-card-body">
+                    <div class="t2-red-card-top">
+                      <div class="t2-red-brand-logo" style="background:#0891b2">M</div>
+                      <div>
+                        <div class="t2-red-card-title">20% Off Health Checkup</div>
+                        <div class="t2-red-card-cat">💊 Health & Wellness</div>
+                      </div>
+                    </div>
+                    <div class="t2-code-pill" style="background:#0891b2">
+                      <span class="t2-code-text" style="color:#fff">HCHK20GS</span>
+                      <button class="t2-copy-btn">Copy</button>
+                    </div>
+                    <button class="t2-redeem-btn" style="background:#0891b2">Redeem Now at MediBuddy →</button>
+                    <div style="background:#ecfeff;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+                      <div style="font-size:10px;font-weight:700;color:#0891b2;margin-bottom:5px">📋 STEPS TO REDEEM</div>
+                      <div style="font-size:10px;color:#475569;line-height:1.7">1. Copy code &nbsp;2. Open MediBuddy &nbsp;3. Pick package &nbsp;4. Apply code</div>
+                    </div>
+                    <div class="t2-validity">⏰ Expires in 25 days · 30 Jun 2026</div>
+                    <div><span class="t2-tc-link" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'">View Terms & Conditions</span>
+                    <div class="t2-tc-body">Valid on specific packages. Cannot be combined. 1 use per account.</div></div>
+                  </div>
+                </div>
+              </div>
+              <div class="t2-share-row">
+                <button class="t2-share-btn">💬 Share on WhatsApp</button>
+                <button class="t2-share-btn">📧 Send via Email</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESKTOP T2 -->
+    <div class="frame-wrapper">
+      <div class="frame-label">🖥 Desktop · 1200px (scaled 50%)</div>
+      <div class="desktop-outer-wrap">
+        <div class="desktop-scale-box">
+          <div class="desktop-outer">
+            <div class="desktop-chrome">
+              <div class="chrome-dots"><div class="chrome-dot dot-r"></div><div class="chrome-dot dot-y"></div><div class="chrome-dot dot-g"></div></div>
+              <div class="chrome-bar"><span class="chrome-lock">🔒</span> app.goself.in/campaign/rewards</div>
+            </div>
+            <div class="desktop-screen">
+              <div class="dt2">
+                <div class="dt2-topnav">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800">Z</div>
+                    <div>
+                      <div style="font-size:15px;font-weight:700;color:#1a1a1a;line-height:1">Zouk</div>
+                      <div style="font-size:10px;color:#a8a29e;margin-top:1px">Powered by <span style="color:#059669;font-weight:600">GoSelf</span></div>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:24px;font-size:14px;color:#78716c"><span>Home</span><span>Campaigns</span><span>My Rewards</span></div>
+                </div>
+                <div class="dt2-body">
+                  <div class="dt2-headline">Your exclusive rewards 🎁</div>
+                  <div class="dt2-sub">Choose 1–5 rewards · Earned from your completed campaign</div>
+                  <div class="dt2-tab-bar">
+                    <div class="dt2-tab active">All (8)</div>
+                    <div class="dt2-tab">🏪 Store (4)</div>
+                    <div class="dt2-tab">🤝 Brand Partners (4)</div>
+                    <div class="dt2-tab">💊 Health (4)</div>
+                    <div class="dt2-tab">👗 Fashion (4)</div>
+                  </div>
+                  <div class="dt2-grid">
+                    <div class="dt2-card selected">
+                      <div class="dt2-card-banner" style="background:#f3e8ff">
+                        <div class="dt2-ribbon-corner" style="border-color:transparent #7c3aed transparent transparent"></div>
+                        <span class="dt2-ribbon-text">Fashion</span>
+                        <div class="dt2-card-logo" style="background:#7c3aed">Z</div>
+                      </div>
+                      <div class="dt2-card-body">
+                        <div class="dt2-card-title">₹150 Off on ₹799+</div>
+                        <div style="font-size:11px;color:#78716c">Zouk</div>
+                        <div class="dt2-scarcity"><span class="dt2-scarcity-dot"></span> 3 left</div>
+                      </div>
+                    </div>
+                    <div class="dt2-card">
+                      <div class="dt2-card-banner" style="background:#ede9fe">
+                        <div class="dt2-ribbon-corner" style="border-color:transparent #6d28d9 transparent transparent"></div>
+                        <span class="dt2-ribbon-text">Fashion</span>
+                        <div class="dt2-card-logo" style="background:#6d28d9">G</div>
+                      </div>
+                      <div class="dt2-card-body">
+                        <div class="dt2-card-title">₹150 Off First Order</div>
+                        <div style="font-size:11px;color:#78716c">Gehen</div>
+                        <div class="dt2-scarcity"><span class="dt2-scarcity-dot"></span> 2 left</div>
+                      </div>
+                    </div>
+                    <div class="dt2-card brand-card selected">
+                      <div class="dt2-card-banner" style="background:#cffafe">
+                        <div class="dt2-ribbon-corner" style="border-color:transparent #0891b2 transparent transparent"></div>
+                        <span class="dt2-ribbon-text">Health</span>
+                        <div class="dt2-card-logo" style="background:#0891b2">M</div>
+                      </div>
+                      <div class="dt2-card-body">
+                        <div class="dt2-card-title">MediBuddy 15% Off</div>
+                        <div style="font-size:11px;color:#78716c">Health Voucher</div>
+                        <div class="dt2-scarcity"><span class="dt2-scarcity-dot"></span> 5 left</div>
+                      </div>
+                    </div>
+                    <div class="dt2-card brand-card">
+                      <div class="dt2-card-banner" style="background:#ecfdf5">
+                        <div class="dt2-ribbon-corner" style="border-color:transparent #0891b2 transparent transparent"></div>
+                        <span class="dt2-ribbon-text">Health</span>
+                        <div class="dt2-card-logo" style="background:#0891b2">M</div>
+                      </div>
+                      <div class="dt2-card-body">
+                        <div class="dt2-card-title">Free Doctor Consult</div>
+                        <div style="font-size:11px;color:#78716c">MediBuddy · New User</div>
+                        <div style="font-size:11px;color:#94a3b8;margin-top:4px">Out of stock</div>
+                      </div>
+                    </div>
+                    <div class="dt2-card">
+                      <div class="dt2-card-banner" style="background:#f3e8ff">
+                        <div class="dt2-ribbon-corner" style="border-color:transparent #7c3aed transparent transparent"></div>
+                        <span class="dt2-ribbon-text">Fashion</span>
+                        <div class="dt2-card-logo" style="background:#7c3aed">Z</div>
+                      </div>
+                      <div class="dt2-card-body">
+                        <div class="dt2-card-title">₹100 Off Next Purchase</div>
+                        <div style="font-size:11px;color:#78716c">Zouk</div>
+                        <div class="dt2-scarcity"><span class="dt2-scarcity-dot"></span> 1 left</div>
+                      </div>
+                    </div>
+                    <div class="dt2-card brand-card selected">
+                      <div class="dt2-card-banner" style="background:#cffafe">
+                        <div class="dt2-ribbon-corner" style="border-color:transparent #0891b2 transparent transparent"></div>
+                        <span class="dt2-ribbon-text">Health</span>
+                        <div class="dt2-card-logo" style="background:#0891b2">M</div>
+                      </div>
+                      <div class="dt2-card-body">
+                        <div class="dt2-card-title">20% Off Health Checkup</div>
+                        <div style="font-size:11px;color:#78716c">MediBuddy</div>
+                        <div class="dt2-scarcity"><span class="dt2-scarcity-dot"></span> 2 left</div>
+                      </div>
+                    </div>
+                    <div class="dt2-card">
+                      <div class="dt2-card-banner" style="background:#f3e8ff">
+                        <div class="dt2-ribbon-corner" style="border-color:transparent #7c3aed transparent transparent"></div>
+                        <span class="dt2-ribbon-text">Fashion</span>
+                        <div class="dt2-card-logo" style="background:#a78bfa">Z</div>
+                      </div>
+                      <div class="dt2-card-body">
+                        <div class="dt2-card-title">10% Off Unique Code</div>
+                        <div style="font-size:11px;color:#78716c">Zouk</div>
+                        <div style="font-size:11px;color:#94a3b8;margin-top:4px">Out of stock</div>
+                      </div>
+                    </div>
+                    <div class="dt2-card brand-card">
+                      <div class="dt2-card-banner" style="background:#cffafe">
+                        <div class="dt2-ribbon-corner" style="border-color:transparent #0891b2 transparent transparent"></div>
+                        <span class="dt2-ribbon-text">Health</span>
+                        <div class="dt2-card-logo" style="background:#0891b2">M</div>
+                      </div>
+                      <div class="dt2-card-body">
+                        <div class="dt2-card-title">₹100 Off MediBuddy App</div>
+                        <div style="font-size:11px;color:#78716c">MediBuddy</div>
+                        <div class="dt2-scarcity"><span class="dt2-scarcity-dot"></span> 4 left</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dt2-bottom-bar">
+                  <div style="font-size:14px;color:#78716c">3 of 5 rewards selected</div>
+                  <button class="dt2-claim-btn">Claim 3 Rewards →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <button class="select-btn">Select Template 2</button>
+</div>
+
+<!-- =================== TEMPLATE 3 =================== -->
+<div class="template-section">
+  <div class="template-header">
+    <div class="template-title">Template 3 — Conversion Max</div>
+    <span class="template-badge badge-conversion">🚀 High Conversion</span>
+  </div>
+  <div class="template-desc">Dark header · Category filter pills · Value-forward cards · Deep teal selected state · CSS confetti celebration · Email capture</div>
+  <div class="frames-row">
+
+    <!-- MOBILE T3 -->
+    <div class="frame-wrapper">
+      <div class="frame-label">📱 Mobile · 375px</div>
+      <div class="phone-outer">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="phone-scroll">
+
+            <div class="t3-sel">
+              <div class="t3-dark-header">
+                <!-- Client logo bar (dark theme) + Powered by GoSelf -->
+                <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid #1e293b">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="width:28px;height:28px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;color:#7c3aed;font-size:12px;font-weight:800">Z</div>
+                    <span style="font-size:13px;font-weight:700;color:#fff">Zouk</span>
+                  </div>
+                  <div style="font-size:9px;color:#64748b">Powered by <span style="color:#34d399;font-weight:600">GoSelf</span></div>
+                </div>
+                <div class="t3-title">Your Rewards 🎁</div>
+                <div class="t3-sub">Campaign completed · Pick up to 5</div>
+                <div class="t3-progress-dots">
+                  <div class="t3-dot filled"></div>
+                  <div class="t3-dot filled"></div>
+                  <div class="t3-dot filled"></div>
+                  <div class="t3-dot"></div>
+                  <div class="t3-dot"></div>
+                </div>
+                <div class="t3-filter-bar">
+                  <div class="t3-filter active">🏪 Store (4)</div>
+                  <div class="t3-filter">💊 Health (4)</div>
+                  <div class="t3-filter">👗 Fashion (4)</div>
+                  <div class="t3-filter">All (8)</div>
+                </div>
+              </div>
+              <div class="t3-body">
+                <div class="t3-section-label">Store Rewards</div>
+                <div class="t3-grid">
+                  <div class="t3-card selected">
+                    <div class="t3-card-badge">Fashion</div>
+                    <div class="t3-card-value">₹150</div>
+                    <div class="t3-card-brand">OFF · Zouk</div>
+                    <div class="t3-card-cat">on ₹799+</div>
+                    <div class="t3-card-scarcity">3 left</div>
+                  </div>
+                  <div class="t3-card">
+                    <div class="t3-card-badge">Fashion</div>
+                    <div class="t3-card-value">₹150</div>
+                    <div class="t3-card-brand">OFF · Gehen</div>
+                    <div class="t3-card-cat">First order</div>
+                    <div class="t3-card-scarcity">2 left</div>
+                  </div>
+                  <div class="t3-card selected">
+                    <div class="t3-card-badge">Fashion</div>
+                    <div class="t3-card-value">₹100</div>
+                    <div class="t3-card-brand">OFF · Zouk</div>
+                    <div class="t3-card-cat">Next purchase</div>
+                    <div class="t3-card-scarcity" style="color:#ef4444;font-weight:700">1 left!</div>
+                  </div>
+                  <div class="t3-card" style="opacity:0.5">
+                    <div class="t3-card-badge">Fashion</div>
+                    <div class="t3-card-value" style="font-size:16px">10%</div>
+                    <div class="t3-card-brand">OFF · Zouk</div>
+                    <div class="t3-card-cat">Unique code</div>
+                    <div class="t3-card-scarcity" style="color:#94a3b8">Out of stock</div>
+                  </div>
+                </div>
+
+                <div class="t3-section-label">Brand Partner Rewards</div>
+                <div class="t3-grid">
+                  <div class="t3-card selected">
+                    <div class="t3-card-badge">Health</div>
+                    <div class="t3-card-value">15%</div>
+                    <div class="t3-card-brand">OFF · Medi</div>
+                    <div class="t3-card-cat">MediBuddy</div>
+                    <div class="t3-card-scarcity">5 left</div>
+                  </div>
+                  <div class="t3-card" style="opacity:0.5">
+                    <div class="t3-card-badge">Health</div>
+                    <div class="t3-card-value" style="font-size:13px">FREE</div>
+                    <div class="t3-card-brand">Doctor Consult</div>
+                    <div class="t3-card-cat">MediBuddy</div>
+                    <div class="t3-card-scarcity" style="color:#94a3b8">Out of stock</div>
+                  </div>
+                  <div class="t3-card">
+                    <div class="t3-card-badge">Health</div>
+                    <div class="t3-card-value">20%</div>
+                    <div class="t3-card-brand">OFF · Medi</div>
+                    <div class="t3-card-cat">Checkup pkg</div>
+                    <div class="t3-card-scarcity">2 left</div>
+                  </div>
+                  <div class="t3-card">
+                    <div class="t3-card-badge">Health</div>
+                    <div class="t3-card-value">₹100</div>
+                    <div class="t3-card-brand">OFF · Medi</div>
+                    <div class="t3-card-cat">App purchase</div>
+                    <div class="t3-card-scarcity">4 left</div>
+                  </div>
+                </div>
+              </div>
+              <div class="t3-sticky-bottom">
+                <div class="t3-bottom-inner">
+                  <div class="t3-selected-logos">
+                    <div class="t3-sel-logo" style="background:#7c3aed">Z</div>
+                    <div class="t3-sel-logo" style="background:#7c3aed">Z</div>
+                    <div class="t3-sel-logo" style="background:#0891b2">M</div>
+                  </div>
+                  <button class="t3-claim-btn">Claim 3 Now →</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="screen-divider">Redemption Screen</div>
+
+            <div class="t3-red">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#0f172a;border-bottom:1px solid #1e293b">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="width:28px;height:28px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;color:#7c3aed;font-size:11px;font-weight:800">Z</div>
+                  <span style="font-size:13px;font-weight:700;color:#fff">Zouk</span>
+                </div>
+                <div style="font-size:9px;color:#64748b">Powered by <span style="color:#34d399;font-weight:600">GoSelf</span></div>
+              </div>
+              <div class="confetti-area">
+                <div class="confetti-dot" style="left:10%;background:#34d399;animation-delay:0s;animation-duration:2.5s"></div>
+                <div class="confetti-dot" style="left:25%;background:#f59e0b;animation-delay:0.3s;animation-duration:3s"></div>
+                <div class="confetti-dot" style="left:40%;background:#ec4899;animation-delay:0.6s;animation-duration:2.8s"></div>
+                <div class="confetti-dot" style="left:55%;background:#6366f1;animation-delay:0.2s;animation-duration:3.2s"></div>
+                <div class="confetti-dot" style="left:70%;background:#f97316;animation-delay:0.8s;animation-duration:2.6s"></div>
+                <div class="confetti-dot" style="left:85%;background:#34d399;animation-delay:0.4s;animation-duration:2.9s"></div>
+                <div class="confetti-dot" style="left:18%;background:#60a5fa;animation-delay:1s;animation-duration:3.1s;width:8px;height:8px"></div>
+                <div class="confetti-dot" style="left:60%;background:#f59e0b;animation-delay:0.7s;animation-duration:2.7s;width:8px;height:8px"></div>
+                <div class="t3-red-title">🎉 Rewards Claimed!</div>
+                <div class="t3-red-sub">3 rewards ready · Check below</div>
+              </div>
+              <div class="t3-red-cards">
+                <div class="t3-red-card">
+                  <div class="t3-red-card-stripe" style="background:#7c3aed"></div>
+                  <div class="t3-red-card-content">
+                    <div class="t3-red-card-top">
+                      <div class="t3-red-brand-logo" style="background:#7c3aed">Z</div>
+                      <div class="t3-red-card-info">
+                        <div class="brand">Zouk</div>
+                        <div class="cat">👗 Fashion · ₹150 Off on ₹799+</div>
+                      </div>
+                    </div>
+                    <div class="t3-big-code">ZOUK150</div>
+                    <button class="t3-open-btn" style="background:#7c3aed">Open Zouk Store →</button>
+                    <div style="background:#faf5ff;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+                      <div style="font-size:9px;font-weight:700;color:#7c3aed;margin-bottom:4px;letter-spacing:0.3px">📋 STEPS TO REDEEM</div>
+                      <div style="font-size:10px;color:#475569;line-height:1.7">1. Copy code &nbsp;2. Visit Zouk, cart ₹799+ &nbsp;3. Paste at checkout</div>
+                    </div>
+                    <div class="t3-validity-badge">✅ Valid 25 days · Expires 30 Jun 2026</div>
+                    <div><span class="t3-tc-link" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'">View Terms</span>
+                    <div class="t3-tc-body">Min cart ₹799. One use per account. Not valid on sale items.</div></div>
+                  </div>
+                </div>
+                <div class="t3-red-card">
+                  <div class="t3-red-card-stripe" style="background:#7c3aed"></div>
+                  <div class="t3-red-card-content">
+                    <div class="t3-red-card-top">
+                      <div class="t3-red-brand-logo" style="background:#7c3aed">Z</div>
+                      <div class="t3-red-card-info">
+                        <div class="brand">Zouk</div>
+                        <div class="cat">👗 Fashion · ₹100 Off Next Order</div>
+                      </div>
+                    </div>
+                    <div class="t3-big-code">ZK100NXT</div>
+                    <button class="t3-open-btn" style="background:#7c3aed">Open Zouk Store →</button>
+                    <div style="background:#faf5ff;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+                      <div style="font-size:9px;font-weight:700;color:#7c3aed;margin-bottom:4px;letter-spacing:0.3px">📋 STEPS TO REDEEM</div>
+                      <div style="font-size:10px;color:#475569;line-height:1.7">1. Copy code &nbsp;2. Add items on Zouk &nbsp;3. Enter code at checkout</div>
+                    </div>
+                    <div class="t3-validity-badge">✅ Valid 25 days · Expires 30 Jun 2026</div>
+                    <div><span class="t3-tc-link" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'">View Terms</span>
+                    <div class="t3-tc-body">Valid on all Zouk products. Cannot be combined.</div></div>
+                  </div>
+                </div>
+                <div class="t3-red-card">
+                  <div class="t3-red-card-stripe" style="background:#0891b2"></div>
+                  <div class="t3-red-card-content">
+                    <div class="t3-red-card-top">
+                      <div class="t3-red-brand-logo" style="background:#0891b2">M</div>
+                      <div class="t3-red-card-info">
+                        <div class="brand">MediBuddy</div>
+                        <div class="cat">💊 Health · 15% Off Voucher</div>
+                      </div>
+                    </div>
+                    <div class="t3-big-code">MEDI15GS</div>
+                    <button class="t3-open-btn" style="background:#0891b2">Open MediBuddy App →</button>
+                    <div style="background:#ecfeff;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+                      <div style="font-size:9px;font-weight:700;color:#0891b2;margin-bottom:4px;letter-spacing:0.3px">📋 STEPS TO REDEEM</div>
+                      <div style="font-size:10px;color:#475569;line-height:1.7">1. Copy code &nbsp;2. Open MediBuddy app &nbsp;3. Pick package &nbsp;4. Apply at payment</div>
+                    </div>
+                    <div class="t3-validity-badge">✅ Valid 25 days · Expires 30 Jun 2026</div>
+                    <div><span class="t3-tc-link" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'">View Terms</span>
+                    <div class="t3-tc-body">Valid on health checkup packages. 1 redemption per user.</div></div>
+                  </div>
+                </div>
+              </div>
+              <div class="t3-email-section">
+                <div class="t3-email-label">📧 Get these codes via email too?</div>
+                <div class="t3-email-row">
+                  <input class="t3-email-input" type="email" placeholder="your@email.com">
+                  <button class="t3-email-btn">Send</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESKTOP T3 -->
+    <div class="frame-wrapper">
+      <div class="frame-label">🖥 Desktop · 1200px (scaled 50%)</div>
+      <div class="desktop-outer-wrap">
+        <div class="desktop-scale-box">
+          <div class="desktop-outer">
+            <div class="desktop-chrome">
+              <div class="chrome-dots"><div class="chrome-dot dot-r"></div><div class="chrome-dot dot-y"></div><div class="chrome-dot dot-g"></div></div>
+              <div class="chrome-bar"><span class="chrome-lock">🔒</span> app.goself.in/campaign/rewards</div>
+            </div>
+            <div class="desktop-screen">
+              <div class="dt3">
+                <div class="dt3-topnav">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <div style="width:32px;height:32px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;color:#7c3aed;font-size:13px;font-weight:800">Z</div>
+                    <div>
+                      <div style="font-size:15px;font-weight:700;color:#fff;line-height:1">Zouk</div>
+                      <div style="font-size:10px;color:#64748b;margin-top:1px">Powered by <span style="color:#34d399;font-weight:600">GoSelf</span></div>
+                    </div>
+                  </div>
+                  <div class="dt3-nav">
+                    <div class="dt3-filter active">🏪 Store (4)</div>
+                    <div class="dt3-filter">💊 Health (4)</div>
+                    <div class="dt3-filter">👗 Fashion (4)</div>
+                    <div class="dt3-filter">All (8)</div>
+                  </div>
+                </div>
+                <div class="dt3-body">
+                  <div class="dt3-header-row">
+                    <div>
+                      <div class="dt3-headline">Your Rewards 🎁</div>
+                      <div style="font-size:14px;color:#64748b">Campaign completed · Select up to 5 rewards</div>
+                    </div>
+                    <div>
+                      <div style="font-size:13px;color:#64748b;margin-bottom:6px;text-align:right">3 of 5 selected</div>
+                      <div class="dt3-progress-dots">
+                        <div class="dt3-dot filled"></div>
+                        <div class="dt3-dot filled"></div>
+                        <div class="dt3-dot filled"></div>
+                        <div class="dt3-dot"></div>
+                        <div class="dt3-dot"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="dt3-sec-label">Store Rewards</div>
+                  <div class="dt3-grid">
+                    <div class="dt3-card selected">
+                      <div class="t3-card-badge" style="background:rgba(255,255,255,0.2);color:#fff">Fashion</div>
+                      <div class="dt3-card-value" style="color:#fff">₹150</div>
+                      <div class="dt3-card-brand">OFF · Zouk</div>
+                      <div style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:2px">on ₹799+</div>
+                      <div class="dt3-card-scarcity" style="color:rgba(255,255,255,0.9)">3 left</div>
+                    </div>
+                    <div class="dt3-card">
+                      <div class="t3-card-badge">Fashion</div>
+                      <div class="dt3-card-value">₹150</div>
+                      <div class="dt3-card-brand">OFF · Gehen</div>
+                      <div style="font-size:11px;color:#94a3b8;margin-top:2px">First order</div>
+                      <div class="dt3-card-scarcity">2 left</div>
+                    </div>
+                    <div class="dt3-card selected">
+                      <div class="t3-card-badge" style="background:rgba(255,255,255,0.2);color:#fff">Fashion</div>
+                      <div class="dt3-card-value" style="color:#fff">₹100</div>
+                      <div class="dt3-card-brand">OFF · Zouk</div>
+                      <div style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:2px">Next purchase</div>
+                      <div class="dt3-card-scarcity" style="color:rgba(255,255,255,0.9);font-weight:700">1 left!</div>
+                    </div>
+                    <div class="dt3-card" style="opacity:0.5">
+                      <div class="t3-card-badge">Fashion</div>
+                      <div class="dt3-card-value" style="font-size:20px">10%</div>
+                      <div class="dt3-card-brand">OFF · Zouk</div>
+                      <div class="dt3-card-scarcity" style="color:#94a3b8">Out of stock</div>
+                    </div>
+                  </div>
+
+                  <div class="dt3-sec-label">Brand Partner Rewards</div>
+                  <div class="dt3-grid">
+                    <div class="dt3-card selected">
+                      <div class="t3-card-badge" style="background:rgba(255,255,255,0.2);color:#fff">Health</div>
+                      <div class="dt3-card-value" style="color:#fff">15%</div>
+                      <div class="dt3-card-brand">OFF · MediBuddy</div>
+                      <div class="dt3-card-scarcity" style="color:rgba(255,255,255,0.9)">5 left</div>
+                    </div>
+                    <div class="dt3-card" style="opacity:0.5">
+                      <div class="t3-card-badge">Health</div>
+                      <div class="dt3-card-value" style="font-size:16px">FREE</div>
+                      <div class="dt3-card-brand">Doctor Consult</div>
+                      <div class="dt3-card-scarcity" style="color:#94a3b8">Out of stock</div>
+                    </div>
+                    <div class="dt3-card">
+                      <div class="t3-card-badge">Health</div>
+                      <div class="dt3-card-value">20%</div>
+                      <div class="dt3-card-brand">OFF · MediBuddy</div>
+                      <div class="dt3-card-scarcity">2 left</div>
+                    </div>
+                    <div class="dt3-card">
+                      <div class="t3-card-badge">Health</div>
+                      <div class="dt3-card-value">₹100</div>
+                      <div class="dt3-card-brand">OFF · MediBuddy</div>
+                      <div class="dt3-card-scarcity">4 left</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dt3-bottom-bar">
+                  <div class="dt3-sel-logos">
+                    <div class="dt3-sel-logo" style="background:#7c3aed">Z</div>
+                    <div class="dt3-sel-logo" style="background:#7c3aed">Z</div>
+                    <div class="dt3-sel-logo" style="background:#0891b2">M</div>
+                  </div>
+                  <div class="dt3-sel-count-label">3 rewards selected</div>
+                  <button class="dt3-claim-btn-lg">Claim 3 Rewards Now →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <button class="select-btn">Select Template 3</button>
+</div>
+
+</div><!-- end page-body -->
+
+<div style="text-align:center;padding:32px;color:#94a3b8;font-size:12px;border-top:1px solid #e2e8f0;margin-top:0">
+  GoSelf · Campaign Reward Templates v2 · 3 Templates · Selection + Redemption · Mobile + Desktop
+</div>
+
+</body>
+</html>

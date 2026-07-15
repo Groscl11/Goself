@@ -1,0 +1,1490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GoSelf — Attribution Module Mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #f8fafc; }
+  .sidebar-item { transition: all 0.15s; }
+  .sidebar-item:hover { background: #f1f5f9; }
+  .sidebar-item.active { background: #eff6ff; color: #2563eb; }
+  .sidebar-item.active svg { color: #2563eb; }
+  .tab-btn { border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .tab-btn.active { border-bottom-color: #2563eb; color: #2563eb; font-weight: 600; }
+  .drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 40; }
+  .drawer-overlay.open { display: flex; justify-content: flex-end; }
+  .drawer { width: 440px; height: 100%; background: white; box-shadow: -4px 0 24px rgba(0,0,0,0.12); overflow-y: auto; transform: translateX(100%); transition: transform 0.25s ease; }
+  .drawer-overlay.open .drawer { transform: translateX(0); }
+  .stat-card { transition: box-shadow 0.15s; }
+  .stat-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 500; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-blue { background: #dbeafe; color: #1d4ed8; }
+  .badge-amber { background: #fef3c7; color: #92400e; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .badge-gray { background: #f1f5f9; color: #475569; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .trend-up { color: #16a34a; font-size: 12px; font-weight: 500; }
+  .trend-down { color: #dc2626; font-size: 12px; font-weight: 500; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background: #f8fafc; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; padding: 10px 14px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+  td { padding: 12px 14px; border-bottom: 1px solid #f1f5f9; font-size: 14px; color: #1e293b; vertical-align: middle; }
+  tr:hover td { background: #fafbff; }
+  .input { width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 14px; outline: none; transition: border-color 0.15s; }
+  .input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+  select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
+  .btn-primary { background: #2563eb; color: white; border: none; border-radius: 8px; padding: 8px 16px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-secondary { background: white; color: #374151; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 16px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+  .btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; }
+  .btn-ghost { background: transparent; color: #64748b; border: none; border-radius: 8px; padding: 6px 12px; font-size: 14px; cursor: pointer; transition: all 0.15s; }
+  .btn-ghost:hover { background: #f1f5f9; color: #1e293b; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .copy-field { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; font-family: monospace; font-size: 13px; color: #334155; word-break: break-all; position: relative; }
+  .tooltip { position: relative; }
+  .tooltip:hover::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #1e293b; color: white; font-size: 11px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; pointer-events: none; z-index: 99; }
+  .progress-bar { background: #e2e8f0; border-radius: 9999px; height: 6px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 9999px; transition: width 0.6s ease; }
+  .dot-green { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; display: inline-block; }
+  .dot-gray { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; display: inline-block; }
+  .dot-amber { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: inline-block; }
+  .info-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 12px 16px; font-size: 13px; color: #1d4ed8; }
+  .warn-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 12px 16px; font-size: 13px; color: #92400e; }
+  .section-label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.07em; padding: 16px 12px 6px; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+</style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+<!-- ══════════════════════════════════════════════════════════ SIDEBAR ══ -->
+<aside class="w-56 bg-white border-r border-slate-100 flex flex-col flex-shrink-0 overflow-y-auto">
+  <!-- Logo -->
+  <div class="px-4 py-5 border-b border-slate-100 flex items-center gap-2">
+    <div class="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    </div>
+    <span class="font-bold text-slate-800 text-sm">GoSelf</span>
+  </div>
+
+  <!-- Client selector -->
+  <div class="px-3 py-3 border-b border-slate-100">
+    <div class="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-100 transition">
+      <div class="w-6 h-6 rounded-md bg-violet-500 flex items-center justify-center text-white text-xs font-bold">M</div>
+      <span class="text-sm text-slate-700 font-medium flex-1 truncate">MyBrand Store</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="flex-1 py-2">
+    <a onclick="setPage('dashboard')" class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </a>
+
+    <div class="section-label">Loyalty</div>
+    <a class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Members
+    </a>
+    <a class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      Points & Tiers
+    </a>
+
+    <div class="section-label">Referral</div>
+    <a class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+      Referral Tracking
+    </a>
+
+    <div class="section-label">Rewards & Offers</div>
+    <a class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      Offers
+    </a>
+    <a class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      Campaigns
+    </a>
+
+    <!-- ATTRIBUTION — highlighted as new -->
+    <div class="section-label">Attribution <span class="ml-1 text-blue-500 text-xs normal-case font-medium">New</span></div>
+    <a onclick="setPage('overview')" id="nav-overview" class="sidebar-item active flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Overview
+    </a>
+    <a onclick="setPage('partners')" id="nav-partners" class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Partners
+    </a>
+    <a onclick="setPage('coupons')" id="nav-coupons" class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      Coupon Codes
+    </a>
+    <a onclick="setPage('utm')" id="nav-utm" class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      UTM Links
+    </a>
+    <a onclick="setPage('reports')" id="nav-reports" class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Reports
+    </a>
+
+    <div class="section-label">Platform</div>
+    <a class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Reports
+    </a>
+    <a class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Integrations
+    </a>
+    <a class="sidebar-item flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer text-slate-600 text-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
+      Settings
+    </a>
+  </nav>
+
+  <!-- User -->
+  <div class="px-3 py-3 border-t border-slate-100 flex items-center gap-3">
+    <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">A</div>
+    <div class="flex-1 min-w-0">
+      <div class="text-sm font-medium text-slate-700 truncate">Arjun Mehta</div>
+      <div class="text-xs text-slate-400 truncate">Admin</div>
+    </div>
+  </div>
+</aside>
+
+<!-- ══════════════════════════════════════════════════════════ MAIN ══════ -->
+<main class="flex-1 overflow-y-auto">
+
+<!-- ─────────────────────────────────────────── PAGE: DASHBOARD ── -->
+<div id="page-dashboard" class="page p-8">
+  <h1 class="text-2xl font-bold text-slate-800 mb-6">Dashboard</h1>
+  <p class="text-slate-400">← Click an Attribution menu item in the sidebar to view the mockups.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── PAGE: OVERVIEW ─── -->
+<div id="page-overview" class="page active">
+  <!-- Header -->
+  <div class="bg-white border-b border-slate-100 px-8 py-5 flex items-center justify-between sticky top-0 z-10">
+    <div>
+      <h1 class="text-xl font-bold text-slate-800">Attribution Overview</h1>
+      <p class="text-sm text-slate-500 mt-0.5">Track which partners and channels are driving orders and revenue</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <select class="input text-sm" style="width:140px">
+        <option>Last 30 days</option>
+        <option>Last 7 days</option>
+        <option>Last 90 days</option>
+        <option>This month</option>
+        <option>Custom range</option>
+      </select>
+      <button class="btn-secondary text-sm flex items-center gap-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+    </div>
+  </div>
+
+  <div class="p-8">
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-4 gap-4 mb-8">
+      <div class="stat-card bg-white rounded-xl border border-slate-100 p-5">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm text-slate-500 font-medium">Total Clicks</span>
+          <div class="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </div>
+        </div>
+        <div class="text-2xl font-bold text-slate-800">12,430</div>
+        <div class="trend-up mt-1">▲ +18% vs last period</div>
+      </div>
+      <div class="stat-card bg-white rounded-xl border border-slate-100 p-5">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm text-slate-500 font-medium">Attributed Orders</span>
+          <div class="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          </div>
+        </div>
+        <div class="text-2xl font-bold text-slate-800">284</div>
+        <div class="trend-up mt-1">▲ +32% vs last period</div>
+      </div>
+      <div class="stat-card bg-white rounded-xl border border-slate-100 p-5">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm text-slate-500 font-medium">Attributed Revenue</span>
+          <div class="w-8 h-8 bg-violet-50 rounded-lg flex items-center justify-center">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+        </div>
+        <div class="text-2xl font-bold text-slate-800">₹1,84,200</div>
+        <div class="trend-up mt-1">▲ +41% vs last period</div>
+      </div>
+      <div class="stat-card bg-white rounded-xl border border-slate-100 p-5">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm text-slate-500 font-medium">Conv. Rate</span>
+          <div class="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          </div>
+        </div>
+        <div class="text-2xl font-bold text-slate-800">2.29%</div>
+        <div class="trend-up mt-1">▲ +0.3pp vs last period</div>
+      </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid grid-cols-3 gap-6 mb-8">
+      <!-- Line Chart -->
+      <div class="col-span-2 bg-white rounded-xl border border-slate-100 p-6">
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <h3 class="font-semibold text-slate-800">Clicks & Orders (Daily)</h3>
+            <p class="text-xs text-slate-400 mt-0.5">Last 30 days</p>
+          </div>
+          <div class="flex items-center gap-4 text-xs">
+            <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-blue-500 inline-block rounded"></span>Clicks</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-emerald-500 inline-block rounded"></span>Orders</span>
+          </div>
+        </div>
+        <canvas id="lineChart" height="160"></canvas>
+      </div>
+
+      <!-- Top Partners -->
+      <div class="bg-white rounded-xl border border-slate-100 p-6">
+        <h3 class="font-semibold text-slate-800 mb-5">Top Partners by Revenue</h3>
+        <div class="space-y-4">
+          <div>
+            <div class="flex justify-between text-sm mb-1.5">
+              <span class="font-medium text-slate-700">CouponDunia</span>
+              <span class="text-slate-500">₹72,400</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill bg-blue-500" style="width:100%"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-1.5">
+              <span class="font-medium text-slate-700">GrabOn</span>
+              <span class="text-slate-500">₹54,100</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill bg-violet-500" style="width:74%"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-1.5">
+              <span class="font-medium text-slate-700">Cashkaro</span>
+              <span class="text-slate-500">₹31,600</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill bg-emerald-500" style="width:43%"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-1.5">
+              <span class="font-medium text-slate-700">Instagram Bio</span>
+              <span class="text-slate-500">₹14,800</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill bg-amber-400" style="width:20%"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-1.5">
+              <span class="font-medium text-slate-700">Newsletter</span>
+              <span class="text-slate-500">₹11,300</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill bg-rose-400" style="width:15%"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Channel Mix -->
+    <div class="grid grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl border border-slate-100 p-6">
+        <h3 class="font-semibold text-slate-800 mb-5">Channel Mix</h3>
+        <div class="flex items-center gap-8">
+          <canvas id="donutChart" width="140" height="140"></canvas>
+          <div class="space-y-3 flex-1">
+            <div class="flex items-center justify-between text-sm">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>Coupon Sites</span>
+              <span class="font-medium">64%</span>
+            </div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block"></span>Affiliates</span>
+              <span class="font-medium">17%</span>
+            </div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>Influencer</span>
+              <span class="font-medium">12%</span>
+            </div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>Email</span>
+              <span class="font-medium">7%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-100 p-6">
+        <h3 class="font-semibold text-slate-800 mb-5">Attribution Method</h3>
+        <div class="space-y-4">
+          <div class="flex items-center gap-4 p-4 bg-slate-50 rounded-xl">
+            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            </div>
+            <div class="flex-1">
+              <div class="text-sm font-semibold text-slate-700">Coupon Code</div>
+              <div class="text-xs text-slate-400">Order contains assigned code → auto-attributed</div>
+            </div>
+            <span class="font-bold text-slate-700">196</span>
+          </div>
+          <div class="flex items-center gap-4 p-4 bg-slate-50 rounded-xl">
+            <div class="w-10 h-10 bg-violet-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </div>
+            <div class="flex-1">
+              <div class="text-sm font-semibold text-slate-700">UTM Link Click</div>
+              <div class="text-xs text-slate-400">Click logged → session → order matched</div>
+            </div>
+            <span class="font-bold text-slate-700">88</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── PAGE: PARTNERS ─── -->
+<div id="page-partners" class="page">
+  <div class="bg-white border-b border-slate-100 px-8 py-5 flex items-center justify-between sticky top-0 z-10">
+    <div>
+      <h1 class="text-xl font-bold text-slate-800">Partners & Channels</h1>
+      <p class="text-sm text-slate-500 mt-0.5">Manage the coupon sites, affiliates and partners you distribute through</p>
+    </div>
+    <button onclick="openDrawer('partnerDrawer')" class="btn-primary flex items-center gap-2">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Partner
+    </button>
+  </div>
+
+  <div class="p-8">
+    <!-- Filter bar -->
+    <div class="flex items-center gap-3 mb-5">
+      <div class="relative flex-1 max-w-sm">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="input pl-9 text-sm" placeholder="Search partners…" style="width:100%"/>
+      </div>
+      <select class="input text-sm" style="width:160px">
+        <option>All Types</option>
+        <option>Coupon Site</option>
+        <option>Cashback</option>
+        <option>Affiliate</option>
+        <option>Influencer</option>
+        <option>Email</option>
+        <option>Paid</option>
+      </select>
+      <select class="input text-sm" style="width:130px">
+        <option>All Status</option>
+        <option>Active</option>
+        <option>Paused</option>
+      </select>
+    </div>
+
+    <!-- Partners Table -->
+    <div class="bg-white rounded-xl border border-slate-100 overflow-hidden">
+      <table>
+        <thead>
+          <tr>
+            <th>Partner</th>
+            <th>Type</th>
+            <th>Codes / Links</th>
+            <th>Clicks</th>
+            <th>Orders</th>
+            <th>Revenue</th>
+            <th>Conv %</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="cursor-pointer" onclick="openDrawer('partnerDetailDrawer')">
+            <td>
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center font-bold text-orange-600 text-xs">CD</div>
+                <div>
+                  <div class="font-medium text-slate-800">CouponDunia</div>
+                  <div class="text-xs text-slate-400">partnerships@coupondunia.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="badge badge-blue">Coupon Site</span></td>
+            <td class="text-slate-600">2 codes</td>
+            <td class="font-medium">4,812</td>
+            <td class="font-medium">142</td>
+            <td class="font-semibold text-slate-800">₹1,00,500</td>
+            <td><span class="text-emerald-600 font-medium">2.95%</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot-green"></span><span class="text-sm text-slate-600">Active</span></span></td>
+            <td><button class="btn-ghost text-xs">⋯</button></td>
+          </tr>
+          <tr class="cursor-pointer">
+            <td>
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center font-bold text-green-600 text-xs">GO</div>
+                <div>
+                  <div class="font-medium text-slate-800">GrabOn</div>
+                  <div class="text-xs text-slate-400">affiliate@grabon.in</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="badge badge-blue">Coupon Site</span></td>
+            <td class="text-slate-600">1 code</td>
+            <td class="font-medium">3,291</td>
+            <td class="font-medium">71</td>
+            <td class="font-semibold text-slate-800">₹54,100</td>
+            <td><span class="text-emerald-600 font-medium">2.16%</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot-green"></span><span class="text-sm text-slate-600">Active</span></span></td>
+            <td><button class="btn-ghost text-xs">⋯</button></td>
+          </tr>
+          <tr class="cursor-pointer">
+            <td>
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center font-bold text-amber-600 text-xs">CK</div>
+                <div>
+                  <div class="font-medium text-slate-800">Cashkaro</div>
+                  <div class="text-xs text-slate-400">brands@cashkaro.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="badge badge-amber">Cashback</span></td>
+            <td class="text-slate-600">1 code</td>
+            <td class="font-medium">2,108</td>
+            <td class="font-medium">54</td>
+            <td class="font-semibold text-slate-800">₹31,600</td>
+            <td><span class="text-emerald-600 font-medium">2.56%</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot-green"></span><span class="text-sm text-slate-600">Active</span></span></td>
+            <td><button class="btn-ghost text-xs">⋯</button></td>
+          </tr>
+          <tr class="cursor-pointer">
+            <td>
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-pink-100 flex items-center justify-center font-bold text-pink-600 text-xs">IG</div>
+                <div>
+                  <div class="font-medium text-slate-800">Instagram Bio</div>
+                  <div class="text-xs text-slate-400">@fashionwithpriya</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="badge badge-purple">Influencer</span></td>
+            <td class="text-slate-600">2 UTM links</td>
+            <td class="font-medium">1,204</td>
+            <td class="font-medium">31</td>
+            <td class="font-semibold text-slate-800">₹14,800</td>
+            <td><span class="text-emerald-600 font-medium">2.57%</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot-green"></span><span class="text-sm text-slate-600">Active</span></span></td>
+            <td><button class="btn-ghost text-xs">⋯</button></td>
+          </tr>
+          <tr class="cursor-pointer">
+            <td>
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center font-bold text-blue-600 text-xs">NL</div>
+                <div>
+                  <div class="font-medium text-slate-800">Newsletter — Apr</div>
+                  <div class="text-xs text-slate-400">Internal campaign</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="badge badge-gray">Email</span></td>
+            <td class="text-slate-600">1 UTM link</td>
+            <td class="font-medium">921</td>
+            <td class="font-medium">22</td>
+            <td class="font-semibold text-slate-800">₹11,300</td>
+            <td><span class="text-emerald-600 font-medium">2.39%</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot-gray"></span><span class="text-sm text-slate-500">Paused</span></span></td>
+            <td><button class="btn-ghost text-xs">⋯</button></td>
+          </tr>
+          <tr class="cursor-pointer">
+            <td>
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center font-bold text-red-600 text-xs">GA</div>
+                <div>
+                  <div class="font-medium text-slate-800">Google Ads</div>
+                  <div class="text-xs text-slate-400">Brand keywords</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="badge badge-red">Paid</span></td>
+            <td class="text-slate-600">3 UTM links</td>
+            <td class="font-medium">642</td>
+            <td class="font-medium">15</td>
+            <td class="font-semibold text-slate-800">₹8,200</td>
+            <td><span class="text-emerald-600 font-medium">2.34%</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot-green"></span><span class="text-sm text-slate-600">Active</span></span></td>
+            <td><button class="btn-ghost text-xs">⋯</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── PAGE: COUPONS ──── -->
+<div id="page-coupons" class="page">
+  <div class="bg-white border-b border-slate-100 px-8 py-5 flex items-center justify-between sticky top-0 z-10">
+    <div>
+      <h1 class="text-xl font-bold text-slate-800">Coupon Codes</h1>
+      <p class="text-sm text-slate-500 mt-0.5">Assign Shopify discount codes to partners — orders using them are auto-attributed</p>
+    </div>
+    <button onclick="openDrawer('couponDrawer')" class="btn-primary flex items-center gap-2">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Assign Code to Partner
+    </button>
+  </div>
+
+  <div class="p-8">
+    <!-- How it works info box -->
+    <div class="info-box flex items-start gap-3 mb-6">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <div>
+        <span class="font-semibold">How coupon attribution works:</span> GoSelf reads the discount codes applied to each Shopify order. If a code matches one assigned here, the order is automatically attributed to that partner — no pixel or UTM needed.
+      </div>
+    </div>
+
+    <!-- Warning for unassigned codes -->
+    <div class="warn-box flex items-center gap-3 mb-6">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="flex-shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span><strong>3 active Shopify discount codes have no partner assigned</strong> — orders using them won't be attributed.</span>
+      <button class="ml-auto text-amber-700 font-medium text-sm underline whitespace-nowrap">Assign now →</button>
+    </div>
+
+    <div class="bg-white rounded-xl border border-slate-100 overflow-hidden">
+      <table>
+        <thead>
+          <tr>
+            <th>Discount Code</th>
+            <th>Partner</th>
+            <th>Discount Value</th>
+            <th>Times Used</th>
+            <th>Revenue Generated</th>
+            <th>Avg. Order</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code class="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-mono text-sm">COUP20</code></td>
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-orange-100 flex items-center justify-center text-orange-600 font-bold text-xs">CD</div>
+                <span class="text-sm">CouponDunia</span>
+              </div>
+            </td>
+            <td class="text-slate-600">20% off</td>
+            <td class="font-medium">98</td>
+            <td class="font-semibold text-slate-800">₹72,400</td>
+            <td class="text-slate-600">₹739</td>
+            <td><span class="badge badge-green">Active</span></td>
+            <td><button class="btn-ghost text-xs">Edit</button></td>
+          </tr>
+          <tr>
+            <td><code class="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-mono text-sm">COUP10</code></td>
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-orange-100 flex items-center justify-center text-orange-600 font-bold text-xs">CD</div>
+                <span class="text-sm">CouponDunia</span>
+              </div>
+            </td>
+            <td class="text-slate-600">10% off</td>
+            <td class="font-medium">44</td>
+            <td class="font-semibold text-slate-800">₹28,100</td>
+            <td class="text-slate-600">₹639</td>
+            <td><span class="badge badge-green">Active</span></td>
+            <td><button class="btn-ghost text-xs">Edit</button></td>
+          </tr>
+          <tr>
+            <td><code class="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-mono text-sm">GRAB15</code></td>
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-green-100 flex items-center justify-center text-green-600 font-bold text-xs">GO</div>
+                <span class="text-sm">GrabOn</span>
+              </div>
+            </td>
+            <td class="text-slate-600">15% off</td>
+            <td class="font-medium">71</td>
+            <td class="font-semibold text-slate-800">₹54,100</td>
+            <td class="text-slate-600">₹762</td>
+            <td><span class="badge badge-green">Active</span></td>
+            <td><button class="btn-ghost text-xs">Edit</button></td>
+          </tr>
+          <tr>
+            <td><code class="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-mono text-sm">CASH10</code></td>
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-amber-100 flex items-center justify-center text-amber-600 font-bold text-xs">CK</div>
+                <span class="text-sm">Cashkaro</span>
+              </div>
+            </td>
+            <td class="text-slate-600">10% off</td>
+            <td class="font-medium">54</td>
+            <td class="font-semibold text-slate-800">₹31,600</td>
+            <td class="text-slate-600">₹585</td>
+            <td><span class="badge badge-green">Active</span></td>
+            <td><button class="btn-ghost text-xs">Edit</button></td>
+          </tr>
+          <tr>
+            <td><code class="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-mono text-sm">SUMMER25</code></td>
+            <td>
+              <div class="flex items-center gap-1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                <span class="text-amber-700 text-sm font-medium">Unassigned</span>
+              </div>
+            </td>
+            <td class="text-slate-600">25% off</td>
+            <td class="font-medium">12</td>
+            <td class="font-semibold text-slate-800">₹9,800</td>
+            <td class="text-slate-600">₹817</td>
+            <td><span class="badge badge-amber">No Partner</span></td>
+            <td><button onclick="openDrawer('couponDrawer')" class="btn-primary text-xs py-1 px-3">Assign</button></td>
+          </tr>
+          <tr>
+            <td><code class="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-mono text-sm">FLAT500</code></td>
+            <td>
+              <div class="flex items-center gap-1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                <span class="text-amber-700 text-sm font-medium">Unassigned</span>
+              </div>
+            </td>
+            <td class="text-slate-600">₹500 flat</td>
+            <td class="font-medium">7</td>
+            <td class="font-semibold text-slate-800">₹6,200</td>
+            <td class="text-slate-600">₹886</td>
+            <td><span class="badge badge-amber">No Partner</span></td>
+            <td><button onclick="openDrawer('couponDrawer')" class="btn-primary text-xs py-1 px-3">Assign</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── PAGE: UTM ─────── -->
+<div id="page-utm" class="page">
+  <div class="bg-white border-b border-slate-100 px-8 py-5 flex items-center justify-between sticky top-0 z-10">
+    <div>
+      <h1 class="text-xl font-bold text-slate-800">UTM Links</h1>
+      <p class="text-sm text-slate-500 mt-0.5">Generate trackable short links for partners — GoSelf logs every click before redirecting</p>
+    </div>
+    <button onclick="openDrawer('utmDrawer')" class="btn-primary flex items-center gap-2">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Create UTM Link
+    </button>
+  </div>
+
+  <div class="p-8">
+    <!-- Builder Card -->
+    <div class="bg-white rounded-xl border border-slate-100 p-6 mb-6">
+      <h3 class="font-semibold text-slate-800 mb-1">Quick UTM Builder</h3>
+      <p class="text-sm text-slate-400 mb-5">Fill in the fields below and get a trackable short link instantly</p>
+
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div class="col-span-2">
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Destination URL</label>
+          <input class="input text-sm" value="https://mybrandstore.myshopify.com/collections/summer-sale" id="utm-dest"/>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Partner</label>
+          <select class="input text-sm" onchange="updateUtmPreview()">
+            <option value="">Select partner…</option>
+            <option selected>Instagram Bio (@fashionwithpriya)</option>
+            <option>CouponDunia</option>
+            <option>GrabOn</option>
+            <option>Newsletter — Apr</option>
+            <option>Google Ads</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Campaign Name</label>
+          <input class="input text-sm" value="summer2024" id="utm-campaign"/>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Medium</label>
+          <select class="input text-sm">
+            <option>influencer</option>
+            <option>affiliate</option>
+            <option>email</option>
+            <option>cpc</option>
+            <option>social</option>
+            <option>referral</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Attribution Window</label>
+          <select class="input text-sm">
+            <option>7 days</option>
+            <option selected>30 days</option>
+            <option>90 days</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Preview -->
+      <div class="bg-slate-50 rounded-xl p-4 mb-4">
+        <div class="text-xs font-semibold text-slate-500 mb-2">Generated Short Link (GoSelf redirect)</div>
+        <div class="copy-field mb-3" id="shortLinkPreview">https://go.mybrand.com/s/IG-SUM24</div>
+        <div class="text-xs font-semibold text-slate-500 mb-2">Full UTM URL</div>
+        <div class="copy-field text-xs text-slate-400" id="fullUtmPreview">https://mybrandstore.myshopify.com/collections/summer-sale?utm_source=instagram-bio&utm_medium=influencer&utm_campaign=summer2024&ref=ATT-0031</div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button onclick="copyToClipboard('shortLinkPreview')" class="btn-secondary text-sm flex items-center gap-2">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy Short Link
+        </button>
+        <button onclick="copyToClipboard('fullUtmPreview')" class="btn-secondary text-sm flex items-center gap-2">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy Full URL
+        </button>
+        <button class="btn-primary text-sm flex items-center gap-2 ml-auto">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Save Link
+        </button>
+      </div>
+    </div>
+
+    <!-- Saved Links -->
+    <div class="bg-white rounded-xl border border-slate-100 overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="font-semibold text-slate-800">Saved Links</h3>
+        <div class="relative">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="input pl-8 text-sm" placeholder="Search…" style="width:220px"/>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Short Link / Slug</th>
+            <th>Partner</th>
+            <th>Campaign</th>
+            <th>Destination</th>
+            <th>Clicks</th>
+            <th>Orders</th>
+            <th>Conv %</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="flex items-center gap-2">
+                <code class="bg-slate-100 px-2 py-0.5 rounded font-mono text-sm text-slate-700">/s/IG-SUM24</code>
+                <button onclick="copyText('https://go.mybrand.com/s/IG-SUM24')" class="btn-ghost p-1 tooltip" data-tip="Copy link">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+            </td>
+            <td class="text-sm text-slate-600">Instagram Bio</td>
+            <td><span class="badge badge-blue">summer2024</span></td>
+            <td class="text-xs text-slate-400 max-w-xs truncate">/collections/summer-sale</td>
+            <td class="font-medium">1,204</td>
+            <td class="font-medium">31</td>
+            <td><span class="text-emerald-600 font-medium">2.57%</span></td>
+            <td class="text-slate-400 text-xs">12 May</td>
+            <td><button class="btn-ghost text-xs">⋯</button></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="flex items-center gap-2">
+                <code class="bg-slate-100 px-2 py-0.5 rounded font-mono text-sm text-slate-700">/s/NL-APR24</code>
+                <button class="btn-ghost p-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+              </div>
+            </td>
+            <td class="text-sm text-slate-600">Newsletter — Apr</td>
+            <td><span class="badge badge-gray">april-drops</span></td>
+            <td class="text-xs text-slate-400 max-w-xs truncate">/</td>
+            <td class="font-medium">921</td>
+            <td class="font-medium">22</td>
+            <td><span class="text-emerald-600 font-medium">2.39%</span></td>
+            <td class="text-slate-400 text-xs">3 Apr</td>
+            <td><button class="btn-ghost text-xs">⋯</button></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="flex items-center gap-2">
+                <code class="bg-slate-100 px-2 py-0.5 rounded font-mono text-sm text-slate-700">/s/GA-BRAND</code>
+                <button class="btn-ghost p-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+              </div>
+            </td>
+            <td class="text-sm text-slate-600">Google Ads</td>
+            <td><span class="badge badge-red">brand-kws</span></td>
+            <td class="text-xs text-slate-400 max-w-xs truncate">/collections/all</td>
+            <td class="font-medium">642</td>
+            <td class="font-medium">15</td>
+            <td><span class="text-emerald-600 font-medium">2.34%</span></td>
+            <td class="text-slate-400 text-xs">28 Mar</td>
+            <td><button class="btn-ghost text-xs">⋯</button></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="flex items-center gap-2">
+                <code class="bg-slate-100 px-2 py-0.5 rounded font-mono text-sm text-slate-700">/s/TW-MAY</code>
+                <button class="btn-ghost p-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+              </div>
+            </td>
+            <td class="text-sm text-slate-600">Twitter/X</td>
+            <td><span class="badge badge-gray">may-launch</span></td>
+            <td class="text-xs text-slate-400 max-w-xs truncate">/products/new-arrivals</td>
+            <td class="font-medium">318</td>
+            <td class="font-medium">6</td>
+            <td><span class="text-slate-500 font-medium">1.89%</span></td>
+            <td class="text-slate-400 text-xs">1 May</td>
+            <td><button class="btn-ghost text-xs">⋯</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── PAGE: REPORTS ──── -->
+<div id="page-reports" class="page">
+  <div class="bg-white border-b border-slate-100 px-8 py-5 flex items-center justify-between sticky top-0 z-10">
+    <div>
+      <h1 class="text-xl font-bold text-slate-800">Attribution Reports</h1>
+      <p class="text-sm text-slate-500 mt-0.5">Full breakdown of partner performance with commission estimates</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <select class="input text-sm" style="width:140px">
+        <option>May 2026</option>
+        <option>Apr 2026</option>
+        <option>Mar 2026</option>
+        <option>Custom range</option>
+      </select>
+      <select class="input text-sm" style="width:150px">
+        <option>All Channels</option>
+        <option>Coupon Sites</option>
+        <option>UTM Links</option>
+      </select>
+      <button class="btn-secondary text-sm flex items-center gap-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export CSV
+      </button>
+    </div>
+  </div>
+
+  <div class="p-8">
+    <div class="grid grid-cols-4 gap-4 mb-8">
+      <div class="bg-white rounded-xl border border-slate-100 p-4 text-center">
+        <div class="text-2xl font-bold text-slate-800">₹2,49,300</div>
+        <div class="text-xs text-slate-400 mt-1">Total Revenue</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-100 p-4 text-center">
+        <div class="text-2xl font-bold text-slate-800">384</div>
+        <div class="text-xs text-slate-400 mt-1">Attributed Orders</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-100 p-4 text-center">
+        <div class="text-2xl font-bold text-slate-800">2.96%</div>
+        <div class="text-xs text-slate-400 mt-1">Blended Conv. Rate</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-100 p-4 text-center">
+        <div class="text-2xl font-bold text-amber-600">₹9,085</div>
+        <div class="text-xs text-slate-400 mt-1">Est. Commission Payable</div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl border border-slate-100 overflow-hidden mb-6">
+      <table>
+        <thead>
+          <tr>
+            <th>Partner</th>
+            <th>Type</th>
+            <th>Method</th>
+            <th>Clicks</th>
+            <th>Orders</th>
+            <th>Revenue</th>
+            <th>Avg Order</th>
+            <th>Conv %</th>
+            <th>Commission Rate</th>
+            <th>Est. Payout</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="font-medium">
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-orange-100 flex items-center justify-center text-orange-600 font-bold text-xs">CD</div>
+                CouponDunia
+              </div>
+            </td>
+            <td><span class="badge badge-blue">Coupon Site</span></td>
+            <td><span class="badge badge-gray">Coupon</span></td>
+            <td>4,812</td>
+            <td>142</td>
+            <td class="font-semibold">₹1,00,500</td>
+            <td>₹708</td>
+            <td><span class="text-emerald-600">2.95%</span></td>
+            <td class="text-slate-500">5%</td>
+            <td class="font-semibold text-amber-700">₹5,025</td>
+          </tr>
+          <tr class="bg-slate-50/50 text-sm text-slate-500">
+            <td class="pl-8" colspan="3">↳ COUP20 (20% off)</td>
+            <td>—</td><td>98</td><td>₹72,400</td><td>₹739</td><td>—</td><td>—</td><td>—</td>
+          </tr>
+          <tr class="bg-slate-50/50 text-sm text-slate-500">
+            <td class="pl-8" colspan="3">↳ COUP10 (10% off)</td>
+            <td>—</td><td>44</td><td>₹28,100</td><td>₹639</td><td>—</td><td>—</td><td>—</td>
+          </tr>
+          <tr class="font-medium">
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-green-100 flex items-center justify-center text-green-600 font-bold text-xs">GO</div>
+                GrabOn
+              </div>
+            </td>
+            <td><span class="badge badge-blue">Coupon Site</span></td>
+            <td><span class="badge badge-gray">Coupon</span></td>
+            <td>3,291</td>
+            <td>71</td>
+            <td class="font-semibold">₹54,100</td>
+            <td>₹762</td>
+            <td><span class="text-emerald-600">2.16%</span></td>
+            <td class="text-slate-500">4%</td>
+            <td class="font-semibold text-amber-700">₹2,164</td>
+          </tr>
+          <tr class="font-medium">
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-amber-100 flex items-center justify-center text-amber-600 font-bold text-xs">CK</div>
+                Cashkaro
+              </div>
+            </td>
+            <td><span class="badge badge-amber">Cashback</span></td>
+            <td><span class="badge badge-gray">Coupon</span></td>
+            <td>2,108</td>
+            <td>54</td>
+            <td class="font-semibold">₹31,600</td>
+            <td>₹585</td>
+            <td><span class="text-emerald-600">2.56%</span></td>
+            <td class="text-slate-500">6%</td>
+            <td class="font-semibold text-amber-700">₹1,896</td>
+          </tr>
+          <tr class="font-medium">
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-pink-100 flex items-center justify-center text-pink-600 font-bold text-xs">IG</div>
+                Instagram Bio
+              </div>
+            </td>
+            <td><span class="badge badge-purple">Influencer</span></td>
+            <td><span class="badge badge-blue">UTM</span></td>
+            <td>1,204</td>
+            <td>31</td>
+            <td class="font-semibold">₹14,800</td>
+            <td>₹477</td>
+            <td><span class="text-emerald-600">2.57%</span></td>
+            <td class="text-slate-500">—</td>
+            <td class="text-slate-400">—</td>
+          </tr>
+          <tr class="font-medium">
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">NL</div>
+                Newsletter — Apr
+              </div>
+            </td>
+            <td><span class="badge badge-gray">Email</span></td>
+            <td><span class="badge badge-blue">UTM</span></td>
+            <td>921</td>
+            <td>22</td>
+            <td class="font-semibold">₹11,300</td>
+            <td>₹514</td>
+            <td><span class="text-emerald-600">2.39%</span></td>
+            <td class="text-slate-500">—</td>
+            <td class="text-slate-400">—</td>
+          </tr>
+          <tr class="font-medium">
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-red-100 flex items-center justify-center text-red-600 font-bold text-xs">GA</div>
+                Google Ads
+              </div>
+            </td>
+            <td><span class="badge badge-red">Paid</span></td>
+            <td><span class="badge badge-blue">UTM</span></td>
+            <td>642</td>
+            <td>15</td>
+            <td class="font-semibold">₹8,200</td>
+            <td>₹547</td>
+            <td><span class="text-emerald-600">2.34%</span></td>
+            <td class="text-slate-500">—</td>
+            <td class="text-slate-400">—</td>
+          </tr>
+          <tr class="text-slate-400 italic">
+            <td colspan="3">(Unattributed orders)</td>
+            <td>—</td>
+            <td>49</td>
+            <td>₹28,800</td>
+            <td>₹588</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+          </tr>
+          <tr class="font-bold bg-slate-50 border-t-2 border-slate-200">
+            <td colspan="3" class="text-slate-800">TOTAL</td>
+            <td>12,978</td>
+            <td>384</td>
+            <td class="text-slate-800">₹2,49,300</td>
+            <td>₹649</td>
+            <td class="text-emerald-600">2.96%</td>
+            <td>—</td>
+            <td class="text-amber-700">₹9,085</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Commission Summary -->
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-6">
+      <h3 class="font-semibold text-amber-900 mb-4 flex items-center gap-2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Commission Estimate — May 2026
+      </h3>
+      <div class="grid grid-cols-3 gap-4">
+        <div class="bg-white rounded-lg p-4">
+          <div class="text-sm text-slate-600 mb-1">CouponDunia <span class="text-slate-400">@ 5%</span></div>
+          <div class="text-xl font-bold text-slate-800">₹5,025</div>
+        </div>
+        <div class="bg-white rounded-lg p-4">
+          <div class="text-sm text-slate-600 mb-1">GrabOn <span class="text-slate-400">@ 4%</span></div>
+          <div class="text-xl font-bold text-slate-800">₹2,164</div>
+        </div>
+        <div class="bg-white rounded-lg p-4">
+          <div class="text-sm text-slate-600 mb-1">Cashkaro <span class="text-slate-400">@ 6%</span></div>
+          <div class="text-xl font-bold text-slate-800">₹1,896</div>
+        </div>
+      </div>
+      <div class="mt-4 flex items-center justify-between">
+        <span class="text-sm text-amber-700">Total estimated payable this month</span>
+        <span class="text-2xl font-bold text-amber-800">₹9,085</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- ══════════════════════════════════════════════════════════ DRAWERS ════ -->
+
+<!-- Add Partner Drawer -->
+<div id="partnerDrawer" class="drawer-overlay" onclick="closeDrawerOutside(event,'partnerDrawer')">
+  <div class="drawer p-0">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+      <h2 class="font-bold text-slate-800 text-lg">Add Partner</h2>
+      <button onclick="closeDrawer('partnerDrawer')" class="btn-ghost p-2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="px-6 py-5 space-y-5 flex-1 overflow-y-auto">
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Partner Name *</label>
+        <input class="input text-sm" placeholder="e.g. CouponDunia, GrabOn…"/>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Partner Type *</label>
+        <select class="input text-sm">
+          <option>Coupon Site</option>
+          <option>Cashback</option>
+          <option>Affiliate Network</option>
+          <option>Influencer</option>
+          <option>Email / Newsletter</option>
+          <option>Paid (CPC/CPA)</option>
+          <option>Other</option>
+        </select>
+        <p class="text-xs text-slate-400 mt-1">Used for filtering and grouping in reports</p>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Contact Name</label>
+          <input class="input text-sm" placeholder="Partnerships team"/>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Contact Email</label>
+          <input class="input text-sm" placeholder="partner@example.com"/>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Website</label>
+        <input class="input text-sm" placeholder="https://coupondunia.com"/>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Commission Rate (%)</label>
+        <div class="relative">
+          <input class="input text-sm pr-8" placeholder="5" type="number" min="0" max="100"/>
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span>
+        </div>
+        <p class="text-xs text-slate-400 mt-1">Used to calculate estimated commission payable in Reports. Leave blank if not applicable.</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Default Attribution Window</label>
+        <select class="input text-sm">
+          <option>7 days</option>
+          <option selected>30 days</option>
+          <option>90 days</option>
+        </select>
+        <p class="text-xs text-slate-400 mt-1">For UTM link attribution: how long after click an order is counted</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Internal Notes</label>
+        <textarea class="input text-sm" rows="3" placeholder="e.g. Contract signed May 2026, CPA deal…" style="resize:vertical"></textarea>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+      <button onclick="closeDrawer('partnerDrawer')" class="btn-secondary text-sm">Cancel</button>
+      <button class="btn-primary text-sm">Save Partner</button>
+    </div>
+  </div>
+</div>
+
+<!-- Partner Detail Drawer -->
+<div id="partnerDetailDrawer" class="drawer-overlay" onclick="closeDrawerOutside(event,'partnerDetailDrawer')">
+  <div class="drawer p-0">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center font-bold text-orange-600">CD</div>
+        <div>
+          <h2 class="font-bold text-slate-800">CouponDunia</h2>
+          <span class="badge badge-blue text-xs">Coupon Site</span>
+        </div>
+      </div>
+      <button onclick="closeDrawer('partnerDetailDrawer')" class="btn-ghost p-2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="px-6 py-5 space-y-5">
+      <!-- Stats -->
+      <div class="grid grid-cols-3 gap-3">
+        <div class="bg-slate-50 rounded-xl p-3 text-center">
+          <div class="font-bold text-slate-800 text-lg">4,812</div>
+          <div class="text-xs text-slate-400">Clicks</div>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-3 text-center">
+          <div class="font-bold text-slate-800 text-lg">142</div>
+          <div class="text-xs text-slate-400">Orders</div>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-3 text-center">
+          <div class="font-bold text-slate-800 text-lg">₹1,00,500</div>
+          <div class="text-xs text-slate-400">Revenue</div>
+        </div>
+      </div>
+
+      <!-- Info -->
+      <div class="space-y-3 text-sm">
+        <div class="flex items-center justify-between py-2 border-b border-slate-100">
+          <span class="text-slate-500">Contact</span>
+          <span class="text-slate-700 font-medium">partnerships@coupondunia.com</span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-slate-100">
+          <span class="text-slate-500">Commission Rate</span>
+          <span class="text-slate-700 font-medium">5%</span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-slate-100">
+          <span class="text-slate-500">Attribution Window</span>
+          <span class="text-slate-700 font-medium">30 days</span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-slate-100">
+          <span class="text-slate-500">Est. Commission (this month)</span>
+          <span class="text-amber-700 font-bold">₹5,025</span>
+        </div>
+      </div>
+
+      <!-- Codes assigned -->
+      <div>
+        <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Assigned Coupon Codes</h4>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3">
+            <code class="font-mono text-sm text-slate-700">COUP20</code>
+            <div class="text-right">
+              <div class="text-sm font-medium">98 uses</div>
+              <div class="text-xs text-slate-400">₹72,400 revenue</div>
+            </div>
+          </div>
+          <div class="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3">
+            <code class="font-mono text-sm text-slate-700">COUP10</code>
+            <div class="text-right">
+              <div class="text-sm font-medium">44 uses</div>
+              <div class="text-xs text-slate-400">₹28,100 revenue</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Notes</h4>
+        <p class="text-sm text-slate-600 bg-slate-50 rounded-lg px-4 py-3">CPA deal signed Mar 2026. 5% commission on net revenue. Invoice on 1st of each month.</p>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+      <button onclick="closeDrawer('partnerDetailDrawer')" class="btn-ghost text-sm text-red-500">Pause Partner</button>
+      <div class="flex gap-2">
+        <button class="btn-secondary text-sm">Edit</button>
+        <button class="btn-primary text-sm">+ Assign Code</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Assign Coupon Drawer -->
+<div id="couponDrawer" class="drawer-overlay" onclick="closeDrawerOutside(event,'couponDrawer')">
+  <div class="drawer p-0">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+      <h2 class="font-bold text-slate-800 text-lg">Assign Code to Partner</h2>
+      <button onclick="closeDrawer('couponDrawer')" class="btn-ghost p-2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="px-6 py-5 space-y-5">
+      <div class="info-box text-xs">
+        GoSelf reads the discount code on each Shopify order. When a code matches one assigned here, the order is automatically attributed to the partner — no pixel needed.
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Select Shopify Discount Code *</label>
+        <select class="input text-sm">
+          <option>SUMMER25 (25% off) — 12 uses</option>
+          <option>FLAT500 (₹500 flat) — 7 uses</option>
+          <option>NEWUSER10 (10% off) — 3 uses</option>
+        </select>
+        <p class="text-xs text-slate-400 mt-1">Showing unassigned codes synced from Shopify Admin → Discounts</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Assign to Partner *</label>
+        <select class="input text-sm">
+          <option>Select partner…</option>
+          <option>CouponDunia</option>
+          <option>GrabOn</option>
+          <option>Cashkaro</option>
+          <option>Instagram Bio</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Attribution Window</label>
+        <select class="input text-sm">
+          <option>7 days</option>
+          <option selected>30 days</option>
+          <option>90 days</option>
+          <option>No limit</option>
+        </select>
+        <p class="text-xs text-slate-400 mt-1">Orders using this code within the window are attributed to this partner</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Notes (internal)</label>
+        <textarea class="input text-sm" rows="2" placeholder="e.g. Exclusive code for CouponDunia summer campaign" style="resize:vertical"></textarea>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+      <button onclick="closeDrawer('couponDrawer')" class="btn-secondary text-sm">Cancel</button>
+      <button class="btn-primary text-sm">Assign Code</button>
+    </div>
+  </div>
+</div>
+
+<!-- UTM Drawer (full builder) -->
+<div id="utmDrawer" class="drawer-overlay" onclick="closeDrawerOutside(event,'utmDrawer')">
+  <div class="drawer p-0">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+      <h2 class="font-bold text-slate-800 text-lg">Create UTM Link</h2>
+      <button onclick="closeDrawer('utmDrawer')" class="btn-ghost p-2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="px-6 py-5 space-y-5">
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Destination URL *</label>
+        <input class="input text-sm" placeholder="https://yourstore.com/collections/…"/>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Partner *</label>
+        <select class="input text-sm">
+          <option>Select partner…</option>
+          <option>Instagram Bio (@fashionwithpriya)</option>
+          <option>Newsletter — Apr</option>
+          <option>Google Ads</option>
+          <option>Twitter/X</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Campaign Name</label>
+          <input class="input text-sm" placeholder="summer2024"/>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Medium</label>
+          <select class="input text-sm">
+            <option>influencer</option>
+            <option>affiliate</option>
+            <option>email</option>
+            <option>cpc</option>
+            <option>social</option>
+            <option>referral</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Custom Slug (optional)</label>
+        <div class="flex">
+          <span class="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-slate-200 bg-slate-50 text-slate-500 text-sm">go.mybrand.com/s/</span>
+          <input class="input rounded-l-none text-sm" placeholder="IG-SUM24" style="border-radius:0 8px 8px 0"/>
+        </div>
+        <p class="text-xs text-slate-400 mt-1">Leave blank to auto-generate. Short link redirects via GoSelf so every click is logged.</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Attribution Window</label>
+        <select class="input text-sm">
+          <option>7 days</option>
+          <option selected>30 days</option>
+          <option>90 days</option>
+        </select>
+      </div>
+
+      <!-- Live Preview -->
+      <div class="bg-slate-50 rounded-xl p-4">
+        <div class="text-xs font-semibold text-slate-500 mb-2">Preview</div>
+        <div class="text-sm font-medium text-blue-600 mb-2">https://go.mybrand.com/s/IG-SUM24</div>
+        <div class="text-xs text-slate-400 font-mono break-all">→ ?utm_source=instagram-bio&utm_medium=influencer&utm_campaign=summer2024&ref=ATT-0031</div>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-slate-100 flex items-center gap-3 justify-between">
+      <button onclick="closeDrawer('utmDrawer')" class="btn-secondary text-sm">Cancel</button>
+      <div class="flex gap-2">
+        <button class="btn-secondary text-sm">Copy Link</button>
+        <button class="btn-primary text-sm">Save Link</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ SCRIPTS ════════ -->
+<script>
+// ── Navigation ──
+const navItems = ['overview','partners','coupons','utm','reports','dashboard'];
+function setPage(page) {
+  navItems.forEach(p => {
+    const el = document.getElementById('page-' + p);
+    if (el) el.classList.toggle('active', p === page);
+    const nav = document.getElementById('nav-' + p);
+    if (nav) nav.classList.toggle('active', p === page);
+  });
+  // also handle dashboard nav
+  document.querySelectorAll('.sidebar-item').forEach(el => {
+    if (!el.id) el.classList.remove('active');
+  });
+}
+
+// ── Drawers ──
+function openDrawer(id) {
+  document.getElementById(id).classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeDrawer(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+function closeDrawerOutside(e, id) {
+  if (e.target === document.getElementById(id)) closeDrawer(id);
+}
+
+// ── Copy ──
+function copyToClipboard(elementId) {
+  const text = document.getElementById(elementId).textContent;
+  navigator.clipboard.writeText(text).catch(() => {});
+  const el = document.getElementById(elementId);
+  el.style.background = '#dcfce7';
+  el.style.borderColor = '#86efac';
+  setTimeout(() => { el.style.background = ''; el.style.borderColor = ''; }, 1500);
+}
+function copyText(text) {
+  navigator.clipboard.writeText(text).catch(() => {});
+}
+
+// ── Charts ──
+document.addEventListener('DOMContentLoaded', () => {
+  // Line Chart
+  const lineCtx = document.getElementById('lineChart')?.getContext('2d');
+  if (lineCtx) {
+    const labels = Array.from({length: 30}, (_, i) => {
+      const d = new Date('2026-04-20'); d.setDate(d.getDate() + i);
+      return d.getDate() === 1 ? d.toLocaleString('en',{month:'short'}) : (i % 5 === 0 ? d.getDate() : '');
+    });
+    const clicks = [320,280,410,390,460,510,480,390,420,500,550,480,410,390,500,520,490,420,380,490,540,580,510,460,500,520,490,550,580,610];
+    const orders = [8,6,10,9,11,13,12,9,10,12,14,11,10,9,12,13,12,10,9,12,13,14,12,11,12,13,12,14,14,15];
+
+    new Chart(lineCtx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Clicks',
+            data: clicks,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59,130,246,0.06)',
+            borderWidth: 2,
+            tension: 0.4,
+            fill: true,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+          },
+          {
+            label: 'Orders',
+            data: orders,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16,185,129,0.06)',
+            borderWidth: 2,
+            tension: 0.4,
+            fill: true,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            yAxisID: 'y2',
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1e293b', padding: 10, cornerRadius: 8 } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 11 } } },
+          y: { grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 11 } }, position: 'left' },
+          y2: { display: false, position: 'right' }
+        }
+      }
+    });
+  }
+
+  // Donut Chart
+  const donutCtx = document.getElementById('donutChart')?.getContext('2d');
+  if (donutCtx) {
+    new Chart(donutCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Coupon Sites', 'Affiliates', 'Influencer', 'Email'],
+        datasets: [{
+          data: [64, 17, 12, 7],
+          backgroundColor: ['#3b82f6','#8b5cf6','#10b981','#f59e0b'],
+          borderWidth: 0,
+          hoverOffset: 4,
+        }]
+      },
+      options: {
+        cutout: '72%',
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1e293b', cornerRadius: 8 } }
+      }
+    });
+  }
+});
+</script>
+</body>
+</html>

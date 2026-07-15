@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Campaign Reward — Redemption Templates</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', sans-serif;
+      background: #f8f9fa;
+      color: #111;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ── */
+    .page-header {
+      height: 60px;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-logo {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 700; font-size: 14px;
+    }
+    .header-title { font-size: 15px; font-weight: 700; color: #111; }
+    .header-subtitle { font-size: 12px; color: #9ca3af; margin-top: 1px; }
+    .header-badge {
+      background: #f0fdf4; color: #16a34a;
+      border: 1px solid #bbf7d0;
+      border-radius: 99px; padding: 3px 10px;
+      font-size: 11px; font-weight: 600;
+    }
+
+    /* ── MAIN GRID ── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 16px;
+      padding: 16px;
+      height: calc(100vh - 60px);
+    }
+
+    /* ── TEMPLATE CARD ── */
+    .t-card {
+      border-radius: 12px;
+      border: 2px solid #e5e7eb;
+      background: white;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .t-card:hover {
+      border-color: #a78bfa;
+      box-shadow: 0 4px 20px rgba(103, 78, 234, 0.12);
+    }
+
+    /* card header row */
+    .t-card-header {
+      height: 40px;
+      padding: 0 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #f3f4f6;
+      flex-shrink: 0;
+    }
+    .t-card-title-group { display: flex; align-items: center; gap: 8px; }
+    .t-card-name { font-size: 13px; font-weight: 700; color: #111; }
+    .t-badge {
+      font-size: 10px; font-weight: 600;
+      padding: 2px 8px; border-radius: 99px;
+    }
+    .badge-amber  { background: #fef3c7; color: #92400e; }
+    .badge-blue   { background: #dbeafe; color: #1e40af; }
+    .badge-orange { background: #ffedd5; color: #9a3412; }
+    .badge-purple { background: #f3e8ff; color: #6b21a8; }
+    .t-select-btn {
+      font-size: 11px; font-weight: 600;
+      padding: 4px 12px; border-radius: 6px;
+      border: 1.5px solid #e5e7eb;
+      background: #fff; color: #374151;
+      cursor: pointer; transition: background 0.15s, border-color 0.15s;
+    }
+    .t-select-btn:hover { background: #f9fafb; border-color: #a78bfa; color: #7c3aed; }
+
+    /* preview area */
+    .t-preview {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f8f9fa;
+      padding: 8px 0;
+    }
+
+    /* scaled phone wrapper */
+    .phone-wrapper {
+      width: 206px;   /* 375 × 0.55 = 206 */
+      height: 447px;  /* 812 × 0.55 = 447 */
+      overflow: hidden;
+      position: relative;
+      margin: 0 auto;
+      flex-shrink: 0;
+    }
+    .phone-scale {
+      transform: scale(0.55);
+      transform-origin: top left;  /* anchor left so wrapper clips correctly */
+      width: 375px;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    /* phone frame */
+    .phone-frame {
+      width: 375px;
+      height: 812px;
+      border-radius: 40px;
+      overflow: hidden;
+      border: 8px solid #1a1a1a;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      background: white;
+      position: relative;
+    }
+    .phone-notch {
+      position: absolute;
+      top: 10px; left: 50%; transform: translateX(-50%);
+      width: 100px; height: 22px;
+      background: #1a1a1a;
+      border-radius: 0 0 14px 14px;
+      z-index: 10;
+    }
+    .phone-screen {
+      width: 100%; height: 100%;
+      overflow: hidden;
+    }
+
+    /* card footer */
+    .t-card-footer {
+      height: 28px;
+      padding: 0 14px;
+      display: flex;
+      align-items: center;
+      border-top: 1px solid #f3f4f6;
+      flex-shrink: 0;
+    }
+    .t-card-footer span {
+      font-size: 10.5px;
+      font-style: italic;
+      color: #9ca3af;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       TEMPLATE 1 — CLEAN CARD
+    ══════════════════════════════════════════════════════════ */
+    .t1-bg {
+      width: 100%; height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex; align-items: center; justify-content: center;
+      padding: 40px 16px 16px;
+    }
+    .t1-card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 24px;
+      width: 100%;
+      max-width: 320px;
+      display: flex; flex-direction: column; gap: 14px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .t1-top { display: flex; align-items: center; gap: 10px; }
+    .t1-logo {
+      width: 40px; height: 40px; background: #111; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 800; font-size: 18px;
+    }
+    .t1-pill {
+      background: #f3e8ff; color: #7c3aed;
+      font-size: 11px; font-weight: 600;
+      padding: 4px 10px; border-radius: 99px;
+    }
+    .t1-title { font-size: 17px; font-weight: 800; color: #111; line-height: 1.25; }
+    .t1-desc  { font-size: 12px; color: #6b7280; line-height: 1.5; }
+    .t1-img-box {
+      background: #f5f0ff; border-radius: 12px; height: 80px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 36px;
+    }
+    .t1-code-box {
+      border: 1.5px dashed #d1d5db; border-radius: 10px;
+      padding: 10px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .t1-code { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; color: #111; letter-spacing: 1px; }
+    .t1-copy-btn {
+      font-size: 10px; font-weight: 600; padding: 4px 10px;
+      border-radius: 6px; border: 1.5px solid #e5e7eb;
+      background: #f9fafb; color: #374151; cursor: pointer;
+    }
+    .t1-validity { font-size: 10.5px; color: #9ca3af; text-align: center; }
+    .t1-cta {
+      background: #111; color: #fff;
+      font-size: 14px; font-weight: 700;
+      padding: 13px; border-radius: 12px;
+      text-align: center; cursor: pointer;
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       TEMPLATE 2 — HERO BRAND (animated shimmer)
+    ══════════════════════════════════════════════════════════ */
+    @keyframes shimmer {
+      0%   { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
+    .t2-bg { width: 100%; height: 100%; display: flex; flex-direction: column; }
+    .t2-hero {
+      height: 45%;
+      background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
+      position: relative; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .t2-confetti-svg {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+    }
+    .t2-hero-text { color: #fff; font-size: 22px; font-weight: 900; position: relative; z-index: 1; text-align: center; padding: 0 20px; }
+    .t2-body {
+      flex: 1; background: #fff; padding: 20px 20px 16px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .t2-subtitle { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; }
+    .t2-title { font-size: 18px; font-weight: 800; color: #111; line-height: 1.25; }
+    .t2-desc  { font-size: 12px; color: #6b7280; line-height: 1.5; }
+    .t2-code-box {
+      border: 1.5px dashed #d1d5db; border-radius: 10px;
+      padding: 10px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .t2-code { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: #7c3aed; letter-spacing: 1px; }
+    .t2-cta {
+      background: linear-gradient(90deg, #7c3aed, #db2777, #7c3aed);
+      background-size: 200% auto;
+      animation: shimmer 2.5s linear infinite;
+      color: #fff; font-size: 14px; font-weight: 700;
+      padding: 13px; border-radius: 12px;
+      text-align: center; cursor: pointer;
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       TEMPLATE 3 — SCRATCH & REVEAL
+    ══════════════════════════════════════════════════════════ */
+    .t3-bg {
+      width: 100%; height: 100%;
+      background: #fff3e0;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: flex-start;
+      padding: 50px 20px 20px;
+      gap: 14px;
+    }
+    .t3-header { text-align: center; }
+    .t3-header h2 { font-size: 20px; font-weight: 900; color: #ea6c00; }
+    .t3-header p  { font-size: 11px; color: #f97316; margin-top: 2px; }
+    .t3-scratch-card {
+      background: #fff;
+      border-radius: 16px;
+      width: 100%;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    .t3-scratch-top {
+      background: repeating-linear-gradient(
+        45deg,
+        #c0c0c0 0px, #c0c0c0 8px,
+        #a0a0a0 8px, #a0a0a0 16px
+      );
+      height: 80px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .t3-scratch-label { font-size: 13px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+    .t3-scratch-reveal {
+      padding: 16px; text-align: center;
+      background: linear-gradient(135deg, #fffbeb, #fef3c7);
+    }
+    .t3-reveal-label { font-size: 10px; font-weight: 600; color: #92400e; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+    .t3-code { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; color: #d97706; letter-spacing: 2px; }
+    .t3-divider { height: 1px; background: #fde68a; margin: 10px 16px; }
+    .t3-value { font-size: 28px; font-weight: 900; color: #111; text-align: center; padding-bottom: 12px; }
+    .t3-value span { font-size: 14px; font-weight: 500; color: #6b7280; display: block; margin-top: 2px; }
+    .t3-claim-btn {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: #fff; font-size: 14px; font-weight: 700;
+      padding: 12px 28px; border-radius: 12px;
+      text-align: center; cursor: pointer;
+      box-shadow: 0 4px 12px rgba(34,197,94,0.35);
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       TEMPLATE 4 — MINIMAL DARK (animated gradient border)
+    ══════════════════════════════════════════════════════════ */
+    @keyframes rotateGrad {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .t4-bg {
+      width: 100%; height: 100%;
+      background: #0f0f0f;
+      display: flex; align-items: center; justify-content: center;
+      padding: 40px 16px 16px;
+    }
+    .t4-card-wrap {
+      position: relative;
+      border-radius: 22px;
+      padding: 2px;
+      width: 100%; max-width: 320px;
+      overflow: hidden;
+    }
+    .t4-card-wrap::before {
+      content: '';
+      position: absolute;
+      inset: -50%;
+      background: conic-gradient(from 0deg, #7c3aed, #db2777, #3b82f6, #7c3aed);
+      animation: rotateGrad 3s linear infinite;
+      border-radius: 50%;
+    }
+    .t4-card {
+      position: relative; z-index: 1;
+      background: #1a1a1a;
+      border-radius: 20px;
+      padding: 24px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .t4-top { display: flex; align-items: center; gap: 12px; }
+    .t4-logo {
+      width: 44px; height: 44px; background: #111; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 800; font-size: 18px;
+      box-shadow: 0 0 16px rgba(124,58,237,0.7);
+      border: 1.5px solid rgba(124,58,237,0.5);
+    }
+    .t4-brand { font-size: 13px; font-weight: 700; color: #e5e7eb; }
+    .t4-brand-sub { font-size: 11px; color: #6b7280; margin-top: 1px; }
+    .t4-divider { height: 1px; background: #2d2d2d; }
+    .t4-title { font-size: 17px; font-weight: 800; color: #f9fafb; line-height: 1.3; }
+    .t4-desc  { font-size: 12px; color: #6b7280; line-height: 1.5; }
+    .t4-code-box {
+      background: #111; border-radius: 10px;
+      padding: 12px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      border: 1px solid #2d2d2d;
+    }
+    .t4-code { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; color: #a78bfa; letter-spacing: 1.5px; }
+    .t4-copy { font-size: 10px; font-weight: 600; color: #7c3aed; background: rgba(124,58,237,0.12); padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+    .t4-validity { font-size: 11px; color: #4b5563; text-align: center; }
+    .t4-cta {
+      background: linear-gradient(135deg, #7c3aed, #a855f7);
+      color: #fff; font-size: 14px; font-weight: 700;
+      padding: 13px; border-radius: 12px;
+      text-align: center; cursor: pointer;
+      box-shadow: 0 4px 16px rgba(124,58,237,0.4);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── HEADER ── -->
+  <header class="page-header">
+    <div class="header-left">
+      <div class="header-logo">G</div>
+      <div>
+        <div class="header-title">Campaign Reward — Redemption Templates</div>
+        <div class="header-subtitle">Choose a template style for your campaign reward screen</div>
+      </div>
+    </div>
+    <span class="header-badge">4 templates</span>
+  </header>
+
+  <!-- ── 2×2 GRID ── -->
+  <main>
+
+    <!-- ══ TEMPLATE 1 — CLEAN CARD ══ -->
+    <div class="t-card">
+      <div class="t-card-header">
+        <div class="t-card-title-group">
+          <span class="t-card-name">Clean Card</span>
+          <span class="t-badge badge-amber">⭐ Most Popular</span>
+        </div>
+        <button class="t-select-btn">Select</button>
+      </div>
+      <div class="t-preview">
+        <div class="phone-wrapper">
+          <div class="phone-scale">
+            <div class="phone-frame">
+              <div class="phone-notch"></div>
+              <div class="phone-screen">
+                <div class="t1-bg">
+                  <div class="t1-card">
+                    <div class="t1-top">
+                      <div class="t1-logo">N</div>
+                      <span class="t1-pill">🎉 Campaign Reward</span>
+                    </div>
+                    <div class="t1-title">₹200 off your next order at Neeman's</div>
+                    <div class="t1-desc">Exclusive reward for completing your wellness challenge. Use at checkout.</div>
+                    <div class="t1-img-box">👟</div>
+                    <div class="t1-code-box">
+                      <span class="t1-code">CAMP2024X7</span>
+                      <button class="t1-copy-btn">Copy</button>
+                    </div>
+                    <div class="t1-validity">Valid until 30 Jun 2026</div>
+                    <div class="t1-cta">Claim Reward →</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="t-card-footer">
+        <span>Clean, trustworthy layout — works for all brand types</span>
+      </div>
+    </div>
+
+    <!-- ══ TEMPLATE 2 — HERO BRAND ══ -->
+    <div class="t-card">
+      <div class="t-card-header">
+        <div class="t-card-title-group">
+          <span class="t-card-name">Hero Brand</span>
+          <span class="t-badge badge-blue">✨ Animated</span>
+        </div>
+        <button class="t-select-btn">Select</button>
+      </div>
+      <div class="t-preview">
+        <div class="phone-wrapper">
+          <div class="phone-scale">
+            <div class="phone-frame">
+              <div class="phone-notch"></div>
+              <div class="phone-screen">
+                <div class="t2-bg">
+                  <div class="t2-hero">
+                    <!-- SVG confetti -->
+                    <svg class="t2-confetti-svg" viewBox="0 0 375 360" xmlns="http://www.w3.org/2000/svg">
+                      <rect x="30"  y="40"  width="16" height="16" rx="3" fill="rgba(255,255,255,0.25)" transform="rotate(20 38 48)"/>
+                      <circle cx="320" cy="60"  r="10" fill="rgba(255,255,255,0.2)"/>
+                      <rect x="60"  y="200" width="12" height="12" rx="2" fill="rgba(255,255,255,0.2)" transform="rotate(-15 66 206)"/>
+                      <circle cx="340" cy="200" r="7"  fill="rgba(255,255,255,0.18)"/>
+                      <rect x="280" y="120" width="18" height="8"  rx="3" fill="rgba(255,255,255,0.22)" transform="rotate(30 289 124)"/>
+                      <circle cx="80"  cy="100" r="8"  fill="rgba(255,255,255,0.15)"/>
+                      <rect x="180" y="20"  width="14" height="14" rx="3" fill="rgba(255,255,255,0.2)" transform="rotate(10 187 27)"/>
+                      <circle cx="200" cy="300" r="9"  fill="rgba(255,255,255,0.12)"/>
+                    </svg>
+                    <div class="t2-hero-text">🎁 You earned it!</div>
+                  </div>
+                  <div class="t2-body">
+                    <div class="t2-subtitle">Exclusive Campaign Reward</div>
+                    <div class="t2-title">₹200 off at Neeman's</div>
+                    <div class="t2-desc">Complete your wellness goal, unlock your reward. Valid on any order above ₹999.</div>
+                    <div class="t2-code-box">
+                      <span class="t2-code">CAMP2024X7</span>
+                      <button class="t1-copy-btn">Copy</button>
+                    </div>
+                    <div class="t2-cta">Claim Reward →</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="t-card-footer">
+        <span>Bold hero header with shimmer CTA — high visual impact</span>
+      </div>
+    </div>
+
+    <!-- ══ TEMPLATE 3 — SCRATCH & REVEAL ══ -->
+    <div class="t-card">
+      <div class="t-card-header">
+        <div class="t-card-title-group">
+          <span class="t-card-name">Scratch &amp; Reveal</span>
+          <span class="t-badge badge-orange">🎮 Gamified</span>
+        </div>
+        <button class="t-select-btn">Select</button>
+      </div>
+      <div class="t-preview">
+        <div class="phone-wrapper">
+          <div class="phone-scale">
+            <div class="phone-frame">
+              <div class="phone-notch"></div>
+              <div class="phone-screen">
+                <div class="t3-bg">
+                  <div class="t3-header">
+                    <h2>🎉 Congratulations!</h2>
+                    <p>You unlocked a campaign reward</p>
+                  </div>
+                  <div class="t3-scratch-card">
+                    <div class="t3-scratch-top">
+                      <span class="t3-scratch-label">✦ Scratch to reveal ✦</span>
+                    </div>
+                    <div class="t3-scratch-reveal">
+                      <div class="t3-reveal-label">Your reward code</div>
+                      <div class="t3-code">CAMP2024X7</div>
+                    </div>
+                    <div class="t3-divider"></div>
+                    <div class="t3-value">₹200 OFF<span>on your next Neeman's order</span></div>
+                  </div>
+                  <div class="t3-claim-btn">Claim Now →</div>
+                  <div style="font-size:11px;color:#f97316;margin-top:4px;">Valid until 30 Jun 2026</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="t-card-footer">
+        <span>Gamified scratch-card mechanic — drives curiosity &amp; engagement</span>
+      </div>
+    </div>
+
+    <!-- ══ TEMPLATE 4 — MINIMAL DARK ══ -->
+    <div class="t-card">
+      <div class="t-card-header">
+        <div class="t-card-title-group">
+          <span class="t-card-name">Minimal Dark</span>
+          <span class="t-badge badge-purple">💎 Premium</span>
+        </div>
+        <button class="t-select-btn">Select</button>
+      </div>
+      <div class="t-preview">
+        <div class="phone-wrapper">
+          <div class="phone-scale">
+            <div class="phone-frame">
+              <div class="phone-notch"></div>
+              <div class="phone-screen">
+                <div class="t4-bg">
+                  <div class="t4-card-wrap">
+                    <div class="t4-card">
+                      <div class="t4-top">
+                        <div class="t4-logo">N</div>
+                        <div>
+                          <div class="t4-brand">Neeman's</div>
+                          <div class="t4-brand-sub">Campaign Reward</div>
+                        </div>
+                      </div>
+                      <div class="t4-divider"></div>
+                      <div class="t4-title">₹200 off your next order</div>
+                      <div class="t4-desc">Exclusive reward for campaign participants. Redeemable once per account at checkout.</div>
+                      <div class="t4-code-box">
+                        <span class="t4-code">CAMP2024X7</span>
+                        <span class="t4-copy">Copy</span>
+                      </div>
+                      <div class="t4-validity">Valid until 30 Jun 2026</div>
+                      <div class="t4-cta">Unlock Reward →</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="t-card-footer">
+        <span>Dark premium aesthetic with animated gradient border</span>
+      </div>
+    </div>
+
+  </main>
+</body>
+</html>

@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Campaign Reward Placement Mockups</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  /* ─── Showcase layout ─────────────────────────────────────── */
+  .showcase { max-width: 1100px; margin: 0 auto; padding: 32px 16px 80px; }
+  .showcase-title { font-size: 28px; font-weight: 800; color: #1a1a2e; margin-bottom: 6px; }
+  .showcase-subtitle { color: #6b7280; font-size: 14px; margin-bottom: 48px; }
+  .surface { margin-bottom: 64px; }
+  .surface-label {
+    display: inline-flex; align-items: center; gap-8px;
+    font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+    color: #6366f1; background: #eef2ff; border: 1px solid #c7d2fe;
+    padding: 4px 12px; border-radius: 20px; margin-bottom: 14px;
+  }
+  .surface-name { font-size: 20px; font-weight: 700; color: #111827; margin-bottom: 4px; }
+  .surface-desc { font-size: 13px; color: #6b7280; margin-bottom: 18px; }
+  .surface-frame {
+    background: #fff; border-radius: 16px; overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08); border: 1px solid #e5e7eb;
+  }
+
+  /* ─── Shared brand pill ───────────────────────────────────── */
+  .brand-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 20px;
+    padding: 4px 10px 4px 4px; font-size: 12px; font-weight: 600; color: #374151;
+    white-space: nowrap;
+  }
+  .brand-logo {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800; color: #fff; flex-shrink: 0;
+  }
+  .pill-group { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* ─── Shared offer card ───────────────────────────────────── */
+  .offer-card {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 14px; display: flex; align-items: center; gap: 12px;
+  }
+  .offer-icon {
+    width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .offer-meta { flex: 1; min-width: 0; }
+  .offer-title { font-size: 13px; font-weight: 700; color: #111827; }
+  .offer-desc { font-size: 11px; color: #6b7280; margin-top: 2px; }
+  .offer-badge {
+    font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* ─── Toggle helper ───────────────────────────────────────── */
+  .toggle-btn {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    font-size: 12px; font-weight: 600; color: #6366f1; background: none;
+    border: none; padding: 0; text-decoration: underline; text-underline-offset: 2px;
+  }
+  .collapsible { display: none; }
+  .collapsible.open { display: block; }
+
+  /* ═══════════════════════════════════════════════════════════
+     SURFACE 1 — HOMEPAGE HERO SECTION
+  ═══════════════════════════════════════════════════════════ */
+  .hero-section {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #1e40af 100%);
+    padding: 56px 48px; color: #fff; position: relative; overflow: hidden;
+  }
+  .hero-section::before {
+    content: ''; position: absolute; top: -80px; right: -80px;
+    width: 350px; height: 350px; border-radius: 50%;
+    background: rgba(99,102,241,0.2); pointer-events: none;
+  }
+  .hero-section::after {
+    content: ''; position: absolute; bottom: -60px; left: 200px;
+    width: 200px; height: 200px; border-radius: 50%;
+    background: rgba(59,130,246,0.15); pointer-events: none;
+  }
+  .hero-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 20px; padding: 5px 14px; font-size: 12px; font-weight: 600;
+    color: #93c5fd; margin-bottom: 20px;
+  }
+  .hero-h1 { font-size: 38px; font-weight: 800; line-height: 1.15; margin-bottom: 12px; }
+  .hero-h1 span { color: #60a5fa; }
+  .hero-sub { font-size: 16px; color: #94a3b8; margin-bottom: 32px; max-width: 520px; line-height: 1.6; }
+  .hero-body { display: grid; grid-template-columns: 1fr 420px; gap: 48px; align-items: center; }
+  .hero-cta {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #3b82f6; color: #fff; font-size: 14px; font-weight: 700;
+    padding: 13px 28px; border-radius: 10px; border: none; cursor: pointer;
+    margin-right: 12px; text-decoration: none;
+  }
+  .hero-cta.outline {
+    background: transparent; border: 2px solid rgba(255,255,255,0.3); color: #e2e8f0;
+  }
+  .hero-card {
+    background: rgba(255,255,255,0.06); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 20px; padding: 24px;
+  }
+  .hero-card-title { font-size: 13px; font-weight: 600; color: #93c5fd; margin-bottom: 16px; letter-spacing: 0.5px; }
+  .hero-offer-row {
+    display: flex; align-items: center; gap: 12px; padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .hero-offer-row:last-child { border-bottom: none; }
+  .hero-brand-circle {
+    width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+  }
+  .hero-offer-name { font-size: 13px; font-weight: 700; color: #f1f5f9; }
+  .hero-offer-val { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .hero-offer-tag {
+    margin-left: auto; background: rgba(99,102,241,0.25); color: #a5b4fc;
+    border: 1px solid rgba(99,102,241,0.4); border-radius: 6px;
+    font-size: 11px; font-weight: 700; padding: 3px 10px; white-space: nowrap;
+  }
+  .hero-see-more {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    margin-top: 16px; font-size: 12px; font-weight: 600; color: #93c5fd;
+    cursor: pointer; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px; padding: 8px; transition: background 0.2s;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     SURFACE 2 — PRODUCT PAGE STRIP
+  ═══════════════════════════════════════════════════════════ */
+  .product-page { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .product-gallery {
+    background: #f8fafc; padding: 40px; display: flex; align-items: center; justify-content: center;
+  }
+  .product-img-placeholder {
+    width: 200px; height: 200px; background: #e2e8f0; border-radius: 16px;
+    display: flex; align-items: center; justify-content: center; font-size: 48px;
+  }
+  .product-info { padding: 36px 32px; }
+  .product-tag { font-size: 11px; font-weight: 700; color: #6366f1; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+  .product-title { font-size: 22px; font-weight: 800; color: #111827; margin-bottom: 8px; }
+  .product-price { font-size: 26px; font-weight: 800; color: #111827; margin-bottom: 6px; }
+  .product-price span { font-size: 14px; color: #9ca3af; text-decoration: line-through; margin-left: 8px; font-weight: 400; }
+  .product-rating { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #6b7280; margin-bottom: 20px; }
+
+  /* Reward strip inside product page */
+  .reward-strip {
+    background: linear-gradient(135deg, #fffbeb, #fef3c7);
+    border: 1.5px solid #fbbf24; border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 16px;
+  }
+  .reward-strip-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .reward-strip-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #f59e0b; color: #fff; font-size: 11px; font-weight: 700;
+    padding: 3px 10px; border-radius: 20px;
+  }
+  .reward-strip-title { font-size: 13px; font-weight: 700; color: #92400e; }
+  .reward-strip-sub { font-size: 11px; color: #b45309; margin-bottom: 10px; }
+  .progress-bar-wrap { background: #fde68a; border-radius: 100px; height: 6px; margin-bottom: 6px; }
+  .progress-bar-fill { background: #f59e0b; border-radius: 100px; height: 6px; width: 62%; }
+  .progress-label { display: flex; justify-content: space-between; font-size: 10px; color: #92400e; font-weight: 600; }
+  .strip-brands { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .strip-brand-logo {
+    width: 28px; height: 28px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 800; color: #fff;
+    border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+  .strip-more { font-size: 11px; font-weight: 700; color: #b45309; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+  /* ═══════════════════════════════════════════════════════════
+     SURFACE 3 — CART PAGE WIDGET
+  ═══════════════════════════════════════════════════════════ */
+  .cart-page { display: grid; grid-template-columns: 1fr 380px; gap: 0; }
+  .cart-items { padding: 32px; border-right: 1px solid #f3f4f6; }
+  .cart-section-title { font-size: 20px; font-weight: 800; color: #111827; margin-bottom: 20px; }
+  .cart-item { display: flex; gap: 14px; padding: 16px 0; border-bottom: 1px solid #f3f4f6; }
+  .cart-item-img { width: 64px; height: 64px; background: #f1f5f9; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+  .cart-item-name { font-size: 14px; font-weight: 600; color: #111827; }
+  .cart-item-sub { font-size: 12px; color: #9ca3af; margin-top: 3px; }
+  .cart-item-price { font-size: 15px; font-weight: 700; color: #111827; margin-top: 6px; }
+
+  .cart-sidebar { padding: 28px; background: #fafafa; }
+  .cart-reward-widget {
+    background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+    border: 1.5px solid #34d399; border-radius: 14px; padding: 18px; margin-bottom: 20px;
+  }
+  .cart-reward-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .cart-reward-icon { font-size: 20px; }
+  .cart-reward-title { font-size: 14px; font-weight: 800; color: #065f46; }
+  .cart-reward-sub { font-size: 11px; color: #059669; margin-left: auto; font-weight: 600; }
+  .cart-progress-wrap { background: #a7f3d0; border-radius: 100px; height: 8px; margin-bottom: 8px; }
+  .cart-progress-fill { background: linear-gradient(90deg, #10b981, #34d399); border-radius: 100px; height: 8px; width: 78%; }
+  .cart-progress-labels { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #065f46; margin-bottom: 14px; }
+  .cart-unlock-msg { font-size: 13px; font-weight: 700; color: #065f46; margin-bottom: 12px; }
+  .cart-unlock-brands { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .cart-see-more-btn {
+    width: 100%; padding: 9px; background: #10b981; color: #fff;
+    font-size: 12px; font-weight: 700; border: none; border-radius: 8px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .cart-offers-expanded {
+    margin-top: 12px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .cart-offer-row {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,0.7); border-radius: 10px; padding: 10px 12px;
+  }
+  .cart-offer-logo { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; flex-shrink: 0; }
+  .cart-offer-name { font-size: 12px; font-weight: 700; color: #065f46; }
+  .cart-offer-val { font-size: 11px; color: #059669; }
+  .cart-offer-chip { margin-left: auto; background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+
+  .cart-summary { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; }
+  .cart-summary-row { display: flex; justify-content: space-between; font-size: 13px; color: #6b7280; padding: 6px 0; }
+  .cart-summary-row.total { font-size: 16px; font-weight: 800; color: #111827; border-top: 1px solid #f3f4f6; padding-top: 12px; margin-top: 6px; }
+  .cart-checkout-btn {
+    width: 100%; margin-top: 14px; padding: 14px; background: #111827; color: #fff;
+    font-size: 14px; font-weight: 700; border: none; border-radius: 10px; cursor: pointer;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     SURFACE 4 — STICKY MOBILE BAR
+  ═══════════════════════════════════════════════════════════ */
+  .mobile-frame {
+    width: 375px; height: 680px; background: #fff; border-radius: 32px;
+    overflow: hidden; position: relative; border: 8px solid #111827;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.3); margin: 0 auto;
+  }
+  .mobile-screen { height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+  .mobile-status-bar { background: #fff; height: 44px; display: flex; align-items: center; padding: 0 20px; justify-content: space-between; }
+  .mobile-status-time { font-size: 15px; font-weight: 700; color: #111; }
+  .mobile-status-icons { font-size: 12px; color: #111; }
+  .mobile-scroll { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: 120px; background: #f8fafc; }
+  .mobile-product-card { background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 12px; }
+  .mobile-product-img { height: 180px; background: linear-gradient(135deg, #f1f5f9, #e2e8f0); display: flex; align-items: center; justify-content: center; font-size: 60px; }
+  .mobile-product-info { padding: 14px; }
+  .mobile-product-name { font-size: 14px; font-weight: 700; color: #111827; }
+  .mobile-product-price { font-size: 18px; font-weight: 800; color: #111827; margin-top: 4px; }
+
+  /* Sticky bottom banner */
+  .sticky-bar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: linear-gradient(135deg, #1e40af, #4f46e5);
+    padding: 0; z-index: 50;
+  }
+  .sticky-collapsed {
+    display: flex; align-items: center; gap: 10px; padding: 14px 16px; cursor: pointer;
+  }
+  .sticky-icon { font-size: 20px; flex-shrink: 0; }
+  .sticky-text { flex: 1; }
+  .sticky-main { font-size: 13px; font-weight: 700; color: #fff; }
+  .sticky-sub { font-size: 11px; color: #93c5fd; margin-top: 1px; }
+  .sticky-arrow { color: #93c5fd; font-size: 18px; }
+  .sticky-expanded { padding: 16px; border-top: 1px solid rgba(255,255,255,0.15); }
+  .sticky-brand-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px; }
+  .sticky-brand-card {
+    flex-shrink: 0; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 10px; padding: 8px 12px; text-align: center; min-width: 90px;
+  }
+  .sticky-brand-logo-lg { width: 36px; height: 36px; border-radius: 10px; margin: 0 auto 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: #fff; }
+  .sticky-brand-name { font-size: 10px; font-weight: 600; color: #e2e8f0; }
+  .sticky-brand-offer { font-size: 10px; font-weight: 700; color: #a5b4fc; margin-top: 2px; }
+  .sticky-cta {
+    width: 100%; padding: 11px; background: #fff; color: #1e40af;
+    font-size: 13px; font-weight: 800; border: none; border-radius: 8px; cursor: pointer;
+  }
+  .sticky-progress-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .sticky-progress-bar { flex: 1; background: rgba(255,255,255,0.2); border-radius: 100px; height: 5px; }
+  .sticky-progress-fill { background: #60a5fa; border-radius: 100px; height: 5px; width: 68%; }
+  .sticky-progress-label { font-size: 10px; font-weight: 700; color: #93c5fd; white-space: nowrap; }
+
+  /* ═══════════════════════════════════════════════════════════
+     SURFACE 5 — COLLECTION PAGE BANNER
+  ═══════════════════════════════════════════════════════════ */
+  .collection-page { }
+  .collection-banner {
+    background: linear-gradient(90deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+    padding: 20px 32px; display: flex; align-items: center; gap: 20px;
+  }
+  .collection-banner-left { flex: 1; }
+  .collection-banner-eyebrow { font-size: 11px; font-weight: 700; color: #a5b4fc; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+  .collection-banner-title { font-size: 18px; font-weight: 800; color: #fff; }
+  .collection-banner-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .collection-brand-stack { display: flex; align-items: center; }
+  .collection-brand-circle {
+    width: 36px; height: 36px; border-radius: 50%; border: 2px solid #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; color: #fff; margin-left: -10px; flex-shrink: 0;
+  }
+  .collection-brand-circle:first-child { margin-left: 0; }
+  .collection-count { width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #fff; margin-left: -10px; }
+  .collection-btn {
+    background: #fff; color: #4338ca; font-size: 12px; font-weight: 700;
+    padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; white-space: nowrap;
+  }
+
+  .collection-grid { padding: 24px 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .collection-item { background: #f8fafc; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; }
+  .collection-item-img { height: 140px; background: linear-gradient(135deg, #f1f5f9, #e2e8f0); display: flex; align-items: center; justify-content: center; font-size: 36px; }
+  .collection-item-body { padding: 12px; }
+  .collection-item-name { font-size: 13px; font-weight: 600; color: #111827; }
+  .collection-item-price { font-size: 14px; font-weight: 800; color: #111827; margin-top: 4px; }
+
+  /* ═══════════════════════════════════════════════════════════
+     SURFACE 6 — EMAIL / SMS TEMPLATE
+  ═══════════════════════════════════════════════════════════ */
+  .email-wrapper { background: #f3f4f6; padding: 32px; }
+  .email-card { max-width: 560px; margin: 0 auto; background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+  .email-header { background: linear-gradient(135deg, #0f172a, #1e3a5f); padding: 32px; text-align: center; }
+  .email-logo { font-size: 24px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+  .email-tagline { font-size: 12px; color: #94a3b8; }
+  .email-body { padding: 32px; }
+  .email-greeting { font-size: 20px; font-weight: 800; color: #111827; margin-bottom: 8px; }
+  .email-para { font-size: 14px; color: #6b7280; line-height: 1.7; margin-bottom: 20px; }
+  .email-highlight {
+    background: linear-gradient(135deg, #fffbeb, #fef3c7); border: 1.5px solid #fbbf24;
+    border-radius: 12px; padding: 18px; text-align: center; margin-bottom: 24px;
+  }
+  .email-highlight-value { font-size: 32px; font-weight: 900; color: #92400e; }
+  .email-highlight-label { font-size: 13px; color: #b45309; font-weight: 600; }
+  .email-brands-section { margin-bottom: 24px; }
+  .email-brands-title { font-size: 13px; font-weight: 700; color: #374151; margin-bottom: 12px; }
+  .email-brands-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .email-brand-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 10px; text-align: center; }
+  .email-brand-circle { width: 40px; height: 40px; border-radius: 12px; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; color: #fff; }
+  .email-brand-name { font-size: 12px; font-weight: 700; color: #111827; }
+  .email-brand-offer { font-size: 11px; color: #6b7280; margin-top: 2px; }
+  .email-cta {
+    display: block; background: #4f46e5; color: #fff; text-align: center;
+    font-size: 15px; font-weight: 700; padding: 16px; border-radius: 10px;
+    text-decoration: none; margin-bottom: 20px;
+  }
+  .email-footer { background: #f9fafb; padding: 20px 32px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #f3f4f6; }
+
+  /* ─── Utils ─────────────────────────────────────────────── */
+  .flex { display: flex; } .items-center { align-items: center; } .gap-8 { gap: 8px; }
+  .text-sm { font-size: 13px; } .font-bold { font-weight: 700; }
+  .mt-12 { margin-top: 12px; } .mb-12 { margin-bottom: 12px; }
+  .divider { border: none; border-top: 1px solid #f3f4f6; margin: 20px 0; }
+</style>
+</head>
+<body>
+
+<div class="showcase">
+  <div class="showcase-title">Campaign Reward Placement Mockups</div>
+  <div class="showcase-subtitle">6 surfaces · Interactive "See More" · Brand logos · Offer details on expand · Click buttons to toggle</div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SURFACE 1 — HOMEPAGE HERO
+  ═══════════════════════════════════════════════════════ -->
+  <div class="surface">
+    <div class="surface-label">Surface 1</div>
+    <div class="surface-name">Homepage Hero Section</div>
+    <div class="surface-desc">Full-width feature block. Primary trust-builder showing partner brand logos + offer value before any cart action. Highest visibility placement.</div>
+    <div class="surface-frame">
+      <div class="hero-section">
+        <div class="hero-body">
+          <div>
+            <div class="hero-tag">🎁 Exclusive Post-Purchase Rewards</div>
+            <div class="hero-h1">Shop &amp; Unlock <span>Rewards from Top Brands</span></div>
+            <div class="hero-sub">Every order above ₹1,000 qualifies you for exclusive vouchers from our partner brands. The more you shop, the more you earn.</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <a href="#" class="hero-cta">🛒 Shop Now</a>
+              <a href="#" class="hero-cta outline" onclick="document.getElementById('hero-expanded').classList.toggle('open');return false;">View All Rewards ↓</a>
+            </div>
+            <div id="hero-expanded" class="collapsible" style="margin-top:20px;">
+              <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:14px;padding:16px;">
+                <div style="font-size:12px;font-weight:700;color:#93c5fd;margin-bottom:12px;">ALL AVAILABLE REWARDS THIS MONTH</div>
+                <div class="offer-card" style="background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.15);margin-bottom:8px;">
+                  <div class="offer-icon" style="background:#1e3a5f;">💊</div>
+                  <div class="offer-meta">
+                    <div class="offer-title" style="color:#f1f5f9;">MediBuddy — Health Checkup</div>
+                    <div class="offer-desc" style="color:#94a3b8;">Book full body checkup at partner labs</div>
+                  </div>
+                  <div class="offer-badge" style="background:#1e3a5f;color:#60a5fa;border:1px solid #1d4ed8;">₹500 Off</div>
+                </div>
+                <div class="offer-card" style="background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.15);margin-bottom:8px;">
+                  <div class="offer-icon" style="background:#1e3a5f;">🏥</div>
+                  <div class="offer-meta">
+                    <div class="offer-title" style="color:#f1f5f9;">Covia — Lifestyle Products</div>
+                    <div class="offer-desc" style="color:#94a3b8;">Choose products of your choice from their store</div>
+                  </div>
+                  <div class="offer-badge" style="background:#1e3a5f;color:#60a5fa;border:1px solid #1d4ed8;">Free Access</div>
+                </div>
+                <div class="offer-card" style="background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.15);">
+                  <div class="offer-icon" style="background:#1e3a5f;">🧬</div>
+                  <div class="offer-meta">
+                    <div class="offer-title" style="color:#f1f5f9;">MB Premium — Consultation</div>
+                    <div class="offer-desc" style="color:#94a3b8;">Doctor consultation credit added to your account</div>
+                  </div>
+                  <div class="offer-badge" style="background:#1e3a5f;color:#60a5fa;border:1px solid #1d4ed8;">₹50 Credit</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="hero-card">
+            <div class="hero-card-title">🎁 REWARDS YOU'LL UNLOCK</div>
+            <div class="hero-offer-row">
+              <div class="hero-brand-circle" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);">MB</div>
+              <div>
+                <div class="hero-offer-name">MediBuddy Health Pack</div>
+                <div class="hero-offer-val">Full body checkup + doctor consultation</div>
+              </div>
+              <div class="hero-offer-tag">₹500 Off</div>
+            </div>
+            <div class="hero-offer-row">
+              <div class="hero-brand-circle" style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);">CV</div>
+              <div>
+                <div class="hero-offer-name">Covia Lifestyle</div>
+                <div class="hero-offer-val">Products of your choice</div>
+              </div>
+              <div class="hero-offer-tag">Free Access</div>
+            </div>
+            <div class="hero-offer-row">
+              <div class="hero-brand-circle" style="background:linear-gradient(135deg,#059669,#10b981);">MB+</div>
+              <div>
+                <div class="hero-offer-name">MB Premium Credit</div>
+                <div class="hero-offer-val">Consultation wallet credit</div>
+              </div>
+              <div class="hero-offer-tag">₹50 Off</div>
+            </div>
+            <div class="hero-see-more" onclick="document.getElementById('hero-expanded').classList.toggle('open');">
+              <span>👁 View All Rewards &amp; Conditions</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SURFACE 2 — PRODUCT PAGE STRIP
+  ═══════════════════════════════════════════════════════ -->
+  <div class="surface">
+    <div class="surface-label">Surface 2</div>
+    <div class="surface-name">Product Page — Reward Strip</div>
+    <div class="surface-desc">Placed below price, above Add to Cart. Shows cart progress toward unlock threshold. Highest conversion moment — customer is already considering a purchase.</div>
+    <div class="surface-frame">
+      <div class="product-page">
+        <div class="product-gallery">
+          <div class="product-img-placeholder">💊</div>
+        </div>
+        <div class="product-info">
+          <div class="product-tag">Health &amp; Wellness</div>
+          <div class="product-title">Omega-3 Fish Oil — 60 Capsules</div>
+          <div class="product-rating">⭐⭐⭐⭐⭐ <span>4.8 (2,341 reviews)</span></div>
+          <div class="product-price">₹1,299 <span>₹1,799</span></div>
+
+          <!-- Reward Strip -->
+          <div class="reward-strip">
+            <div class="reward-strip-top">
+              <div class="reward-strip-badge">🎁 Reward Offer</div>
+              <button class="toggle-btn" onclick="document.getElementById('product-offers').classList.toggle('open')">
+                See all rewards ↓
+              </button>
+            </div>
+            <div class="reward-strip-title">You're ₹701 away from unlocking partner rewards!</div>
+            <div class="reward-strip-sub">Your cart: ₹1,299 · Target: ₹2,000</div>
+            <div class="progress-bar-wrap"><div class="progress-bar-fill"></div></div>
+            <div class="progress-label"><span>₹0</span><span>₹1,299 (now)</span><span>₹2,000 🎁</span></div>
+            <div class="strip-brands">
+              <span style="font-size:11px;font-weight:600;color:#92400e;">Unlock rewards from:</span>
+              <div class="strip-brand-logo" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);">MB</div>
+              <div class="strip-brand-logo" style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);">CV</div>
+              <div class="strip-brand-logo" style="background:linear-gradient(135deg,#059669,#10b981);">+1</div>
+              <button class="strip-more" onclick="document.getElementById('product-offers').classList.toggle('open')">What do I get? →</button>
+            </div>
+            <div id="product-offers" class="collapsible" style="margin-top:12px;">
+              <hr class="divider" style="margin:10px 0;border-color:#fde68a;">
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div class="offer-card" style="background:#fffbeb;border-color:#fde68a;">
+                  <div class="offer-icon" style="background:#1d4ed8;font-size:14px;">MB</div>
+                  <div class="offer-meta">
+                    <div class="offer-title">MediBuddy — ₹500 Health Wallet</div>
+                    <div class="offer-desc">Use code MB45 · Valid for health checkups &amp; consultations</div>
+                  </div>
+                  <div class="offer-badge" style="background:#dbeafe;color:#1d4ed8;">Generic Code</div>
+                </div>
+                <div class="offer-card" style="background:#fffbeb;border-color:#fde68a;">
+                  <div class="offer-icon" style="background:#7c3aed;font-size:12px;">Covia</div>
+                  <div class="offer-meta">
+                    <div class="offer-title">Covia Lifestyle — Free Access</div>
+                    <div class="offer-desc">Choose products of your choice from their catalogue</div>
+                  </div>
+                  <div class="offer-badge" style="background:#ede9fe;color:#7c3aed;">Unique Code</div>
+                </div>
+                <div class="offer-card" style="background:#fffbeb;border-color:#fde68a;">
+                  <div class="offer-icon" style="background:#059669;font-size:14px;">MB</div>
+                  <div class="offer-meta">
+                    <div class="offer-title">MediBuddy — ₹50 Consultation</div>
+                    <div class="offer-desc">Use code MB50 · Doctor consultation credit</div>
+                  </div>
+                  <div class="offer-badge" style="background:#d1fae5;color:#065f46;">Generic Code</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button style="width:100%;padding:16px;background:#111827;color:#fff;font-size:15px;font-weight:800;border:none;border-radius:12px;cursor:pointer;margin-bottom:10px;">
+            Add to Cart · ₹1,299
+          </button>
+          <button style="width:100%;padding:14px;background:#fff;color:#111827;font-size:14px;font-weight:700;border:2px solid #111827;border-radius:12px;cursor:pointer;">
+            Buy Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SURFACE 3 — CART PAGE WIDGET
+  ═══════════════════════════════════════════════════════ -->
+  <div class="surface">
+    <div class="surface-label">Surface 3</div>
+    <div class="surface-name">Cart Page — Reward Progress Widget</div>
+    <div class="surface-desc">In the cart sidebar. Shows live progress toward threshold. Highest-intent moment — nudges customer to add more items to unlock the reward.</div>
+    <div class="surface-frame">
+      <div class="cart-page">
+        <div class="cart-items">
+          <div class="cart-section-title">Your Cart (2 items)</div>
+          <div class="cart-item">
+            <div class="cart-item-img">💊</div>
+            <div style="flex:1;">
+              <div class="cart-item-name">Omega-3 Fish Oil — 60 Capsules</div>
+              <div class="cart-item-sub">Qty: 1</div>
+              <div class="cart-item-price">₹1,299</div>
+            </div>
+          </div>
+          <div class="cart-item">
+            <div class="cart-item-img">🌿</div>
+            <div style="flex:1;">
+              <div class="cart-item-name">Ashwagandha Extract — 90 Tablets</div>
+              <div class="cart-item-sub">Qty: 1</div>
+              <div class="cart-item-price">₹899</div>
+            </div>
+          </div>
+        </div>
+        <div class="cart-sidebar">
+          <!-- Reward Widget -->
+          <div class="cart-reward-widget">
+            <div class="cart-reward-head">
+              <div class="cart-reward-icon">🎁</div>
+              <div class="cart-reward-title">Reward Unlock Progress</div>
+              <div class="cart-reward-sub">₹802 to go!</div>
+            </div>
+            <div class="cart-progress-wrap"><div class="cart-progress-fill"></div></div>
+            <div class="cart-progress-labels"><span>₹0</span><span>₹2,198</span><span>₹3,000 🎁</span></div>
+            <div class="cart-unlock-msg">Add ₹802 more to unlock exclusive brand rewards</div>
+            <div class="cart-unlock-brands">
+              <div class="brand-pill">
+                <div class="brand-logo" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);">MB</div>
+                MediBuddy
+              </div>
+              <div class="brand-pill">
+                <div class="brand-logo" style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);">CV</div>
+                Covia
+              </div>
+            </div>
+            <button class="cart-see-more-btn" onclick="document.getElementById('cart-offers').classList.toggle('open');this.textContent=document.getElementById('cart-offers').classList.contains('open')?'▲ Hide Rewards':'🎁 See What You\'ll Unlock';">
+              🎁 See What You'll Unlock
+            </button>
+            <div id="cart-offers" class="collapsible cart-offers-expanded">
+              <div class="cart-offer-row">
+                <div class="cart-offer-logo" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);">MB</div>
+                <div>
+                  <div class="cart-offer-name">MediBuddy Health Wallet</div>
+                  <div class="cart-offer-val">₹500 off on checkups &amp; consultations</div>
+                </div>
+                <div class="cart-offer-chip">Code: MB45</div>
+              </div>
+              <div class="cart-offer-row">
+                <div class="cart-offer-logo" style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);">CV</div>
+                <div>
+                  <div class="cart-offer-name">Covia Lifestyle Access</div>
+                  <div class="cart-offer-val">Choose products of your choice</div>
+                </div>
+                <div class="cart-offer-chip">Unique Code</div>
+              </div>
+              <div class="cart-offer-row">
+                <div class="cart-offer-logo" style="background:linear-gradient(135deg,#059669,#10b981);">MB</div>
+                <div>
+                  <div class="cart-offer-name">MB Consultation Credit</div>
+                  <div class="cart-offer-val">₹50 wallet credit added after order</div>
+                </div>
+                <div class="cart-offer-chip">Code: MB50</div>
+              </div>
+            </div>
+          </div>
+          <!-- Order Summary -->
+          <div class="cart-summary">
+            <div style="font-size:15px;font-weight:800;color:#111827;margin-bottom:12px;">Order Summary</div>
+            <div class="cart-summary-row"><span>Subtotal</span><span>₹2,198</span></div>
+            <div class="cart-summary-row"><span>Shipping</span><span style="color:#10b981;">Free</span></div>
+            <div class="cart-summary-row"><span>Discount</span><span style="color:#ef4444;">— ₹0</span></div>
+            <div class="cart-summary-row total"><span>Total</span><span>₹2,198</span></div>
+            <div style="background:#fef3c7;border:1px solid#fbbf24;border-radius:8px;padding:9px 12px;margin-top:12px;font-size:11px;font-weight:700;color:#92400e;">
+              🎁 Add ₹802 more to unlock ₹550+ in partner rewards!
+            </div>
+            <button class="cart-checkout-btn">Proceed to Checkout →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SURFACE 4 — STICKY MOBILE BAR
+  ═══════════════════════════════════════════════════════ -->
+  <div class="surface">
+    <div class="surface-label">Surface 4</div>
+    <div class="surface-name">Mobile — Sticky Bottom Bar</div>
+    <div class="surface-desc">Fixed floating bar at the bottom of every page on mobile. Always visible without disrupting scroll. Tap to expand and see full reward details.</div>
+    <div class="surface-frame" style="padding:40px;background:#f8fafc;display:flex;justify-content:center;">
+      <div class="mobile-frame">
+        <div class="mobile-screen">
+          <div class="mobile-status-bar">
+            <span class="mobile-status-time">9:41</span>
+            <span class="mobile-status-icons">●●● 🔋</span>
+          </div>
+          <div class="mobile-scroll">
+            <div style="font-size:13px;font-weight:700;color:#6b7280;margin-bottom:12px;">FEATURED PRODUCTS</div>
+            <div class="mobile-product-card">
+              <div class="mobile-product-img">💊</div>
+              <div class="mobile-product-info">
+                <div class="mobile-product-name">Omega-3 Fish Oil — 60 Capsules</div>
+                <div class="mobile-product-price">₹1,299</div>
+              </div>
+            </div>
+            <div class="mobile-product-card">
+              <div class="mobile-product-img">🌿</div>
+              <div class="mobile-product-info">
+                <div class="mobile-product-name">Ashwagandha Extract — 90 Tabs</div>
+                <div class="mobile-product-price">₹899</div>
+              </div>
+            </div>
+          </div>
+          <!-- Sticky bar -->
+          <div class="sticky-bar">
+            <div class="sticky-collapsed" onclick="document.getElementById('sticky-exp').classList.toggle('open');this.querySelector('.sticky-arrow').textContent=document.getElementById('sticky-exp').classList.contains('open')?'▼':'▲';">
+              <div class="sticky-icon">🎁</div>
+              <div class="sticky-text">
+                <div class="sticky-main">₹802 away from partner rewards!</div>
+                <div class="sticky-sub">MediBuddy · Covia + 1 more brand</div>
+              </div>
+              <div class="sticky-arrow">▲</div>
+            </div>
+            <div id="sticky-exp" class="collapsible sticky-expanded open">
+              <div class="sticky-progress-row">
+                <div class="sticky-progress-bar"><div class="sticky-progress-fill"></div></div>
+                <div class="sticky-progress-label">₹2,198 / ₹3,000</div>
+              </div>
+              <div class="sticky-brand-row">
+                <div class="sticky-brand-card">
+                  <div class="sticky-brand-logo-lg" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);">MB</div>
+                  <div class="sticky-brand-name">MediBuddy</div>
+                  <div class="sticky-brand-offer">₹500 Off</div>
+                </div>
+                <div class="sticky-brand-card">
+                  <div class="sticky-brand-logo-lg" style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);">CV</div>
+                  <div class="sticky-brand-name">Covia</div>
+                  <div class="sticky-brand-offer">Free Products</div>
+                </div>
+                <div class="sticky-brand-card">
+                  <div class="sticky-brand-logo-lg" style="background:linear-gradient(135deg,#059669,#10b981);">MB+</div>
+                  <div class="sticky-brand-name">MB Premium</div>
+                  <div class="sticky-brand-offer">₹50 Credit</div>
+                </div>
+              </div>
+              <button class="sticky-cta">Add ₹802 more to unlock →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SURFACE 5 — COLLECTION PAGE BANNER
+  ═══════════════════════════════════════════════════════ -->
+  <div class="surface">
+    <div class="surface-label">Surface 5</div>
+    <div class="surface-name">Collection / Category Page — Top Banner</div>
+    <div class="surface-desc">Slim banner at the top of every collection. Broad-reach placement. Customer is browsing — reward message nudges them toward hitting the threshold.</div>
+    <div class="surface-frame">
+      <div class="collection-page">
+        <div class="collection-banner">
+          <div class="collection-banner-left">
+            <div class="collection-banner-eyebrow">🎁 Limited Time · Post-Purchase Rewards</div>
+            <div class="collection-banner-title">Shop ₹1,000+ and unlock exclusive vouchers from top wellness brands</div>
+          </div>
+          <div class="collection-banner-right">
+            <div class="collection-brand-stack">
+              <div class="collection-brand-circle" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);">MB</div>
+              <div class="collection-brand-circle" style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);">CV</div>
+              <div class="collection-count">+1</div>
+            </div>
+            <button class="collection-btn" onclick="document.getElementById('collection-expanded').classList.toggle('open');">See Rewards →</button>
+          </div>
+        </div>
+        <div id="collection-expanded" class="collapsible" style="padding:20px 32px;background:#f8fafc;border-bottom:1px solid #e5e7eb;">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+            <div class="offer-card">
+              <div class="offer-icon" style="background:#1d4ed8;font-size:14px;font-weight:800;color:#fff;">MB</div>
+              <div class="offer-meta">
+                <div class="offer-title">MediBuddy — ₹500 Off</div>
+                <div class="offer-desc">Health checkups &amp; consultations · Code: MB45</div>
+              </div>
+            </div>
+            <div class="offer-card">
+              <div class="offer-icon" style="background:#7c3aed;font-size:11px;font-weight:800;color:#fff;">Covia</div>
+              <div class="offer-meta">
+                <div class="offer-title">Covia — Lifestyle Products</div>
+                <div class="offer-desc">Choose products from their catalogue</div>
+              </div>
+            </div>
+            <div class="offer-card">
+              <div class="offer-icon" style="background:#059669;font-size:14px;font-weight:800;color:#fff;">MB</div>
+              <div class="offer-meta">
+                <div class="offer-title">MB Consultation — ₹50</div>
+                <div class="offer-desc">Doctor consultation credit · Code: MB50</div>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:#6b7280;">* Rewards are sent to your email after order fulfilment. One reward claim per qualifying order.</div>
+        </div>
+        <div class="collection-grid">
+          <div class="collection-item">
+            <div class="collection-item-img">💊</div>
+            <div class="collection-item-body">
+              <div class="collection-item-name">Omega-3 Fish Oil</div>
+              <div class="collection-item-price">₹1,299</div>
+            </div>
+          </div>
+          <div class="collection-item">
+            <div class="collection-item-img">🌿</div>
+            <div class="collection-item-body">
+              <div class="collection-item-name">Ashwagandha Extract</div>
+              <div class="collection-item-price">₹899</div>
+            </div>
+          </div>
+          <div class="collection-item">
+            <div class="collection-item-img">🫁</div>
+            <div class="collection-item-body">
+              <div class="collection-item-name">Vitamin C + Zinc</div>
+              <div class="collection-item-price">₹699</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SURFACE 6 — EMAIL TEMPLATE
+  ═══════════════════════════════════════════════════════ -->
+  <div class="surface">
+    <div class="surface-label">Surface 6</div>
+    <div class="surface-name">Email / SMS Notification</div>
+    <div class="surface-desc">Sent after order qualifies for campaign. Shows exactly what was unlocked, which brands, and the claim link. Works for both transactional email and WhatsApp message body.</div>
+    <div class="surface-frame">
+      <div class="email-wrapper">
+        <div class="email-card">
+          <div class="email-header">
+            <div class="email-logo">🏥 Your Store</div>
+            <div class="email-tagline">Powering your health journey</div>
+          </div>
+          <div class="email-body">
+            <div class="email-greeting">Hey Rahul, you've unlocked rewards! 🎉</div>
+            <div class="email-para">
+              Congratulations! Your order #1116 (₹2,198) qualifies for our exclusive post-purchase reward campaign.
+              You've unlocked vouchers from <strong>3 partner brands</strong> — claim them before they expire.
+            </div>
+            <div class="email-highlight">
+              <div class="email-highlight-value">₹550+</div>
+              <div class="email-highlight-label">Total value in rewards unlocked</div>
+            </div>
+            <div class="email-brands-section">
+              <div class="email-brands-title">Your Rewards This Order</div>
+              <div class="email-brands-grid">
+                <div class="email-brand-card">
+                  <div class="email-brand-circle" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);">MB</div>
+                  <div class="email-brand-name">MediBuddy</div>
+                  <div class="email-brand-offer">₹500 Off · Code MB45</div>
+                </div>
+                <div class="email-brand-card">
+                  <div class="email-brand-circle" style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);">CV</div>
+                  <div class="email-brand-name">Covia</div>
+                  <div class="email-brand-offer">Free Lifestyle Products</div>
+                </div>
+                <div class="email-brand-card">
+                  <div class="email-brand-circle" style="background:linear-gradient(135deg,#059669,#10b981);">MB+</div>
+                  <div class="email-brand-name">MB Premium</div>
+                  <div class="email-brand-offer">₹50 Consultation Credit</div>
+                </div>
+              </div>
+            </div>
+            <a href="#" class="email-cta">🎁 Claim Your Rewards Now →</a>
+            <div style="background:#f9fafb;border-radius:10px;padding:14px;font-size:12px;color:#6b7280;line-height:1.6;">
+              <strong style="color:#374151;">How it works:</strong><br>
+              1. Click the button above to reach your reward claim page<br>
+              2. Select the rewards you want (up to 2 from the pool)<br>
+              3. Voucher codes are revealed instantly — save them!<br>
+              4. Link expires in <strong>7 days</strong> — claim ASAP!
+            </div>
+          </div>
+          <div class="email-footer">
+            You're receiving this because you placed an order on Your Store.<br>
+            Unsubscribe · Privacy Policy · Contact Us
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       STRATEGY SUMMARY
+  ═══════════════════════════════════════════════════════ -->
+  <div class="surface">
+    <div class="surface-label">Strategy</div>
+    <div class="surface-name">Placement Priority &amp; Conversion Impact</div>
+    <div class="surface-desc">Where to implement first for maximum ROI.</div>
+    <div class="surface-frame" style="padding:32px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f9fafb;">
+            <th style="text-align:left;padding:12px 16px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #e5e7eb;">Surface</th>
+            <th style="text-align:left;padding:12px 16px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #e5e7eb;">Intent Level</th>
+            <th style="text-align:left;padding:12px 16px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #e5e7eb;">Primary Goal</th>
+            <th style="text-align:left;padding:12px 16px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #e5e7eb;">Data Needed</th>
+            <th style="text-align:left;padding:12px 16px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #e5e7eb;">Priority</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid #f3f4f6;">
+            <td style="padding:14px 16px;font-weight:600;">🛒 Cart Page Widget</td>
+            <td style="padding:14px 16px;"><span style="background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Highest</span></td>
+            <td style="padding:14px 16px;color:#6b7280;">Nudge to add more items</td>
+            <td style="padding:14px 16px;color:#6b7280;">Cart total, threshold</td>
+            <td style="padding:14px 16px;"><span style="background:#fee2e2;color:#dc2626;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Build First</span></td>
+          </tr>
+          <tr style="border-bottom:1px solid #f3f4f6;">
+            <td style="padding:14px 16px;font-weight:600;">📱 Sticky Mobile Bar</td>
+            <td style="padding:14px 16px;"><span style="background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">High</span></td>
+            <td style="padding:14px 16px;color:#6b7280;">Always-on awareness</td>
+            <td style="padding:14px 16px;color:#6b7280;">Cart total, threshold</td>
+            <td style="padding:14px 16px;"><span style="background:#fee2e2;color:#dc2626;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Build First</span></td>
+          </tr>
+          <tr style="border-bottom:1px solid #f3f4f6;">
+            <td style="padding:14px 16px;font-weight:600;">🏷 Product Page Strip</td>
+            <td style="padding:14px 16px;"><span style="background:#fef9c3;color:#a16207;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Medium-High</span></td>
+            <td style="padding:14px 16px;color:#6b7280;">Convert consideration to add</td>
+            <td style="padding:14px 16px;color:#6b7280;">Cart total, threshold</td>
+            <td style="padding:14px 16px;"><span style="background:#fef3c7;color:#d97706;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Phase 2</span></td>
+          </tr>
+          <tr style="border-bottom:1px solid #f3f4f6;">
+            <td style="padding:14px 16px;font-weight:600;">🏠 Homepage Hero</td>
+            <td style="padding:14px 16px;"><span style="background:#fef9c3;color:#a16207;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Medium</span></td>
+            <td style="padding:14px 16px;color:#6b7280;">Brand trust + awareness</td>
+            <td style="padding:14px 16px;color:#6b7280;">Campaign + brand data</td>
+            <td style="padding:14px 16px;"><span style="background:#fef3c7;color:#d97706;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Phase 2</span></td>
+          </tr>
+          <tr style="border-bottom:1px solid #f3f4f6;">
+            <td style="padding:14px 16px;font-weight:600;">📂 Collection Banner</td>
+            <td style="padding:14px 16px;"><span style="background:#f3f4f6;color:#6b7280;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Low-Medium</span></td>
+            <td style="padding:14px 16px;color:#6b7280;">Broad reach, browsing nudge</td>
+            <td style="padding:14px 16px;color:#6b7280;">Campaign data only</td>
+            <td style="padding:14px 16px;"><span style="background:#ede9fe;color:#7c3aed;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Phase 3</span></td>
+          </tr>
+          <tr>
+            <td style="padding:14px 16px;font-weight:600;">📧 Email / SMS</td>
+            <td style="padding:14px 16px;"><span style="background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Highest (post-order)</span></td>
+            <td style="padding:14px 16px;color:#6b7280;">Drive claim conversion</td>
+            <td style="padding:14px 16px;color:#6b7280;">Order data, rewards, token</div></td>
+            <td style="padding:14px 16px;"><span style="background:#fee2e2;color:#dc2626;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Build First</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="margin-top:24px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:20px;">
+        <div style="font-size:14px;font-weight:800;color:#0c4a6e;margin-bottom:12px;">⚡ How to power these surfaces from your existing data</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:12px;color:#075985;line-height:1.7;">
+          <div>
+            <strong>Cart/Product progress bar:</strong> Shopify cart API gives current total. Your campaign_rules table has the threshold. Simple subtraction = "₹X away".<br><br>
+            <strong>Brand logos + offer names:</strong> campaign_reward_pools → rewards → brands. Already in DB. Pull once per page load and cache.
+          </div>
+          <div>
+            <strong>Sticky bar on mobile:</strong> Shopify theme section or app block. Reads same cart total. No backend call needed until customer clicks "See Rewards".<br><br>
+            <strong>Email template:</strong> Triggered from shopify-webhook → communication_logs. Already queued — just need HTML template wired to it.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

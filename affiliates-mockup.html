@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Goself — Affiliates Module Mockup</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; }
+    .screen { display: none; }
+    .screen.active { display: flex; }
+    .sidebar-item { transition: background 0.15s; }
+    .sidebar-item:hover { background: #f1f5f9; }
+    .sidebar-item.active { background: #f1f5f9; font-weight: 600; color: #111827; }
+    .drawer { transform: translateX(100%); transition: transform 0.25s cubic-bezier(.4,0,.2,1); }
+    .drawer.open { transform: translateX(0); }
+    .overlay { opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+    .overlay.show { opacity: 1; pointer-events: auto; }
+    .tab-btn.active { border-bottom: 2px solid #111827; color: #111827; font-weight: 600; }
+    .tab-btn { color: #6b7280; border-bottom: 2px solid transparent; }
+    .nav-btn { transition: all 0.15s; }
+    .nav-btn.active { background: #111827; color: #fff; }
+    .sparkline { stroke-dasharray: 200; stroke-dashoffset: 200; animation: dash 1.2s ease forwards; }
+    @keyframes dash { to { stroke-dashoffset: 0; } }
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; }
+    .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 500; cursor: pointer; transition: background 0.1s; }
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 2px; }
+    .hover-row:hover { background: #f9fafb; }
+    .stat-card:hover { border-color: #d1d5db; box-shadow: 0 1px 6px rgba(0,0,0,.06); }
+    .code-pill { font-family: 'SF Mono', 'Fira Code', monospace; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+    .fade-in { animation: fadeIn 0.2s ease forwards; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ── SCREEN NAVIGATOR ───────────────────────────────────────── -->
+<div class="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-2 text-xs shadow-sm">
+  <span class="font-semibold text-gray-500 mr-2">📐 Mockup screens:</span>
+  <button class="nav-btn active px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200" onclick="showScreen('partners')">1 · Partners List</button>
+  <button class="nav-btn px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200" onclick="showScreen('detail')">2 · Partner Detail</button>
+  <button class="nav-btn px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200" onclick="showScreen('analytics')">3 · Analytics</button>
+  <button class="nav-btn px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200" onclick="showScreen('add-drawer')">4 · Add Partner</button>
+  <button class="nav-btn px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200" onclick="showScreen('assign-codes')">5 · Assign Codes</button>
+  <div class="ml-auto text-gray-400 italic">Phase 1 — Client mockup · GoSelf Affiliates</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SCREEN 1 — PARTNERS LIST
+══════════════════════════════════════════════════════════════ -->
+<div id="screen-partners" class="screen active pt-10 min-h-screen">
+  <div class="flex min-h-screen w-full">
+
+    <!-- Sidebar -->
+    <div class="w-56 bg-white border-r border-gray-200 flex flex-col pt-6 px-3 shrink-0">
+      <div class="text-xs font-semibold text-gray-400 uppercase tracking-widest px-3 mb-3">GoSelf</div>
+      <nav class="space-y-0.5">
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Dashboard</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Offers & Rewards</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Campaigns</div>
+        <div class="sidebar-item active px-3 py-2 rounded-lg text-sm cursor-pointer flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+          Affiliates
+          <span class="ml-auto text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">New</span>
+        </div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Members</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Analytics</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Settings</div>
+      </nav>
+    </div>
+
+    <!-- Main -->
+    <div class="flex-1 px-8 py-6 overflow-auto max-w-5xl">
+
+      <!-- Header -->
+      <div class="flex items-start justify-between mb-6">
+        <div>
+          <h1 class="text-xl font-semibold text-gray-900">Affiliate Partners</h1>
+          <p class="text-sm text-gray-500 mt-0.5">Assign discount codes to partners and track redemptions in one place</p>
+        </div>
+        <button onclick="showScreen('add-drawer')"
+          class="flex items-center gap-2 px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800">
+          + Add Partner
+        </button>
+      </div>
+
+      <!-- Summary bar -->
+      <div class="grid grid-cols-4 gap-4 mb-6">
+        <div class="stat-card bg-white border border-gray-200 rounded-xl p-4 transition-all">
+          <div class="text-xs text-gray-500 mb-1">Total Partners</div>
+          <div class="text-2xl font-bold text-gray-900">6</div>
+          <div class="text-xs text-green-600 mt-1">↑ 2 this month</div>
+        </div>
+        <div class="stat-card bg-white border border-gray-200 rounded-xl p-4 transition-all">
+          <div class="text-xs text-gray-500 mb-1">Codes Assigned</div>
+          <div class="text-2xl font-bold text-gray-900">148</div>
+          <div class="text-xs text-gray-400 mt-1">across all partners</div>
+        </div>
+        <div class="stat-card bg-white border border-gray-200 rounded-xl p-4 transition-all">
+          <div class="text-xs text-gray-500 mb-1">Total Redemptions</div>
+          <div class="text-2xl font-bold text-gray-900">1,243</div>
+          <div class="text-xs text-green-600 mt-1">↑ 18% vs last month</div>
+        </div>
+        <div class="stat-card bg-white border border-gray-200 rounded-xl p-4 transition-all">
+          <div class="text-xs text-gray-500 mb-1">Revenue Influenced</div>
+          <div class="text-2xl font-bold text-gray-900">₹4.2L</div>
+          <div class="text-xs text-green-600 mt-1">↑ 23% vs last month</div>
+        </div>
+      </div>
+
+      <!-- Filter chips -->
+      <div class="flex items-center gap-2 mb-4">
+        <span class="chip bg-gray-900 text-white">All</span>
+        <span class="chip bg-white border border-gray-300 text-gray-600 hover:bg-gray-50">Active</span>
+        <span class="chip bg-white border border-gray-300 text-gray-600 hover:bg-gray-50">Paused</span>
+        <span class="chip bg-white border border-gray-300 text-gray-600 hover:bg-gray-50">Influencer</span>
+        <span class="chip bg-white border border-gray-300 text-gray-600 hover:bg-gray-50">Brand</span>
+        <span class="chip bg-white border border-gray-300 text-gray-600 hover:bg-gray-50">Creator</span>
+        <div class="ml-auto">
+          <input placeholder="Search partners…" class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-gray-400 w-44" />
+        </div>
+      </div>
+
+      <!-- Partners table -->
+      <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wide">
+              <th class="px-4 py-3 text-left">Partner</th>
+              <th class="px-4 py-3 text-left">Type</th>
+              <th class="px-4 py-3 text-left">Codes Assigned</th>
+              <th class="px-4 py-3 text-left">Redemptions</th>
+              <th class="px-4 py-3 text-left">Conv. Rate</th>
+              <th class="px-4 py-3 text-left">Revenue</th>
+              <th class="px-4 py-3 text-left">Status</th>
+              <th class="px-4 py-3 text-left"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+
+            <!-- Row 1 -->
+            <tr class="hover-row cursor-pointer" onclick="showScreen('detail')">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center text-white text-xs font-bold">PR</div>
+                  <div>
+                    <div class="font-medium text-gray-900 text-sm">Priya Rajan</div>
+                    <div class="text-xs text-gray-400">@priyadesigns · IG 120K</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3"><span class="badge bg-pink-50 text-pink-700 border border-pink-200">Influencer</span></td>
+              <td class="px-4 py-3">
+                <div class="text-sm font-medium text-gray-900">3 codes</div>
+                <div class="text-xs text-gray-400">PRIYA10, PRIYA20, PRIYAVIP</div>
+              </td>
+              <td class="px-4 py-3">
+                <div class="text-sm font-semibold text-gray-900">342</div>
+                <div class="text-xs text-green-600">↑ 12% WoW</div>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">28.4%</td>
+              <td class="px-4 py-3 text-sm font-semibold text-gray-900">₹86,400</td>
+              <td class="px-4 py-3"><span class="badge bg-green-50 text-green-700 border border-green-200">Active</span></td>
+              <td class="px-4 py-3">
+                <button class="text-xs text-blue-600 hover:underline">View →</button>
+              </td>
+            </tr>
+
+            <!-- Row 2 -->
+            <tr class="hover-row cursor-pointer" onclick="showScreen('detail')">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xs font-bold">FW</div>
+                  <div>
+                    <div class="font-medium text-gray-900 text-sm">FitWithRahul</div>
+                    <div class="text-xs text-gray-400">@fitwithrahul · YT 45K</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3"><span class="badge bg-amber-50 text-amber-700 border border-amber-200">Creator</span></td>
+              <td class="px-4 py-3">
+                <div class="text-sm font-medium text-gray-900">2 codes</div>
+                <div class="text-xs text-gray-400">RAHUL15, RAHULFIT</div>
+              </td>
+              <td class="px-4 py-3">
+                <div class="text-sm font-semibold text-gray-900">218</div>
+                <div class="text-xs text-green-600">↑ 7% WoW</div>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">19.2%</td>
+              <td class="px-4 py-3 text-sm font-semibold text-gray-900">₹54,500</td>
+              <td class="px-4 py-3"><span class="badge bg-green-50 text-green-700 border border-green-200">Active</span></td>
+              <td class="px-4 py-3">
+                <button class="text-xs text-blue-600 hover:underline">View →</button>
+              </td>
+            </tr>
+
+            <!-- Row 3 -->
+            <tr class="hover-row cursor-pointer" onclick="showScreen('detail')">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold">SB</div>
+                  <div>
+                    <div class="font-medium text-gray-900 text-sm">StyleBox India</div>
+                    <div class="text-xs text-gray-400">Partner brand · Newsletter 80K</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3"><span class="badge bg-blue-50 text-blue-700 border border-blue-200">Brand</span></td>
+              <td class="px-4 py-3">
+                <div class="text-sm font-medium text-gray-900">5 codes</div>
+                <div class="text-xs text-gray-400">STYLE10, STYLE20 +3 more</div>
+              </td>
+              <td class="px-4 py-3">
+                <div class="text-sm font-semibold text-gray-900">489</div>
+                <div class="text-xs text-red-500">↓ 3% WoW</div>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">34.1%</td>
+              <td class="px-4 py-3 text-sm font-semibold text-gray-900">₹1,22,250</td>
+              <td class="px-4 py-3"><span class="badge bg-green-50 text-green-700 border border-green-200">Active</span></td>
+              <td class="px-4 py-3">
+                <button class="text-xs text-blue-600 hover:underline">View →</button>
+              </td>
+            </tr>
+
+            <!-- Row 4 -->
+            <tr class="hover-row cursor-pointer">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center text-white text-xs font-bold">MK</div>
+                  <div>
+                    <div class="font-medium text-gray-900 text-sm">Meera Krishnan</div>
+                    <div class="text-xs text-gray-400">@meerak · IG 22K</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3"><span class="badge bg-pink-50 text-pink-700 border border-pink-200">Influencer</span></td>
+              <td class="px-4 py-3">
+                <div class="text-sm font-medium text-gray-900">1 code</div>
+                <div class="text-xs text-gray-400">MEERA10</div>
+              </td>
+              <td class="px-4 py-3">
+                <div class="text-sm font-semibold text-gray-900">87</div>
+                <div class="text-xs text-gray-400">—</div>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">11.3%</td>
+              <td class="px-4 py-3 text-sm font-semibold text-gray-900">₹21,750</td>
+              <td class="px-4 py-3"><span class="badge bg-amber-50 text-amber-700 border border-amber-200">Paused</span></td>
+              <td class="px-4 py-3">
+                <button class="text-xs text-blue-600 hover:underline">View →</button>
+              </td>
+            </tr>
+
+            <!-- Row 5 -->
+            <tr class="hover-row cursor-pointer">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-teal-400 to-cyan-500 flex items-center justify-center text-white text-xs font-bold">WL</div>
+                  <div>
+                    <div class="font-medium text-gray-900 text-sm">WellnessLoop</div>
+                    <div class="text-xs text-gray-400">@wellnessloop · Podcast 12K</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3"><span class="badge bg-teal-50 text-teal-700 border border-teal-200">Creator</span></td>
+              <td class="px-4 py-3">
+                <div class="text-sm font-medium text-gray-900">2 codes</div>
+                <div class="text-xs text-gray-400">WELL10, WELLPOD</div>
+              </td>
+              <td class="px-4 py-3">
+                <div class="text-sm font-semibold text-gray-900">107</div>
+                <div class="text-xs text-green-600">↑ 21% WoW</div>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">15.6%</td>
+              <td class="px-4 py-3 text-sm font-semibold text-gray-900">₹26,750</td>
+              <td class="px-4 py-3"><span class="badge bg-green-50 text-green-700 border border-green-200">Active</span></td>
+              <td class="px-4 py-3">
+                <button class="text-xs text-blue-600 hover:underline">View →</button>
+              </td>
+            </tr>
+
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Phase note -->
+      <div class="mt-4 flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
+        <svg class="w-3.5 h-3.5 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        <span><strong>Phase 2 coming:</strong> UTM link tracking &amp; ref/aff URL-based attribution will appear here alongside code tracking.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SCREEN 2 — PARTNER DETAIL
+══════════════════════════════════════════════════════════════ -->
+<div id="screen-detail" class="screen pt-10 min-h-screen">
+  <div class="flex min-h-screen w-full">
+
+    <!-- Sidebar -->
+    <div class="w-56 bg-white border-r border-gray-200 flex flex-col pt-6 px-3 shrink-0">
+      <div class="text-xs font-semibold text-gray-400 uppercase tracking-widest px-3 mb-3">GoSelf</div>
+      <nav class="space-y-0.5">
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Dashboard</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Offers & Rewards</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Campaigns</div>
+        <div class="sidebar-item active px-3 py-2 rounded-lg text-sm cursor-pointer flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+          Affiliates
+        </div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Members</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Analytics</div>
+      </nav>
+    </div>
+
+    <!-- Main -->
+    <div class="flex-1 px-8 py-6 overflow-auto max-w-5xl">
+
+      <!-- Breadcrumb -->
+      <div class="flex items-center gap-2 text-xs text-gray-400 mb-4">
+        <button onclick="showScreen('partners')" class="hover:text-gray-600 cursor-pointer">Affiliates</button>
+        <span>/</span>
+        <span class="text-gray-700 font-medium">Priya Rajan</span>
+      </div>
+
+      <!-- Partner header card -->
+      <div class="bg-white border border-gray-200 rounded-xl p-5 mb-5 flex items-start justify-between">
+        <div class="flex items-center gap-4">
+          <div class="w-14 h-14 rounded-full bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center text-white text-lg font-bold">PR</div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 class="text-lg font-semibold text-gray-900">Priya Rajan</h2>
+              <span class="badge bg-pink-50 text-pink-700 border border-pink-200">Influencer</span>
+              <span class="badge bg-green-50 text-green-700 border border-green-200">Active</span>
+            </div>
+            <div class="text-sm text-gray-500 mt-0.5">@priyadesigns · Instagram · 120K followers</div>
+            <div class="flex items-center gap-3 mt-1 text-xs text-gray-400">
+              <span>📧 priya@priyadesigns.com</span>
+              <span>📞 +91 98765 43210</span>
+              <span>📅 Added 12 Mar 2026</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button class="px-3 py-1.5 text-xs border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">Edit</button>
+          <button onclick="showScreen('assign-codes')"
+            class="px-3 py-1.5 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800">+ Assign Code</button>
+        </div>
+      </div>
+
+      <!-- Stat row -->
+      <div class="grid grid-cols-5 gap-3 mb-5">
+        <div class="bg-white border border-gray-200 rounded-xl p-3.5 text-center stat-card transition-all">
+          <div class="text-xs text-gray-500 mb-1">Codes</div>
+          <div class="text-xl font-bold text-gray-900">3</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-3.5 text-center stat-card transition-all">
+          <div class="text-xs text-gray-500 mb-1">Total Uses</div>
+          <div class="text-xl font-bold text-gray-900">342</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-3.5 text-center stat-card transition-all">
+          <div class="text-xs text-gray-500 mb-1">Conv. Rate</div>
+          <div class="text-xl font-bold text-gray-900">28.4%</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-3.5 text-center stat-card transition-all">
+          <div class="text-xs text-gray-500 mb-1">Revenue</div>
+          <div class="text-xl font-bold text-gray-900">₹86.4K</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-3.5 text-center stat-card transition-all">
+          <div class="text-xs text-gray-500 mb-1">Avg Order</div>
+          <div class="text-xl font-bold text-gray-900">₹2,526</div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex border-b border-gray-200 mb-5 gap-1">
+        <button class="tab-btn active px-4 py-2.5 text-sm -mb-px">Assigned Codes</button>
+        <button class="tab-btn px-4 py-2.5 text-sm -mb-px">Redemption Log</button>
+        <button class="tab-btn px-4 py-2.5 text-sm -mb-px">Performance Chart</button>
+        <button class="tab-btn px-4 py-2.5 text-sm -mb-px text-gray-400">UTM Links <span class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full ml-1">Phase 2</span></button>
+      </div>
+
+      <!-- Codes table -->
+      <div class="bg-white border border-gray-200 rounded-xl overflow-hidden mb-5">
+        <div class="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Assigned Codes (3)</span>
+          <button onclick="showScreen('assign-codes')" class="text-xs text-blue-600 hover:underline">+ Add more</button>
+        </div>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-xs text-gray-400 border-b border-gray-100">
+              <th class="px-4 py-2.5 text-left">Code</th>
+              <th class="px-4 py-2.5 text-left">Discount</th>
+              <th class="px-4 py-2.5 text-left">Source</th>
+              <th class="px-4 py-2.5 text-left">Times Used</th>
+              <th class="px-4 py-2.5 text-left">Revenue</th>
+              <th class="px-4 py-2.5 text-left">Valid Until</th>
+              <th class="px-4 py-2.5 text-left">Status</th>
+              <th class="px-4 py-2.5 text-left"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <tr class="hover-row">
+              <td class="px-4 py-3"><span class="code-pill font-semibold text-gray-900">PRIYA10</span></td>
+              <td class="px-4 py-3 text-sm text-gray-700">10% off</td>
+              <td class="px-4 py-3"><span class="badge bg-blue-50 text-blue-700 border border-blue-200">Shopify</span></td>
+              <td class="px-4 py-3 font-semibold text-gray-900">211</td>
+              <td class="px-4 py-3 text-sm text-gray-700">₹52,750</td>
+              <td class="px-4 py-3 text-xs text-gray-500">30 Jun 2026</td>
+              <td class="px-4 py-3"><span class="badge bg-green-50 text-green-700 border border-green-200">Active</span></td>
+              <td class="px-4 py-3"><button class="text-xs text-gray-400 hover:text-red-500">Remove</button></td>
+            </tr>
+            <tr class="hover-row">
+              <td class="px-4 py-3"><span class="code-pill font-semibold text-gray-900">PRIYA20</span></td>
+              <td class="px-4 py-3 text-sm text-gray-700">20% off</td>
+              <td class="px-4 py-3"><span class="badge bg-blue-50 text-blue-700 border border-blue-200">Shopify</span></td>
+              <td class="px-4 py-3 font-semibold text-gray-900">98</td>
+              <td class="px-4 py-3 text-sm text-gray-700">₹24,500</td>
+              <td class="px-4 py-3 text-xs text-gray-500">30 Jun 2026</td>
+              <td class="px-4 py-3"><span class="badge bg-green-50 text-green-700 border border-green-200">Active</span></td>
+              <td class="px-4 py-3"><button class="text-xs text-gray-400 hover:text-red-500">Remove</button></td>
+            </tr>
+            <tr class="hover-row">
+              <td class="px-4 py-3"><span class="code-pill font-semibold text-gray-900">PRIYAVIP</span></td>
+              <td class="px-4 py-3 text-sm text-gray-700">₹500 off</td>
+              <td class="px-4 py-3"><span class="badge bg-gray-100 text-gray-600 border border-gray-200">Manual</span></td>
+              <td class="px-4 py-3 font-semibold text-gray-900">33</td>
+              <td class="px-4 py-3 text-sm text-gray-700">₹9,150</td>
+              <td class="px-4 py-3 text-xs text-gray-500">31 Dec 2026</td>
+              <td class="px-4 py-3"><span class="badge bg-green-50 text-green-700 border border-green-200">Active</span></td>
+              <td class="px-4 py-3"><button class="text-xs text-gray-400 hover:text-red-500">Remove</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Redemption log preview -->
+      <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Recent Redemptions</span>
+          <span class="text-xs text-gray-400">Last 7 days</span>
+        </div>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-xs text-gray-400 border-b border-gray-100">
+              <th class="px-4 py-2.5 text-left">Order ID</th>
+              <th class="px-4 py-2.5 text-left">Code Used</th>
+              <th class="px-4 py-2.5 text-left">Customer</th>
+              <th class="px-4 py-2.5 text-left">Order Value</th>
+              <th class="px-4 py-2.5 text-left">Discount</th>
+              <th class="px-4 py-2.5 text-left">Date</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <tr class="hover-row">
+              <td class="px-4 py-2.5 font-mono text-xs text-gray-700">#SH-9821</td>
+              <td class="px-4 py-2.5"><span class="code-pill text-xs font-semibold">PRIYA10</span></td>
+              <td class="px-4 py-2.5 text-sm text-gray-600">a***@gmail.com</td>
+              <td class="px-4 py-2.5 text-sm font-medium">₹3,200</td>
+              <td class="px-4 py-2.5 text-sm text-red-500">−₹320</td>
+              <td class="px-4 py-2.5 text-xs text-gray-400">28 May 2026, 2:14 PM</td>
+            </tr>
+            <tr class="hover-row">
+              <td class="px-4 py-2.5 font-mono text-xs text-gray-700">#SH-9818</td>
+              <td class="px-4 py-2.5"><span class="code-pill text-xs font-semibold">PRIYA20</span></td>
+              <td class="px-4 py-2.5 text-sm text-gray-600">r***@yahoo.com</td>
+              <td class="px-4 py-2.5 text-sm font-medium">₹2,800</td>
+              <td class="px-4 py-2.5 text-sm text-red-500">−₹560</td>
+              <td class="px-4 py-2.5 text-xs text-gray-400">28 May 2026, 11:02 AM</td>
+            </tr>
+            <tr class="hover-row">
+              <td class="px-4 py-2.5 font-mono text-xs text-gray-700">#SH-9811</td>
+              <td class="px-4 py-2.5"><span class="code-pill text-xs font-semibold">PRIYA10</span></td>
+              <td class="px-4 py-2.5 text-sm text-gray-600">s***@gmail.com</td>
+              <td class="px-4 py-2.5 text-sm font-medium">₹1,950</td>
+              <td class="px-4 py-2.5 text-sm text-red-500">−₹195</td>
+              <td class="px-4 py-2.5 text-xs text-gray-400">27 May 2026, 7:45 PM</td>
+            </tr>
+            <tr class="hover-row">
+              <td class="px-4 py-2.5 font-mono text-xs text-gray-700">#SH-9807</td>
+              <td class="px-4 py-2.5"><span class="code-pill text-xs font-semibold">PRIYAVIP</span></td>
+              <td class="px-4 py-2.5 text-sm text-gray-600">k***@icloud.com</td>
+              <td class="px-4 py-2.5 text-sm font-medium">₹4,500</td>
+              <td class="px-4 py-2.5 text-sm text-red-500">−₹500</td>
+              <td class="px-4 py-2.5 text-xs text-gray-400">27 May 2026, 4:20 PM</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="px-4 py-2 border-t border-gray-100 text-xs text-gray-400 flex justify-end">
+          <button class="text-blue-600 hover:underline">View all 342 →</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SCREEN 3 — ANALYTICS DASHBOARD
+══════════════════════════════════════════════════════════════ -->
+<div id="screen-analytics" class="screen pt-10 min-h-screen">
+  <div class="flex min-h-screen w-full">
+
+    <!-- Sidebar -->
+    <div class="w-56 bg-white border-r border-gray-200 flex flex-col pt-6 px-3 shrink-0">
+      <div class="text-xs font-semibold text-gray-400 uppercase tracking-widest px-3 mb-3">GoSelf</div>
+      <nav class="space-y-0.5">
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Dashboard</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Offers & Rewards</div>
+        <div class="sidebar-item active px-3 py-2 rounded-lg text-sm cursor-pointer">Affiliates</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Members</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600 cursor-pointer">Settings</div>
+      </nav>
+    </div>
+
+    <!-- Main -->
+    <div class="flex-1 px-8 py-6 overflow-auto">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-xl font-semibold text-gray-900">Affiliate Analytics</h1>
+          <p class="text-sm text-gray-500 mt-0.5">All partners · Redemption tracking &amp; performance</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <select class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs bg-white focus:outline-none">
+            <option>Last 30 days</option>
+            <option>Last 7 days</option>
+            <option>Last 90 days</option>
+            <option>This month</option>
+          </select>
+          <select class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs bg-white focus:outline-none">
+            <option>All partners</option>
+            <option>Priya Rajan</option>
+            <option>FitWithRahul</option>
+            <option>StyleBox India</option>
+          </select>
+          <button class="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
+            ↓ Export CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI row -->
+      <div class="grid grid-cols-5 gap-4 mb-6">
+        <div class="bg-white border border-gray-200 rounded-xl p-4 stat-card transition-all">
+          <div class="text-xs text-gray-500 mb-1">Total Redemptions</div>
+          <div class="text-2xl font-bold text-gray-900">1,243</div>
+          <div class="flex items-center gap-1 text-xs text-green-600 mt-1">↑ 18% vs prev period</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4 stat-card transition-all">
+          <div class="text-xs text-gray-500 mb-1">Unique Customers</div>
+          <div class="text-2xl font-bold text-gray-900">871</div>
+          <div class="text-xs text-green-600 mt-1">↑ 14%</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4 stat-card transition-all">
+          <div class="text-xs text-gray-500 mb-1">Revenue Influenced</div>
+          <div class="text-2xl font-bold text-gray-900">₹4.2L</div>
+          <div class="text-xs text-green-600 mt-1">↑ 23%</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4 stat-card transition-all">
+          <div class="text-xs text-gray-500 mb-1">Avg Order Value</div>
+          <div class="text-2xl font-bold text-gray-900">₹2,389</div>
+          <div class="text-xs text-red-500 mt-1">↓ 4%</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-4 stat-card transition-all">
+          <div class="text-xs text-gray-500 mb-1">Top Partner</div>
+          <div class="text-base font-bold text-gray-900">StyleBox</div>
+          <div class="text-xs text-gray-400 mt-1">489 redemptions</div>
+        </div>
+      </div>
+
+      <!-- Charts row -->
+      <div class="grid grid-cols-3 gap-5 mb-6">
+
+        <!-- Redemptions over time chart -->
+        <div class="col-span-2 bg-white border border-gray-200 rounded-xl p-4">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm font-semibold text-gray-700">Redemptions Over Time</span>
+            <div class="flex gap-1.5">
+              <span class="chip bg-gray-900 text-white text-xs">Daily</span>
+              <span class="chip bg-white border border-gray-300 text-gray-600 text-xs">Weekly</span>
+            </div>
+          </div>
+          <!-- SVG chart placeholder -->
+          <svg viewBox="0 0 500 140" class="w-full" style="height:140px">
+            <!-- Grid lines -->
+            <line x1="0" y1="120" x2="500" y2="120" stroke="#f0f0f0" stroke-width="1"/>
+            <line x1="0" y1="90" x2="500" y2="90" stroke="#f0f0f0" stroke-width="1"/>
+            <line x1="0" y1="60" x2="500" y2="60" stroke="#f0f0f0" stroke-width="1"/>
+            <line x1="0" y1="30" x2="500" y2="30" stroke="#f0f0f0" stroke-width="1"/>
+            <!-- Y labels -->
+            <text x="0" y="124" font-size="8" fill="#9ca3af">0</text>
+            <text x="0" y="94" font-size="8" fill="#9ca3af">20</text>
+            <text x="0" y="64" font-size="8" fill="#9ca3af">40</text>
+            <text x="0" y="34" font-size="8" fill="#9ca3af">60</text>
+
+            <!-- Gradient fill -->
+            <defs>
+              <linearGradient id="fillGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#6366f1" stop-opacity="0.2"/>
+                <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+
+            <!-- Bars for StyleBox, Priya, others stacked -->
+            <!-- Day markers just decorative bars -->
+            <g>
+              <!-- 30 bars across 500px, each ~13px wide with 3px gap -->
+              <rect x="10" y="90" width="12" height="30" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="26" y="80" width="12" height="40" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="42" y="85" width="12" height="35" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="58" y="75" width="12" height="45" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="74" y="70" width="12" height="50" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="90" y="60" width="12" height="60" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="106" y="65" width="12" height="55" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="122" y="55" width="12" height="65" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="138" y="62" width="12" height="58" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="154" y="50" width="12" height="70" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="170" y="58" width="12" height="62" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="186" y="45" width="12" height="75" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="202" y="48" width="12" height="72" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="218" y="40" width="12" height="80" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="234" y="52" width="12" height="68" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="250" y="35" width="12" height="85" rx="2" fill="#6366f1"/>
+              <rect x="266" y="42" width="12" height="78" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="282" y="30" width="12" height="90" rx="2" fill="#6366f1"/>
+              <rect x="298" y="38" width="12" height="82" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="314" y="28" width="12" height="92" rx="2" fill="#6366f1"/>
+              <rect x="330" y="35" width="12" height="85" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="346" y="22" width="12" height="98" rx="2" fill="#4f46e5"/>
+              <rect x="362" y="30" width="12" height="90" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="378" y="18" width="12" height="102" rx="2" fill="#4f46e5"/>
+              <rect x="394" y="25" width="12" height="95" rx="2" fill="#818cf8" opacity="0.7"/>
+              <rect x="410" y="15" width="12" height="105" rx="2" fill="#4f46e5"/>
+              <rect x="426" y="20" width="12" height="100" rx="2" fill="#4f46e5"/>
+              <rect x="442" y="10" width="12" height="110" rx="2" fill="#4f46e5"/>
+              <rect x="458" y="15" width="12" height="105" rx="2" fill="#4f46e5"/>
+              <rect x="474" y="8" width="12" height="112" rx="2" fill="#4338ca"/>
+            </g>
+
+            <!-- X labels -->
+            <text x="10" y="136" font-size="8" fill="#9ca3af">1 May</text>
+            <text x="130" y="136" font-size="8" fill="#9ca3af">8 May</text>
+            <text x="250" y="136" font-size="8" fill="#9ca3af">15 May</text>
+            <text x="370" y="136" font-size="8" fill="#9ca3af">22 May</text>
+            <text x="462" y="136" font-size="8" fill="#9ca3af">28 May</text>
+          </svg>
+        </div>
+
+        <!-- Partner breakdown pie-ish -->
+        <div class="bg-white border border-gray-200 rounded-xl p-4">
+          <div class="text-sm font-semibold text-gray-700 mb-3">Redemptions by Partner</div>
+          <!-- Donut chart placeholder -->
+          <div class="flex items-center justify-center mb-3">
+            <svg viewBox="0 0 100 100" class="w-32 h-32">
+              <!-- StyleBox 39% -->
+              <circle cx="50" cy="50" r="36" fill="none" stroke="#6366f1" stroke-width="20"
+                stroke-dasharray="87.3 137.5" stroke-dashoffset="-34.3" />
+              <!-- Priya 27.5% -->
+              <circle cx="50" cy="50" r="36" fill="none" stroke="#f472b6" stroke-width="20"
+                stroke-dasharray="61.6 163.2" stroke-dashoffset="-34.3" transform="rotate(-102, 50, 50)" />
+              <!-- Rahul 17.5% -->
+              <circle cx="50" cy="50" r="36" fill="none" stroke="#fb923c" stroke-width="20"
+                stroke-dasharray="39.2 185.6" stroke-dashoffset="-34.3" transform="rotate(-204, 50, 50)" />
+              <!-- Others 16% -->
+              <circle cx="50" cy="50" r="36" fill="none" stroke="#34d399" stroke-width="20"
+                stroke-dasharray="35.9 188.9" stroke-dashoffset="-34.3" transform="rotate(-268, 50, 50)" />
+              <text x="50" y="54" text-anchor="middle" font-size="12" font-weight="700" fill="#111827">1,243</text>
+              <text x="50" y="63" text-anchor="middle" font-size="7" fill="#9ca3af">total</text>
+            </svg>
+          </div>
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>StyleBox</span>
+              <span class="font-semibold text-gray-900">489 <span class="text-gray-400 font-normal">39%</span></span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-pink-400 inline-block"></span>Priya</span>
+              <span class="font-semibold text-gray-900">342 <span class="text-gray-400 font-normal">28%</span></span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-orange-400 inline-block"></span>FitWithRahul</span>
+              <span class="font-semibold text-gray-900">218 <span class="text-gray-400 font-normal">18%</span></span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>Others</span>
+              <span class="font-semibold text-gray-900">194 <span class="text-gray-400 font-normal">16%</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Code-level breakdown table -->
+      <div class="bg-white border border-gray-200 rounded-xl overflow-hidden mb-5">
+        <div class="px-4 py-3 border-b border-gray-100 bg-gray-50">
+          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Code-level Performance</span>
+        </div>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-xs text-gray-400 border-b border-gray-100">
+              <th class="px-4 py-2.5 text-left">Code</th>
+              <th class="px-4 py-2.5 text-left">Partner</th>
+              <th class="px-4 py-2.5 text-left">Discount</th>
+              <th class="px-4 py-2.5 text-left">Redemptions</th>
+              <th class="px-4 py-2.5 text-left">Unique Customers</th>
+              <th class="px-4 py-2.5 text-left">Revenue</th>
+              <th class="px-4 py-2.5 text-left">AOV</th>
+              <th class="px-4 py-2.5 text-left">Trend</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <tr class="hover-row">
+              <td class="px-4 py-2.5"><span class="code-pill text-xs font-bold text-gray-900">STYLE10</span></td>
+              <td class="px-4 py-2.5 text-xs text-gray-600">StyleBox India</td>
+              <td class="px-4 py-2.5 text-xs">10% off</td>
+              <td class="px-4 py-2.5 font-semibold text-gray-900">213</td>
+              <td class="px-4 py-2.5 text-sm text-gray-700">198</td>
+              <td class="px-4 py-2.5 text-sm text-gray-900">₹53,250</td>
+              <td class="px-4 py-2.5 text-sm text-gray-700">₹2,500</td>
+              <td class="px-4 py-2.5 text-xs text-green-600">↑ 14%</td>
+            </tr>
+            <tr class="hover-row">
+              <td class="px-4 py-2.5"><span class="code-pill text-xs font-bold text-gray-900">PRIYA10</span></td>
+              <td class="px-4 py-2.5 text-xs text-gray-600">Priya Rajan</td>
+              <td class="px-4 py-2.5 text-xs">10% off</td>
+              <td class="px-4 py-2.5 font-semibold text-gray-900">211</td>
+              <td class="px-4 py-2.5 text-sm text-gray-700">204</td>
+              <td class="px-4 py-2.5 text-sm text-gray-900">₹52,750</td>
+              <td class="px-4 py-2.5 text-sm text-gray-700">₹2,500</td>
+              <td class="px-4 py-2.5 text-xs text-green-600">↑ 22%</td>
+            </tr>
+            <tr class="hover-row">
+              <td class="px-4 py-2.5"><span class="code-pill text-xs font-bold text-gray-900">STYLE20</span></td>
+              <td class="px-4 py-2.5 text-xs text-gray-600">StyleBox India</td>
+              <td class="px-4 py-2.5 text-xs">20% off</td>
+              <td class="px-4 py-2.5 font-semibold text-gray-900">156</td>
+              <td class="px-4 py-2.5 text-sm text-gray-700">144</td>
+              <td class="px-4 py-2.5 text-sm text-gray-900">₹39,000</td>
+              <td class="px-4 py-2.5 text-sm text-gray-700">₹2,500</td>
+              <td class="px-4 py-2.5 text-xs text-red-500">↓ 5%</td>
+            </tr>
+            <tr class="hover-row">
+              <td class="px-4 py-2.5"><span class="code-pill text-xs font-bold text-gray-900">RAHUL15</span></td>
+              <td class="px-4 py-2.5 text-xs text-gray-600">FitWithRahul</td>
+              <td class="px-4 py-2.5 text-xs">15% off</td>
+              <td class="px-4 py-2.5 font-semibold text-gray-900">152</td>
+              <td class="px-4 py-2.5 text-sm text-gray-700">148</td>
+              <td class="px-4 py-2.5 text-sm text-gray-900">₹38,000</td>
+              <td class="px-4 py-2.5 text-sm text-gray-700">₹2,500</td>
+              <td class="px-4 py-2.5 text-xs text-green-600">↑ 9%</td>
+            </tr>
+            <tr class="hover-row">
+              <td class="px-4 py-2.5"><span class="code-pill text-xs font-bold text-gray-900">PRIYA20</span></td>
+              <td class="px-4 py-2.5 text-xs text-gray-600">Priya Rajan</td>
+              <td class="px-4 py-2.5 text-xs">20% off</td>
+              <td class="px-4 py-2.5 font-semibold text-gray-900">98</td>
+              <td class="px-4 py-2.5 text-sm text-gray-700">91</td>
+              <td class="px-4 py-2.5 text-sm text-gray-900">₹24,500</td>
+              <td class="px-4 py-2.5 text-sm text-gray-700">₹2,500</td>
+              <td class="px-4 py-2.5 text-xs text-green-600">↑ 3%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Phase 2 teaser -->
+      <div class="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-4 flex items-start gap-3">
+        <div class="text-2xl">🚀</div>
+        <div>
+          <div class="text-sm font-semibold text-indigo-800 mb-1">Phase 2: UTM &amp; ref-link tracking</div>
+          <div class="text-xs text-indigo-600 max-w-xl">
+            Each partner will get a unique UTM link (<code class="bg-indigo-100 px-1 rounded">?ref=PRIYA</code>) alongside their codes.
+            Clicks, sessions, and attributed orders will appear here — even when no code is used.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SCREEN 4 — ADD PARTNER DRAWER
+══════════════════════════════════════════════════════════════ -->
+<div id="screen-add-drawer" class="screen pt-10 min-h-screen">
+  <div class="flex min-h-screen w-full">
+
+    <!-- Sidebar -->
+    <div class="w-56 bg-white border-r border-gray-200 flex flex-col pt-6 px-3 shrink-0">
+      <div class="text-xs font-semibold text-gray-400 uppercase tracking-widest px-3 mb-3">GoSelf</div>
+      <nav class="space-y-0.5">
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600">Dashboard</div>
+        <div class="sidebar-item active px-3 py-2 rounded-lg text-sm cursor-pointer">Affiliates</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600">Members</div>
+      </nav>
+    </div>
+
+    <!-- Page dimmed -->
+    <div class="flex-1 bg-gray-900/20 relative overflow-hidden">
+      <!-- faint list in background -->
+      <div class="absolute inset-0 px-8 py-6 pointer-events-none opacity-30">
+        <div class="h-8 bg-gray-200 rounded w-48 mb-4"></div>
+        <div class="grid grid-cols-4 gap-4 mb-6">
+          <div class="h-20 bg-white border border-gray-200 rounded-xl"></div>
+          <div class="h-20 bg-white border border-gray-200 rounded-xl"></div>
+          <div class="h-20 bg-white border border-gray-200 rounded-xl"></div>
+          <div class="h-20 bg-white border border-gray-200 rounded-xl"></div>
+        </div>
+        <div class="h-64 bg-white border border-gray-200 rounded-xl"></div>
+      </div>
+
+      <!-- Drawer panel -->
+      <div class="absolute right-0 top-0 bottom-0 w-[480px] bg-white shadow-2xl flex flex-col overflow-hidden">
+        <!-- Drawer header -->
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h3 class="text-base font-semibold text-gray-900">Add Affiliate Partner</h3>
+          <button onclick="showScreen('partners')" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+
+        <!-- Drawer body -->
+        <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          <!-- Partner info -->
+          <div>
+            <div class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Partner Info</div>
+            <div class="space-y-3">
+              <div>
+                <label class="text-xs text-gray-500 block mb-1">Name *</label>
+                <input value="Priya Rajan" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20" />
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="text-xs text-gray-500 block mb-1">Email</label>
+                  <input value="priya@priyadesigns.com" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20" />
+                </div>
+                <div>
+                  <label class="text-xs text-gray-500 block mb-1">Phone</label>
+                  <input value="+91 98765 43210" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Partner type -->
+          <div>
+            <label class="text-xs font-semibold text-gray-700 uppercase tracking-wide block mb-2">Partner Type</label>
+            <div class="grid grid-cols-3 gap-2">
+              <label class="flex flex-col items-center gap-1 p-3 rounded-xl border-2 border-indigo-500 bg-indigo-50 cursor-pointer">
+                <span class="text-xl">🤳</span>
+                <span class="text-xs font-semibold text-indigo-700">Influencer</span>
+              </label>
+              <label class="flex flex-col items-center gap-1 p-3 rounded-xl border border-gray-200 hover:border-gray-300 cursor-pointer">
+                <span class="text-xl">🎬</span>
+                <span class="text-xs font-medium text-gray-600">Creator</span>
+              </label>
+              <label class="flex flex-col items-center gap-1 p-3 rounded-xl border border-gray-200 hover:border-gray-300 cursor-pointer">
+                <span class="text-xl">🏢</span>
+                <span class="text-xs font-medium text-gray-600">Brand</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Social handles -->
+          <div>
+            <div class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Platform & Audience</div>
+            <div class="space-y-2">
+              <div class="flex items-center gap-2">
+                <select class="border border-gray-300 rounded-lg px-2 py-2 text-xs bg-white w-28">
+                  <option>Instagram</option>
+                  <option>YouTube</option>
+                  <option>Twitter</option>
+                  <option>Blog/Website</option>
+                  <option>Podcast</option>
+                </select>
+                <input placeholder="Handle / URL" value="@priyadesigns" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                <input placeholder="Followers" value="120,000" class="w-24 border border-gray-300 rounded-lg px-2 py-2 text-xs text-center focus:outline-none" />
+                <button class="text-gray-300 hover:text-red-400 text-sm">✕</button>
+              </div>
+              <button class="text-xs text-indigo-600 hover:underline pl-0.5">+ Add another platform</button>
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div>
+            <label class="text-xs text-gray-500 block mb-1">Notes (optional)</label>
+            <textarea placeholder="e.g. lifestyle + fashion niche, good engagement rate" rows="2"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900/20"></textarea>
+          </div>
+
+          <!-- Divider: code assignment -->
+          <div class="border-t border-gray-100 pt-4">
+            <div class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Assign Codes (optional)</div>
+            <div class="flex gap-2 mb-2">
+              <span class="chip bg-gray-900 text-white">Import from Shopify</span>
+              <span class="chip bg-white border border-gray-300 text-gray-600">Enter manually</span>
+            </div>
+            <p class="text-xs text-gray-400 mb-3">You can also assign codes later from the partner detail page.</p>
+
+            <!-- Shopify discount picker mock -->
+            <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-gray-500 font-medium">Available Shopify discounts</span>
+                <input placeholder="Search…" class="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none w-28" />
+              </div>
+              <div class="space-y-1.5 max-h-36 overflow-y-auto">
+                <label class="flex items-center gap-2 p-2 bg-white border border-indigo-300 rounded-lg cursor-pointer">
+                  <input type="checkbox" checked class="accent-indigo-600 w-3.5 h-3.5" />
+                  <span class="code-pill text-xs font-bold">PRIYA10</span>
+                  <span class="text-xs text-gray-500">10% off · Generic</span>
+                  <span class="ml-auto text-xs text-green-600">Active</span>
+                </label>
+                <label class="flex items-center gap-2 p-2 bg-white border border-indigo-300 rounded-lg cursor-pointer">
+                  <input type="checkbox" checked class="accent-indigo-600 w-3.5 h-3.5" />
+                  <span class="code-pill text-xs font-bold">PRIYA20</span>
+                  <span class="text-xs text-gray-500">20% off · Generic</span>
+                  <span class="ml-auto text-xs text-green-600">Active</span>
+                </label>
+                <label class="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-gray-300">
+                  <input type="checkbox" class="accent-indigo-600 w-3.5 h-3.5" />
+                  <span class="code-pill text-xs font-bold">FLAT200</span>
+                  <span class="text-xs text-gray-500">₹200 off · Generic</span>
+                  <span class="ml-auto text-xs text-green-600">Active</span>
+                </label>
+                <label class="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-gray-300">
+                  <input type="checkbox" class="accent-indigo-600 w-3.5 h-3.5" />
+                  <span class="code-pill text-xs font-bold">SUMMER15</span>
+                  <span class="text-xs text-gray-500">15% off · Generic</span>
+                  <span class="ml-auto text-xs text-orange-500">Expiring</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Drawer footer -->
+        <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+          <button onclick="showScreen('partners')" class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+          <button class="px-5 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 font-medium">Add Partner →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SCREEN 5 — ASSIGN CODES (modal on detail)
+══════════════════════════════════════════════════════════════ -->
+<div id="screen-assign-codes" class="screen pt-10 min-h-screen">
+  <div class="flex min-h-screen w-full">
+
+    <!-- Sidebar -->
+    <div class="w-56 bg-white border-r border-gray-200 flex flex-col pt-6 px-3 shrink-0">
+      <div class="text-xs font-semibold text-gray-400 uppercase tracking-widest px-3 mb-3">GoSelf</div>
+      <nav class="space-y-0.5">
+        <div class="sidebar-item active px-3 py-2 rounded-lg text-sm cursor-pointer">Affiliates</div>
+        <div class="sidebar-item px-3 py-2 rounded-lg text-sm text-gray-600">Members</div>
+      </nav>
+    </div>
+
+    <!-- Page dimmed -->
+    <div class="flex-1 bg-gray-900/20 relative overflow-hidden flex items-start justify-center pt-16">
+      <!-- Modal -->
+      <div class="bg-white rounded-2xl shadow-2xl w-[540px] overflow-hidden fade-in">
+        <!-- Header -->
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h3 class="text-base font-semibold text-gray-900">Assign Codes to Priya Rajan</h3>
+            <p class="text-xs text-gray-400 mt-0.5">Pick from existing Shopify discounts or add a manual code</p>
+          </div>
+          <button onclick="showScreen('detail')" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex border-b border-gray-200">
+          <button class="tab-btn active px-5 py-2.5 text-sm">Import from Shopify</button>
+          <button class="tab-btn px-5 py-2.5 text-sm">Enter Manually</button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-5 space-y-3">
+          <div class="flex items-center gap-2 mb-3">
+            <input placeholder="Search discount codes…" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-gray-400" />
+            <select class="border border-gray-300 rounded-lg px-2 py-2 text-xs bg-white">
+              <option>All types</option>
+              <option>% off</option>
+              <option>₹ off</option>
+              <option>Free shipping</option>
+            </select>
+          </div>
+
+          <!-- Already assigned header -->
+          <div class="text-xs font-medium text-gray-400 uppercase tracking-wide px-0.5">Already assigned (3)</div>
+
+          <div class="space-y-2">
+            <div class="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+              <input type="checkbox" checked disabled class="accent-indigo-600 w-3.5 h-3.5" />
+              <span class="code-pill text-sm font-bold text-gray-900">PRIYA10</span>
+              <span class="text-xs text-gray-500">10% off · Generic · Active</span>
+              <span class="ml-auto badge bg-indigo-100 text-indigo-700">Assigned</span>
+            </div>
+            <div class="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+              <input type="checkbox" checked disabled class="accent-indigo-600 w-3.5 h-3.5" />
+              <span class="code-pill text-sm font-bold text-gray-900">PRIYA20</span>
+              <span class="text-xs text-gray-500">20% off · Generic · Active</span>
+              <span class="ml-auto badge bg-indigo-100 text-indigo-700">Assigned</span>
+            </div>
+            <div class="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+              <input type="checkbox" checked disabled class="accent-indigo-600 w-3.5 h-3.5" />
+              <span class="code-pill text-sm font-bold text-gray-900">PRIYAVIP</span>
+              <span class="text-xs text-gray-500">₹500 off · Generic · Active</span>
+              <span class="ml-auto badge bg-indigo-100 text-indigo-700">Assigned</span>
+            </div>
+          </div>
+
+          <!-- Available to add -->
+          <div class="text-xs font-medium text-gray-400 uppercase tracking-wide px-0.5 pt-2">Available to add</div>
+
+          <div class="space-y-2">
+            <label class="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300 hover:bg-gray-50">
+              <input type="checkbox" class="accent-indigo-600 w-3.5 h-3.5" />
+              <span class="code-pill text-sm font-bold text-gray-900">FLAT200</span>
+              <span class="text-xs text-gray-500">₹200 off · Generic · Active</span>
+              <span class="ml-auto text-xs text-gray-400">Not assigned to anyone</span>
+            </label>
+            <label class="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300 hover:bg-gray-50">
+              <input type="checkbox" class="accent-indigo-600 w-3.5 h-3.5" />
+              <span class="code-pill text-sm font-bold text-gray-900">SUMMER15</span>
+              <span class="text-xs text-gray-500">15% off · Generic · Expires 30 Jun</span>
+              <span class="ml-auto text-xs text-orange-500">⚠ Expiring soon</span>
+            </label>
+            <label class="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300 hover:bg-gray-50">
+              <input type="checkbox" class="accent-indigo-600 w-3.5 h-3.5" />
+              <span class="code-pill text-sm font-bold text-gray-900">NEWUSER30</span>
+              <span class="text-xs text-gray-500">30% off · Generic · Active</span>
+              <span class="ml-auto badge bg-amber-50 text-amber-700 border border-amber-200">Used by 2 others</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+          <span class="text-xs text-gray-500">1 new code selected</span>
+          <div class="flex gap-2">
+            <button onclick="showScreen('detail')" class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+            <button class="px-5 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800">Assign Selected →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + id).classList.add('active');
+    document.querySelectorAll('.nav-btn').forEach((b, i) => {
+      const ids = ['partners','detail','analytics','add-drawer','assign-codes'];
+      b.classList.toggle('active', ids[i] === id);
+    });
+    window.scrollTo(0, 0);
+  }
+</script>
+</body>
+</html>
