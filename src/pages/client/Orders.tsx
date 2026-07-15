@@ -94,13 +94,14 @@ function SortIcon({ col, sort }: { col: SortKey; sort: { key: SortKey; dir: Sort
     : <ChevronDown className="w-3.5 h-3.5 text-blue-600 inline ml-1" />;
 }
 
-function MaskedPII({ value, className = '' }: { value: string; className?: string }) {
-  const [revealed, setRevealed] = useState(false);
+function MaskedPII({
+  value, className = '', revealed, onToggle,
+}: { value: string; className?: string; revealed: boolean; onToggle: (e: React.MouseEvent) => void }) {
   if (!value) return <span className="text-gray-300 text-xs">—</span>;
   return (
     <button
       type="button"
-      onClick={(e) => { e.stopPropagation(); setRevealed((r) => !r); }}
+      onClick={(e) => { e.stopPropagation(); onToggle(e); }}
       className={`text-left flex items-center gap-1 group ${className}`}
       title={revealed ? 'Click to hide' : 'Click to reveal'}
     >
@@ -140,6 +141,13 @@ export function Orders() {
 
   // detail modal
   const [selected, setSelected] = useState<OrderRow | null>(null);
+
+  // PII reveal — only one field visible at a time
+  const [revealedPII, setRevealedPII] = useState<string | null>(null);
+  const togglePII = (key: string) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRevealedPII((prev) => (prev === key ? null : key));
+  };
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -523,9 +531,19 @@ export function Orders() {
 
                       {/* Customer */}
                       <td className="px-3 py-3 max-w-48">
-                        <MaskedPII value={order.customer_email} className="text-gray-900 text-sm truncate max-w-44" />
+                        <MaskedPII
+                          value={order.customer_email}
+                          className="text-gray-900 text-sm truncate max-w-44"
+                          revealed={revealedPII === `${order.id}-email`}
+                          onToggle={togglePII(`${order.id}-email`)}
+                        />
                         {order.customer_phone && (
-                          <MaskedPII value={order.customer_phone} className="text-xs text-gray-400 mt-0.5" />
+                          <MaskedPII
+                            value={order.customer_phone}
+                            className="text-xs text-gray-400 mt-0.5"
+                            revealed={revealedPII === `${order.id}-phone`}
+                            onToggle={togglePII(`${order.id}-phone`)}
+                          />
                         )}
                       </td>
 
@@ -733,12 +751,22 @@ export function Orders() {
                   <h3 className="font-semibold text-gray-700 text-xs uppercase tracking-wider">Customer</h3>
                   <div>
                     <p className="text-gray-500 text-xs">Email</p>
-                    <MaskedPII value={selected.customer_email} className="font-medium text-gray-900" />
+                    <MaskedPII
+                      value={selected.customer_email}
+                      className="font-medium text-gray-900"
+                      revealed={revealedPII === `${selected.id}-email`}
+                      onToggle={togglePII(`${selected.id}-email`)}
+                    />
                   </div>
                   {selected.customer_phone && (
                     <div>
                       <p className="text-gray-500 text-xs">Phone</p>
-                      <MaskedPII value={selected.customer_phone} className="font-medium text-gray-900" />
+                      <MaskedPII
+                        value={selected.customer_phone}
+                        className="font-medium text-gray-900"
+                        revealed={revealedPII === `${selected.id}-phone`}
+                        onToggle={togglePII(`${selected.id}-phone`)}
+                      />
                     </div>
                   )}
                   {selected.member_name && (

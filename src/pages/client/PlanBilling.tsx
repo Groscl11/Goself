@@ -17,7 +17,7 @@ import {
   FileText,
   Download,
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, supabaseUrl } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -210,8 +210,6 @@ export function PlanBilling() {
     setLoading(true);
     setError(null);
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lizgppzyyljqbmzdytia.supabase.co';
-
       // Load plans + invoices in parallel with config
       const [plansRes, invoicesRes] = await Promise.all([
         supabase.from('plans').select('*').eq('is_active', true).order('sort_order'),
@@ -228,14 +226,24 @@ export function PlanBilling() {
 
       // Fetch config from edge function using the current session JWT
       const token = session?.access_token;
-      const configRes = await fetch(`${supabaseUrl}/functions/v1/get-client-config`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
+      const abort = new AbortController();
+      const timeout = setTimeout(() => abort.abort(), 8000);
+      let configRes: Response | null = null;
+      try {
+        configRes = await fetch(`${supabaseUrl}/functions/v1/get-client-config`, {
+          signal: abort.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+      } catch {
+        // timed out or network error — fall through to DB fallback
+      } finally {
+        clearTimeout(timeout);
+      }
 
-      if (configRes.ok) {
+      if (configRes?.ok) {
         const data = await configRes.json();
         setConfig(data);
       } else {
