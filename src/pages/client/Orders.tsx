@@ -3,14 +3,14 @@ import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import {
-  ShoppingBag, Search, DollarSign, Zap, Gift, ChevronLeft, ChevronRight,
-  ChevronUp, ChevronDown, ChevronsUpDown, X, Tag, Star, Package,
-  Download, ExternalLink,
+  ShoppingBag, Search, ChevronLeft, ChevronRight,
+  ChevronUp, ChevronDown, ChevronsUpDown, X, Tag, Star,
+  Download, ExternalLink, Eye, EyeOff,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { clientMenuItems } from './clientMenuItems';
-import { formatCurrency } from '../../lib/currency';
+import { formatCurrency, getCurrencySymbol } from '../../lib/currency';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,6 +92,26 @@ function SortIcon({ col, sort }: { col: SortKey; sort: { key: SortKey; dir: Sort
   return sort.dir === 'asc'
     ? <ChevronUp className="w-3.5 h-3.5 text-blue-600 inline ml-1" />
     : <ChevronDown className="w-3.5 h-3.5 text-blue-600 inline ml-1" />;
+}
+
+function MaskedPII({ value, className = '' }: { value: string; className?: string }) {
+  const [revealed, setRevealed] = useState(false);
+  if (!value) return <span className="text-gray-300 text-xs">—</span>;
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); setRevealed((r) => !r); }}
+      className={`text-left flex items-center gap-1 group ${className}`}
+      title={revealed ? 'Click to hide' : 'Click to reveal'}
+    >
+      <span className={`transition-all duration-200 ${revealed ? '' : 'blur-sm select-none'}`}>
+        {value}
+      </span>
+      {revealed
+        ? <EyeOff className="w-3 h-3 text-gray-300 flex-shrink-0 opacity-0 group-hover:opacity-100" />
+        : <Eye className="w-3 h-3 text-gray-300 flex-shrink-0 opacity-0 group-hover:opacity-100" />}
+    </button>
+  );
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -364,13 +384,15 @@ export function Orders() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {[
             { label: 'Matching Orders', value: stats.total, icon: ShoppingBag, color: 'blue' },
-            { label: 'Total Revenue', value: formatCurrency(stats.revenue, stats.currency), icon: DollarSign, color: 'green' },
+            { label: 'Total Revenue', value: formatCurrency(stats.revenue, stats.currency), icon: null, currencySymbol: getCurrencySymbol(stats.currency), color: 'green' },
             { label: 'With Coupons', value: stats.discounted, icon: Tag, color: 'orange' },
             { label: 'Points Awarded', value: stats.points.toLocaleString(), icon: Star, color: 'purple' },
-          ].map(({ label, value, icon: Icon, color }) => (
+          ].map(({ label, value, icon: Icon, currencySymbol, color }) => (
             <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-${color}-100`}>
-                <Icon className={`w-5 h-5 text-${color}-600`} />
+                {currencySymbol
+                  ? <span className={`text-lg font-bold text-${color}-600`}>{currencySymbol}</span>
+                  : Icon && <Icon className={`w-5 h-5 text-${color}-600`} />}
               </div>
               <div>
                 <p className="text-xs text-gray-500">{label}</p>
@@ -501,9 +523,9 @@ export function Orders() {
 
                       {/* Customer */}
                       <td className="px-3 py-3 max-w-48">
-                        <p className="text-gray-900 truncate">{order.customer_email}</p>
+                        <MaskedPII value={order.customer_email} className="text-gray-900 text-sm truncate max-w-44" />
                         {order.customer_phone && (
-                          <p className="text-xs text-gray-400">{order.customer_phone}</p>
+                          <MaskedPII value={order.customer_phone} className="text-xs text-gray-400 mt-0.5" />
                         )}
                       </td>
 
@@ -711,12 +733,12 @@ export function Orders() {
                   <h3 className="font-semibold text-gray-700 text-xs uppercase tracking-wider">Customer</h3>
                   <div>
                     <p className="text-gray-500 text-xs">Email</p>
-                    <p className="font-medium text-gray-900">{selected.customer_email}</p>
+                    <MaskedPII value={selected.customer_email} className="font-medium text-gray-900" />
                   </div>
                   {selected.customer_phone && (
                     <div>
                       <p className="text-gray-500 text-xs">Phone</p>
-                      <p className="font-medium text-gray-900">{selected.customer_phone}</p>
+                      <MaskedPII value={selected.customer_phone} className="font-medium text-gray-900" />
                     </div>
                   )}
                   {selected.member_name && (
