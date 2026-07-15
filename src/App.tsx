@@ -1,7 +1,6 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ThemeProvider } from './context/ThemeContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { RoleBasedRoute } from './components/RoleBasedRoute';
 import { PublicRoute } from './components/PublicRoute';
@@ -48,6 +47,9 @@ import { Integrations } from './pages/client/Integrations';
 import { Reports } from './pages/client/Reports';
 import { MessageTemplates } from './pages/client/MessageTemplates';
 import CommunicationLogs from './pages/client/CommunicationLogs';
+import { Suspense, lazy } from 'react';
+// ...existing code...
+const CampaignsPage = lazy(() => import('./pages/client/CampaignsPage'));
 import CampaignTriggerLogs from './pages/client/CampaignTriggerLogs';
 import { Settings as ClientSettings } from './pages/client/Settings';
 import { Orders } from './pages/client/Orders';
@@ -87,28 +89,9 @@ import { BrandRedemptions } from './pages/client/BrandRedemptions';
 import { ReferFriend } from './pages/member/ReferFriend';
 import { StoreInstallations } from './pages/admin/StoreInstallations';
 import { AdminBrandRedemptions } from './pages/admin/AdminBrandRedemptions';
-import { AdminBrandAssociations } from './pages/admin/AdminBrandAssociations';
-import { AdminMarketplaceApprovals } from './pages/admin/AdminMarketplaceApprovals';
 
 const OffersPage = lazy(() => import('./pages/client/OffersPage'));
 const LoyaltyProgramPage = lazy(() => import('./pages/client/LoyaltyProgramPage'));
-const CampaignsPage = lazy(() => import('./pages/client/CampaignsPage'));
-const AffiliatesPage = lazy(() => import('./pages/client/AffiliatesPage'));
-const CouponCodesPage = lazy(() => import('./pages/client/CouponCodesPage'));
-const UTMLinksPage = lazy(() => import('./pages/client/UTMLinksPage'));
-const AttributionReportsPage = lazy(() => import('./pages/client/AttributionReportsPage'));
-
-function LogoutRoute() {
-  const { signOut } = useAuth();
-  const [done, setDone] = useState(false);
-
-  useEffect(() => {
-    signOut().finally(() => setDone(true));
-  }, []);
-
-  if (!done) return null;
-  return <Navigate to="/login" replace />;
-}
 
 function DashboardRouter() {
   const { profile, loading } = useAuth();
@@ -146,7 +129,6 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <ThemeProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
@@ -175,7 +157,6 @@ function App() {
           <Route path="/admin/brands/new" element={<RoleBasedRoute allowedRoles={['admin']}><BrandForm /></RoleBasedRoute>} />
           <Route path="/admin/brands/:id" element={<RoleBasedRoute allowedRoles={['admin']}><BrandDetail /></RoleBasedRoute>} />
           <Route path="/admin/brands/:id/edit" element={<RoleBasedRoute allowedRoles={['admin']}><BrandForm /></RoleBasedRoute>} />
-          <Route path="/admin/brand-associations" element={<RoleBasedRoute allowedRoles={['admin']}><AdminBrandAssociations /></RoleBasedRoute>} />
           <Route path="/admin/clients" element={<RoleBasedRoute allowedRoles={['admin']}><AdminClients /></RoleBasedRoute>} />
           <Route path="/admin/clients/new" element={<RoleBasedRoute allowedRoles={['admin']}><ClientForm /></RoleBasedRoute>} />
           <Route path="/admin/clients/:id" element={<RoleBasedRoute allowedRoles={['admin']}><ClientDetail /></RoleBasedRoute>} />
@@ -191,10 +172,6 @@ function App() {
           <Route path="/admin/global-users" element={<RoleBasedRoute allowedRoles={['admin']}><GlobalUsers /></RoleBasedRoute>} />
           <Route path="/admin/referral-analytics" element={<RoleBasedRoute allowedRoles={['admin']}><ReferralAnalytics /></RoleBasedRoute>} />
           <Route path="/admin/billing" element={<RoleBasedRoute allowedRoles={['admin']}><AdminBilling /></RoleBasedRoute>} />
-          <Route path="/admin/marketplace-approvals" element={<RoleBasedRoute allowedRoles={['admin']}><AdminMarketplaceApprovals /></RoleBasedRoute>} />
-          <Route path="/logout" element={<LogoutRoute />} />
-          <Route path="/client/dashboard" element={<Navigate to="/client" replace />} />
-          <Route path="/client/earn-rules" element={<Navigate to="/client/loyalty-config" replace />} />
           <Route path="/client/onboarding" element={<Navigate to="/client" replace />} />
           <Route path="/client" element={<RoleBasedRoute allowedRoles={['client']}><ClientDashboard /></RoleBasedRoute>} />
           <Route path="/client/programs" element={<RoleBasedRoute allowedRoles={['client']}><MembershipManagement /></RoleBasedRoute>} />
@@ -205,7 +182,7 @@ function App() {
           <Route path="/client/members/import" element={<RoleBasedRoute allowedRoles={['client']}><ImportMembers /></RoleBasedRoute>} />
           <Route path="/client/members/:id" element={<RoleBasedRoute allowedRoles={['client']}><MemberDetail /></RoleBasedRoute>} />
           <Route path="/client/members/:id/edit" element={<RoleBasedRoute allowedRoles={['client']}><MemberForm /></RoleBasedRoute>} />
-          <Route path="/client/loyalty-points" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyProgram /></RoleBasedRoute>} />
+          <Route path="/client/loyalty-points" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading...</div>}><LoyaltyProgramPage /></Suspense></RoleBasedRoute>} />
           <Route path="/client/loyalty-members" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyMembers /></RoleBasedRoute>} />
           <Route path="/client/loyalty-transactions" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyTransactions /></RoleBasedRoute>} />
           <Route path="/client/offers" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading offers...</div>}><OffersPage /></Suspense></RoleBasedRoute>} />
@@ -213,15 +190,11 @@ function App() {
           <Route path="/client/brand-redemptions" element={<RoleBasedRoute allowedRoles={['client']}><BrandRedemptions /></RoleBasedRoute>} />
           <Route path="/client/referral-tracking" element={<RoleBasedRoute allowedRoles={['client']}><ReferralTracking /></RoleBasedRoute>} />
           <Route path="/client/loyalty-config" element={<RoleBasedRoute allowedRoles={['client']}><LoyaltyConfiguration /></RoleBasedRoute>} />
-          <Route path="/client/loyalty-program-setup" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading...</div>}><LoyaltyProgramPage /></Suspense></RoleBasedRoute>} />
+          <Route path="/client/loyalty-program-setup" element={<LoyaltyProgramPage />} />
           <Route path="/client/my-rewards" element={<RoleBasedRoute allowedRoles={['client']}><ClientRewards /></RoleBasedRoute>} />
           <Route path="/client/rewards" element={<RoleBasedRoute allowedRoles={['client']}><RewardsMarketplace /></RoleBasedRoute>} />
           <Route path="/client/campaigns" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading campaigns...</div>}><CampaignsPage /></Suspense></RoleBasedRoute>} />
           <Route path="/client/campaign-logs" element={<RoleBasedRoute allowedRoles={['client']}><CampaignTriggerLogs /></RoleBasedRoute>} />
-          <Route path="/client/affiliates" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading affiliates...</div>}><AffiliatesPage /></Suspense></RoleBasedRoute>} />
-          <Route path="/client/attribution/coupons" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading coupon codes...</div>}><CouponCodesPage /></Suspense></RoleBasedRoute>} />
-          <Route path="/client/attribution/utm" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading UTM links...</div>}><UTMLinksPage /></Suspense></RoleBasedRoute>} />
-          <Route path="/client/attribution/reports" element={<RoleBasedRoute allowedRoles={['client']}><Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading attribution reports...</div>}><AttributionReportsPage /></Suspense></RoleBasedRoute>} />
           <Route path="/client/templates" element={<RoleBasedRoute allowedRoles={['client']}><MessageTemplates /></RoleBasedRoute>} />
           <Route path="/client/communications" element={<RoleBasedRoute allowedRoles={['client']}><CommunicationLogs /></RoleBasedRoute>} />
           <Route path="/client/integrations" element={<RoleBasedRoute allowedRoles={['client']}><Integrations /></RoleBasedRoute>} />
@@ -278,7 +251,6 @@ function App() {
             </div>
           } />
         </Routes>
-        </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
   );
