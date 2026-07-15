@@ -195,7 +195,24 @@ function Tooltip({ content, icon: Icon, label, color }: {
 
 // ── Thumbnail with broken-image fallback ─────────────────────────────────────
 
-function RewardThumbnail({ imageUrl, logoUrl }: { imageUrl: string | null; logoUrl?: string | null }) {
+const AVATAR_COLORS = [
+  'bg-violet-100 text-violet-700',
+  'bg-blue-100 text-blue-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-amber-100 text-amber-700',
+  'bg-rose-100 text-rose-700',
+  'bg-teal-100 text-teal-700',
+  'bg-indigo-100 text-indigo-700',
+  'bg-orange-100 text-orange-700',
+];
+
+function letterColor(title: string) {
+  let h = 0;
+  for (let i = 0; i < title.length; i++) h = (h * 31 + title.charCodeAt(i)) & 0xffffffff;
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+
+function RewardThumbnail({ imageUrl, logoUrl, title }: { imageUrl: string | null; logoUrl?: string | null; title: string }) {
   const [imgFailed, setImgFailed] = useState(false);
   const [logoFailed, setLogoFailed] = useState(false);
 
@@ -207,7 +224,7 @@ function RewardThumbnail({ imageUrl, logoUrl }: { imageUrl: string | null; logoU
       <img
         src={primary}
         alt=""
-        className="w-8 h-8 rounded-md object-cover border border-gray-100"
+        className="w-9 h-9 rounded-lg object-cover border border-gray-100 flex-shrink-0"
         onError={() => setImgFailed(true)}
       />
     );
@@ -217,14 +234,15 @@ function RewardThumbnail({ imageUrl, logoUrl }: { imageUrl: string | null; logoU
       <img
         src={fallback}
         alt=""
-        className="w-8 h-8 rounded-md object-contain border border-gray-100 bg-white p-0.5"
+        className="w-9 h-9 rounded-lg object-contain border border-gray-100 bg-white p-0.5 flex-shrink-0"
         onError={() => setLogoFailed(true)}
       />
     );
   }
+  const initial = (title || '?')[0].toUpperCase();
   return (
-    <div className="w-8 h-8 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-      <Gift className="w-4 h-4 text-gray-400" />
+    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 font-bold text-sm ${letterColor(title)}`}>
+      {initial}
     </div>
   );
 }
@@ -442,7 +460,7 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
                   />
                 </th>
                 {/* 2. Thumbnail */}
-                <th className="w-10 px-2 py-2.5" />
+                <th className="w-12 px-2 py-2.5" />
                 {/* 3. Reward ID */}
                 <th className="w-36 px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Reward ID</th>
                 {/* 4. Reward name */}
@@ -509,7 +527,7 @@ export function RewardPickerModal({ rewards, brands, selected, onToggle, onClose
 
                     {/* 2. Thumbnail */}
                     <td className="px-2 py-3">
-                      <RewardThumbnail imageUrl={reward.image_url} logoUrl={reward.brand?.logo_url} />
+                      <RewardThumbnail imageUrl={reward.image_url} logoUrl={reward.brand?.logo_url} title={reward.title} />
                     </td>
 
                     {/* 3. Reward ID + copy */}
