@@ -149,8 +149,13 @@ export function PlanBilling() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (profile?.client_id) load();
-  }, [profile?.client_id, session]);
+    if (profile?.client_id) {
+      load();
+    } else if (profile) {
+      // Profile loaded but client_id is null — stop spinner, show empty state
+      setLoading(false);
+    }
+  }, [profile?.client_id]);
 
   const load = async () => {
     setLoading(true);

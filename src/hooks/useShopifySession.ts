@@ -31,6 +31,11 @@ export function useShopifySession() {
     let cancelled = false;
 
     async function pingSessionToken() {
+      // Skip if already authenticated — avoids a redundant setSession() call that
+      // would trigger onAuthStateChange → setLoading(true) → unnecessary loading flash.
+      const { data: { session: existing } } = await supabase.auth.getSession();
+      if (existing || cancelled) return;
+
       const w = window as any;
       const bridge = w.shopify ?? (await loadAppBridge());
       if (!bridge?.idToken) return;
