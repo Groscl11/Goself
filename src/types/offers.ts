@@ -11,6 +11,7 @@ export type RewardType = 'flat_discount' | 'percentage_discount' | 'free_item' |
 export type OfferStatus = 'draft' | 'active' | 'paused' | 'exhausted' | 'expired';
 export type AccessType = 'points_redemption' | 'campaign_reward' | 'free_claim' | 'both';
 export type CodeStatus = 'available' | 'assigned' | 'redeemed' | 'expired' | 'revoked';
+export type MarketplaceStatus = 'pending' | 'approved' | 'rejected';
 
 export interface Offer {
   id: string;
@@ -19,6 +20,7 @@ export interface Offer {
   description?: string;
   steps_to_redeem?: string;
   image_url?: string;
+  banner_url?: string;
   terms_conditions?: string;
   redemption_link?: string;
   offer_type: OfferType;
@@ -47,7 +49,11 @@ export interface Offer {
   // joined
   offer_distributions?: OfferDistribution[];
   offer_codes?: { status: CodeStatus }[];
-  owner_client?: { name: string };
+  owner_client?: { name: string; logo_url?: string | null };
+  // Marketplace governance
+  marketplace_status?: MarketplaceStatus;
+  marketplace_rejection_reason?: string | null;
+  marketplace_submitted_at?: string | null;
 }
 
 export interface OfferDistribution {
@@ -88,6 +94,20 @@ export interface MarketplaceOffer extends Offer {
   my_points_cost: number | null;
   issuer_name?: string;
   issuer_logo?: string;
+}
+
+export interface RewardsEditRequest {
+  id: string;
+  reward_id: string;
+  requesting_client_id: string;
+  proposed_changes: Record<string, any>;
+  status: 'pending' | 'approved' | 'rejected';
+  rejection_reason?: string | null;
+  reviewed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  reward?: Pick<Offer, 'id' | 'title'> & { reward_id?: string; description?: string; terms_conditions?: string; discount_value?: number; generic_coupon_code?: string; redemption_link?: string; valid_until?: string };
+  requesting_client?: { name: string; logo_url?: string | null };
 }
 
 // ─── Form types for creating offers ────────────────────────────────────────

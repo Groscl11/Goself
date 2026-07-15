@@ -40,15 +40,22 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // ── 1. Load campaign rule ─────────────────────────────────────────────────
-    const { data: campaign, error: campError } = await supabase
+    // Support both the human-readable display ID (e.g. "CAMP-0001" stored in
+    // the campaign_id column) and the raw UUID (stored in the id column).
+    // We MUST branch by type: passing a non-UUID string into id.eq causes a
+    // PostgREST type-cast error that kills the entire query.
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(campaign_rule_id);
+    let campQuery = supabase
       .from("campaign_rules")
       .select(`
         id, name, client_id, is_active, rule_mode,
         reward_selection_mode, min_rewards_choice, max_rewards_choice,
         start_date, end_date
-      `)
-      .eq("id", campaign_rule_id)
-      .maybeSingle();
+      `);
+    campQuery = isUUID
+      ? campQuery.eq("id", campaign_rule_id)
+      : campQuery.eq("campaign_id", campaign_rule_id);
+    const { data: campaign, error: campError } = await campQuery.maybeSingle();
 
     if (campError || !campaign) {
       return new Response(
@@ -64,7 +71,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (campaign.rule_mode !== "standalone") {
+    // rule_mode check: only enforce "standalone" when actually claiming.
+    // Read-only probes (claim=false) may display rewards for any campaign type —
+    // this powers pre-purchase widgets that just need to show the reward pool.
+    if (claim && campaign.rule_mode !== "standalone") {
       return new Response(
         JSON.stringify({ success: false, reason: "not_standalone" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -87,18 +97,20 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 2. Load reward pool ───────────────────────────────────────────────────
+    // Use campaign.id (resolved UUID) — campaign_reward_pools.campaign_rule_id
+    // is a UUID FK, so the raw display ID (e.g. "CAMP-0001") would never match.
     const { data: poolRows, error: poolError } = await supabase
       .from("campaign_reward_pools")
       .select(`
         sort_order,
         rewards (
-          id, title, description, value_description, image_url, category, coupon_type,
-          expiry_date, status,
+          id, title, description, discount_value, image_url, offer_category, coupon_type,
+          valid_until, status,
           brands ( id, name, logo_url ),
           vouchers ( id, status )
         )
       `)
-      .eq("campaign_rule_id", campaign_rule_id)
+      .eq("campaign_rule_id", campaign.id)
       .order("sort_order");
 
     if (poolError) {
@@ -112,14 +124,14 @@ Deno.serve(async (req: Request) => {
     // Build rewards list — show all active, flag availability count
     const allPoolRewards = (poolRows || [])
       .map((r: any) => r.rewards)
-      .filter((r: any) => r && r.status === "active" && (!r.expiry_date || new Date(r.expiry_date) > now))
+      .filter((r: any) => r && r.status === "active" && (!r.valid_until || new Date(r.valid_until) > now))
       .map((r: any) => ({
         id: r.id,
         title: r.title,
         description: r.description,
-        value_description: r.value_description,
+        value_description: r.discount_value,
         image_url: r.image_url,
-        category: r.category,
+        category: r.offer_category,
         coupon_type: r.coupon_type,
         brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,
         available_vouchers: (r.vouchers || []).filter((v: any) => v.status === "available").length,
@@ -129,6 +141,9 @@ Deno.serve(async (req: Request) => {
     const claimableRewards = allPoolRewards.filter((r: any) => r.available_vouchers > 0);
 
     // ── 3. Read-only response ─────────────────────────────────────────────────
+    // Return ALL active pool rewards (not just those with vouchers) so pre-purchase
+    // widgets can display the reward catalogue even before voucher inventory is loaded.
+    // The voucher availability check only applies when actually claiming.
     if (!claim) {
       return new Response(
         JSON.stringify({
@@ -138,7 +153,7 @@ Deno.serve(async (req: Request) => {
           reward_selection_mode: campaign.reward_selection_mode,
           min_rewards: campaign.min_rewards_choice,
           max_rewards: campaign.max_rewards_choice,
-          rewards: claimableRewards,
+          rewards: allPoolRewards,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -187,6 +202,27 @@ Deno.serve(async (req: Request) => {
         .select("id")
         .single();
       memberId = newMember?.id || null;
+    }
+
+    // ── 5b. Duplicate claim guard ────────────────────────────────────────
+    // SECURITY (H-02): prevent the same email from draining the voucher pool
+    // by claiming the same campaign multiple times.
+    if (memberId) {
+      const poolRewardIds = claimableRewards.map((r: any) => r.id);
+      if (poolRewardIds.length > 0) {
+        const { data: priorClaims } = await supabase
+          .from("member_rewards_allocation")
+          .select("id")
+          .eq("member_id", memberId)
+          .in("reward_id", poolRewardIds)
+          .limit(1);
+        if (priorClaims && priorClaims.length > 0) {
+          return new Response(
+            JSON.stringify({ success: false, reason: "already_claimed" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
     }
 
     // ── 6. Determine which reward IDs to process ──────────────────────────────
@@ -277,7 +313,7 @@ Deno.serve(async (req: Request) => {
   } catch (error: any) {
     console.error("claim-standalone-campaign error:", error);
     return new Response(
-      JSON.stringify({ success: false, reason: "server_error", error: error.message }),
+      JSON.stringify({ success: false, reason: "server_error", error: "Internal server error" }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

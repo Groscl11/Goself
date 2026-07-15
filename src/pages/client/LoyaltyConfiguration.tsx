@@ -25,6 +25,7 @@ interface EarningRule {
   referral_discount_value: number | null;
   referral_min_order_value: number | null;
   max_referrals_per_day: number | null;
+  shopify_discount_code: string | null;
   social_platform: SocialPlatform | null;
   social_url: string | null;
   max_times_per_customer: number | null;
@@ -42,6 +43,7 @@ const EMPTY_RULE = (type: RuleType): Omit<EarningRule, 'id' | 'client_id' | 'cre
   referral_discount_value: type === 'referral' ? 100 : null,
   referral_min_order_value: null,
   max_referrals_per_day: type === 'referral' ? 5 : null,
+  shopify_discount_code: null,
   social_platform: type === 'social_follow' ? 'instagram' : null,
   social_url: null,
   max_times_per_customer: type === 'birthday' || type === 'signup' || type === 'profile_complete' ? 1 : null,
@@ -192,6 +194,7 @@ export function LoyaltyConfiguration() {
       referral_discount_value: rule.referral_discount_value,
       referral_min_order_value: rule.referral_min_order_value,
       max_referrals_per_day: rule.max_referrals_per_day,
+      shopify_discount_code: (rule as any).shopify_discount_code || null,
       social_platform: rule.social_platform,
       social_url: rule.social_url || '',
       max_times_per_customer: rule.max_times_per_customer,
@@ -224,6 +227,7 @@ export function LoyaltyConfiguration() {
         referral_discount_value: form.referral_discount_value ? Number(form.referral_discount_value) : null,
         referral_min_order_value: form.referral_min_order_value ? Number(form.referral_min_order_value) : null,
         max_referrals_per_day: form.max_referrals_per_day ? Number(form.max_referrals_per_day) : null,
+        shopify_discount_code: form.shopify_discount_code?.trim().toUpperCase() || null,
         social_platform: form.social_platform || null,
         social_url: form.social_url?.trim() || null,
         max_times_per_customer: form.max_times_per_customer ? Number(form.max_times_per_customer) : null,
@@ -237,7 +241,8 @@ export function LoyaltyConfiguration() {
       } else {
         const { error } = await supabase.from('loyalty_earning_rules')
           .update({ ...payload, updated_at: new Date().toISOString() })
-          .eq('id', editingId!);
+          .eq('id', editingId!)
+          .eq('client_id', clientId);
         if (error) throw error;
       }
       cancelEdit();
@@ -251,13 +256,14 @@ export function LoyaltyConfiguration() {
   async function toggleRule(rule: EarningRule) {
     const { error } = await supabase.from('loyalty_earning_rules')
       .update({ is_active: !rule.is_active, updated_at: new Date().toISOString() })
-      .eq('id', rule.id);
+      .eq('id', rule.id)
+      .eq('client_id', clientId);
     if (!error) setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r));
   }
 
   async function deleteRule(id: string) {
     if (!confirm('Delete this earning rule? This cannot be undone.')) return;
-    await supabase.from('loyalty_earning_rules').delete().eq('id', id);
+    await supabase.from('loyalty_earning_rules').delete().eq('id', id).eq('client_id', clientId);
     setRules(prev => prev.filter(r => r.id !== id));
   }
 
@@ -268,7 +274,7 @@ export function LoyaltyConfiguration() {
   async function loadReferralSettings() {
     const [progRes, ruleRes] = await Promise.all([
       supabase.from('loyalty_programs').select('id, referral_reward_trigger').eq('client_id', clientId).maybeSingle(),
-      supabase.from('loyalty_earning_rules').select('id, points_reward, referral_signup_points, referral_discount_type, referral_discount_value').eq('client_id', clientId).eq('rule_type', 'referral').maybeSingle(),
+      supabase.from('loyalty_earning_rules').select('id, points_reward, referral_signup_points, referral_discount_type, referral_discount_value, shopify_discount_code').eq('client_id', clientId).eq('rule_type', 'referral').maybeSingle(),
     ]);
     if (progRes.data) {
       setProgramId(progRes.data.id);
@@ -287,7 +293,7 @@ export function LoyaltyConfiguration() {
     setRefSaving(true);
     try {
       if (programId) {
-        await supabase.from('loyalty_programs').update({ referral_reward_trigger: refTrigger }).eq('id', programId);
+        await supabase.from('loyalty_programs').update({ referral_reward_trigger: refTrigger }).eq('id', programId).eq('client_id', clientId);
       }
       if (referralRuleId) {
         await supabase.from('loyalty_earning_rules').update({
@@ -295,7 +301,7 @@ export function LoyaltyConfiguration() {
           referral_signup_points: refSignupPts,
           referral_discount_type: refDiscountType,
           referral_discount_value: refDiscountValue,
-        }).eq('id', referralRuleId);
+        }).eq('id', referralRuleId).eq('client_id', clientId);
       }
       setRefSaved(true);
       setTimeout(() => setRefSaved(false), 2000);
@@ -622,6 +628,20 @@ function RuleForm({ form, type, saving, onSave, onCancel, setF }: {
                 onChange={e => setF('referral_min_order_value', e.target.value ? parseFloat(e.target.value) : null)}
                 placeholder="Optional" />
             </div>
+          </div>
+          <div>
+            <label className={lbl}>Shopify Discount Code (for referral link)</label>
+            <input
+              className={inp}
+              type="text"
+              value={form.shopify_discount_code ?? ''}
+              onChange={e => setF('shopify_discount_code', e.target.value || null)}
+              placeholder="e.g. FRIEND500"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Create this discount in <strong>Shopify Admin → Discounts</strong>. When friends click the referral link it auto-applies at checkout.
+              Leave blank if you're not using a Shopify discount code.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

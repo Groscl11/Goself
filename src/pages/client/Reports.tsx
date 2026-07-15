@@ -12,6 +12,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import { clientMenuItems } from './clientMenuItems';
 
 interface Metrics {
@@ -70,6 +71,7 @@ interface PartnerBrandStat {
 }
 
 export function Reports() {
+  const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState('');
   const [metrics, setMetrics] = useState<Metrics>({
@@ -87,16 +89,11 @@ export function Reports() {
   const [partnerBrandStats, setPartnerBrandStats] = useState<PartnerBrandStat[]>([]);
   const [dateRange, setDateRange] = useState('30');
 
-  useEffect(() => { loadClientId(); }, []);
+  useEffect(() => {
+    if (profile?.client_id) setClientId(profile.client_id);
+  }, [profile]);
 
   useEffect(() => { if (clientId) loadAllData(); }, [clientId, dateRange]);
-
-  const loadClientId = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data: profile } = await supabase.from('profiles').select('client_id').eq('id', user.id).single();
-    if (profile?.client_id) setClientId(profile.client_id);
-  };
 
   const getStartDate = () => {
     const d = new Date();

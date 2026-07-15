@@ -1,17 +1,20 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { decryptToken } from '../_shared/token-crypto.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Shopify-Topic, X-Shopify-Hmac-Sha256, X-Shopify-Shop-Domain",
-};
+const JSON_HEADER = { "Content-Type": "application/json" };
+
+// Auto-detect env: staging project ref is jblqyvicxhmqqjhostcj
+const _webhookSupabaseRef = Deno.env.get("SUPABASE_URL")?.match(/\/\/([^.]+)\.supabase\.co/)?.[1] ?? "";
+const _webhookIsStaging   = _webhookSupabaseRef === "jblqyvicxhmqqjhostcj";
+const WEBHOOK_APP_URL = Deno.env.get("FRONTEND_URL") || Deno.env.get("DASHBOARD_URL") ||
+  (_webhookIsStaging ? "https://dev.app.goself.in" : "https://app.goself.in");
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: JSON_HEADER,
     });
   }
 
@@ -28,7 +31,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "Missing required Shopify headers" }),
         {
           status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: JSON_HEADER,
         }
       );
     }
@@ -58,7 +61,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "Integration not found or disconnected" }),
         {
           status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: JSON_HEADER,
         }
       );
     }
@@ -73,7 +76,7 @@ Deno.serve(async (req: Request) => {
           JSON.stringify({ error: "Missing HMAC signature" }),
           {
             status: 401,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            headers: JSON_HEADER,
           }
         );
       }
@@ -84,13 +87,21 @@ Deno.serve(async (req: Request) => {
           JSON.stringify({ error: "Invalid HMAC signature" }),
           {
             status: 401,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            headers: JSON_HEADER,
           }
         );
       }
       console.log("HMAC signature verified successfully");
     } else {
-      console.warn(`No SHOPIFY_API_SECRET configured — HMAC verification skipped for ${shopDomain}`);
+      // SECURITY (H-04): fail closed — never process webhooks without HMAC.
+      // An unconfigured secret means we cannot verify the request is from Shopify.
+      // Accepting unverified webhooks would allow anyone to inject fake orders and
+      // trigger loyalty point accruals, campaign enrollments, and referral payouts.
+      console.error(`[shopify-webhook] No SHOPIFY_API_SECRET for ${shopDomain} — rejecting`);
+      return new Response(
+        JSON.stringify({ error: "Webhook secret not configured" }),
+        { status: 401, headers: JSON_HEADER }
+      );
     }
 
     await supabase.from("shopify_webhook_events").insert({
@@ -130,7 +141,7 @@ Deno.serve(async (req: Request) => {
 
       return new Response(
         JSON.stringify({ success: true, message: 'Store marked as uninstalled' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: JSON_HEADER }
       );
     }
 
@@ -236,8 +247,11 @@ Deno.serve(async (req: Request) => {
         });
 
       if (insertError) {
-        console.error("Error inserting order:", insertError);
-
+        // Log the error but do NOT return early — campaign rules and loyalty
+        // enrollment must still run so members see their data on the thank-you page.
+        // A failed order-record save is a non-critical bookkeeping issue; losing
+        // loyalty enrollment for the customer is much more impactful.
+        console.error("Error inserting order (non-fatal, continuing):", insertError.message);
         await supabase
           .from("shopify_webhook_events")
           .update({ error: insertError.message })
@@ -245,14 +259,6 @@ Deno.serve(async (req: Request) => {
           .eq("topic", shopifyTopic)
           .order("created_at", { ascending: false })
           .limit(1);
-
-        return new Response(
-          JSON.stringify({ error: "Failed to save order", details: insertError }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
       }
 
       await supabase
@@ -276,9 +282,10 @@ Deno.serve(async (req: Request) => {
       await checkAdvancedCampaignRules(supabase, integration.client_id, orderData, orderRecord, transactionId, shopifyOrderName);
       await processPendingCommunications(supabase);
 
-      if (orderRecord.financial_status === "paid") {
-        await awardLoyaltyPoints(supabase, integration.client_id, orderRecord);
-      }
+      // Always run loyalty enrollment so the member shows up in the widget
+      // immediately on the thank-you page.  Points are only credited inside
+      // awardLoyaltyPoints when financial_status === "paid".
+      await awardLoyaltyPoints(supabase, integration.client_id, orderRecord);
 
       // Process referral tracking — check for goself_ref in note_attributes
       await processReferral(supabase, integration.client_id, orderData, orderRecord);
@@ -291,7 +298,7 @@ Deno.serve(async (req: Request) => {
         }),
         {
           status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: JSON_HEADER,
         }
       );
     }
@@ -311,7 +318,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ message: "Webhook received and logged", topic: shopifyTopic }),
       {
         status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: JSON_HEADER,
       }
     );
   } catch (error) {
@@ -320,7 +327,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ error: "Internal server error", message: error.message }),
       {
         status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: JSON_HEADER,
       }
     );
   }
@@ -418,6 +425,15 @@ async function awardLoyaltyPoints(supabase: any, clientId: string, orderRecord: 
       console.log(`Auto-enrolled member ${member.id} with tier ${defaultTier?.id}`);
     }
 
+    // Enrollment is done; only credit points for paid orders.
+    // COD / pending orders get the loyalty status row (so the widget works)
+    // but points are held until the order is marked paid.
+    const financialStatus = orderRecord.financial_status || '';
+    if (financialStatus !== "paid") {
+      console.log(`Order ${orderId} not yet paid (status: ${financialStatus}) — member enrolled but points deferred`);
+      return;
+    }
+
     const { data: isDuplicate } = await supabase.rpc("check_duplicate_order_points", {
       p_order_id: orderId,
       p_member_user_id: member.id,
@@ -468,6 +484,9 @@ async function awardLoyaltyPoints(supabase: any, clientId: string, orderRecord: 
       description: `Earned ${points} points from order ${orderId}`,
       reference_id: orderId,
     });
+
+    // Check for tier upgrade after every points award
+    await supabase.rpc('check_tier_upgrade', { p_member_loyalty_status_id: resolvedMemberStatus.id });
 
     console.log(`Awarded ${points} points to member ${member.id} for order ${orderId}. New balance: ${newBalance}`);
   } catch (error) {
@@ -545,11 +564,12 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
 
       if (storeForCustomer?.access_token) {
         try {
+          const accessToken = await decryptToken(storeForCustomer.access_token);
           const customerResponse = await fetch(
             `https://${storeForCustomer.shop_domain}/admin/api/2024-01/customers/${orderData.customer.id}.json`,
             {
               headers: {
-                "X-Shopify-Access-Token": storeForCustomer.access_token,
+                "X-Shopify-Access-Token": accessToken,
               },
             }
           );
@@ -762,7 +782,7 @@ async function checkAdvancedCampaignRules(supabase: any, clientId: string, order
                 },
               });
 
-              const claimUrl = `${Deno.env.get("FRONTEND_URL") || "https://goself.netlify.app"}/claim-rewards?token=${newToken.token}`;
+              const claimUrl = `${WEBHOOK_APP_URL}/claim-rewards?token=${newToken.token}`;
               await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, "success", "Standalone campaign token issued", memberId, null, {
                 campaign_name: rule.name,
                 rule_type: "standalone",
@@ -1327,28 +1347,49 @@ async function processReferral(supabase: any, clientId: string, orderData: any, 
       return;
     }
 
-    // Prevent self-referral
+    // Self-referral: log an audit row (one per order) so the widget can render
+    // honest UX on the thank-you page. No points awarded to anyone.
     if (referredMember.id === referrerStatus.member_user_id) {
-      console.log(`[referral] Self-referral detected — skipping`);
+      console.log(`[referral] Self-referral detected for order ${orderRecord.order_id} — logging and skipping reward`);
+      const { error: srInsertErr } = await supabase.from('member_referrals').insert({
+        loyalty_program_id: program.id,
+        referrer_member_id: referrerStatus.member_user_id,
+        referred_member_id: referredMember.id,
+        referral_code: refCode,
+        referred_email: buyerEmail || null,
+        referred_phone: buyerPhone || null,
+        status: 'self_referral',
+        points_awarded: 0,
+        referee_points_awarded: 0,
+        shopify_order_id: orderRecord.order_id,
+        completed_at: new Date().toISOString(),
+      });
+      // Duplicate on the same order is fine — partial UNIQUE dedups.
+      if (srInsertErr && !String(srInsertErr.code ?? '').startsWith('23')) {
+        console.error('[referral] Failed to log self-referral:', srInsertErr);
+      }
       return;
     }
 
-    // Idempotency: skip if already recorded for this referred member
+    // Idempotency: skip if a legit referral was already recorded for this member
     const { data: existing } = await supabase
       .from('member_referrals')
       .select('id')
       .eq('loyalty_program_id', program.id)
       .eq('referred_member_id', referredMember.id)
+      .in('status', ['pending', 'completed', 'expired'])
       .maybeSingle();
     if (existing) {
       console.log(`[referral] Already recorded for referred member ${referredMember.id} — skipping`);
       return;
     }
 
-    // Get referral earning rule points
+    // Get referral earning rule: referrer reward (points_reward) and referee
+    // reward (referee_points_reward). Both default to 0 — legacy rules keep
+    // paying referrer-only until an admin sets a non-zero referee reward.
     const { data: rule } = await supabase
       .from('loyalty_earning_rules')
-      .select('points_reward')
+      .select('points_reward, referee_points_reward')
       .eq('client_id', clientId)
       .eq('rule_type', 'referral')
       .eq('is_active', true)
@@ -1356,8 +1397,9 @@ async function processReferral(supabase: any, clientId: string, orderData: any, 
       .limit(1)
       .maybeSingle();
     const referralPoints: number = rule?.points_reward ?? 0;
+    const refereePoints: number = rule?.referee_points_reward ?? 0;
 
-    // Insert referral record
+    // Insert referral record (per-row reward amounts captured for both sides)
     await supabase.from('member_referrals').insert({
       loyalty_program_id: program.id,
       referrer_member_id: referrerStatus.member_user_id,
@@ -1367,10 +1409,12 @@ async function processReferral(supabase: any, clientId: string, orderData: any, 
       referred_phone: buyerPhone || null,
       status: 'completed',
       points_awarded: referralPoints,
+      referee_points_awarded: refereePoints,
+      shopify_order_id: orderRecord.order_id,
       completed_at: new Date().toISOString(),
     });
 
-    console.log(`[referral] Recorded referral: referrer=${referrerStatus.member_user_id} → referred=${referredMember.id}, points=${referralPoints}`);
+    console.log(`[referral] Recorded referral: referrer=${referrerStatus.member_user_id} → referred=${referredMember.id}, referrer_pts=${referralPoints}, referee_pts=${refereePoints}`);
 
     // Award points to referrer
     if (referralPoints > 0) {
@@ -1395,7 +1439,50 @@ async function processReferral(supabase: any, clientId: string, orderData: any, 
         reference_id: referredMember.id,
       });
 
+      // Check tier upgrade for referrer after bonus points
+      await supabase.rpc('check_tier_upgrade', { p_member_loyalty_status_id: referrerStatus.id });
+
       console.log(`[referral] Awarded ${referralPoints} pts to referrer ${referrerStatus.member_user_id}. New balance: ${newBalance}`);
+    }
+
+    // Award points to referee (new buyer). awardLoyaltyPoints runs earlier in
+    // this webhook and enrolls the buyer; if the status row is missing for any
+    // reason, log and skip — never fail the webhook over the referee branch.
+    if (refereePoints > 0) {
+      const { data: refereeStatus } = await supabase
+        .from('member_loyalty_status')
+        .select('id, points_balance, lifetime_points_earned')
+        .eq('loyalty_program_id', program.id)
+        .eq('member_user_id', referredMember.id)
+        .maybeSingle();
+
+      if (!refereeStatus) {
+        console.log(`[referral] Referee ${referredMember.id} has no loyalty status row — skipping referee reward`);
+      } else {
+        const newRefereeBalance = (refereeStatus.points_balance ?? 0) + refereePoints;
+        const newRefereeLifetime = (refereeStatus.lifetime_points_earned ?? 0) + refereePoints;
+
+        await supabase.from('member_loyalty_status').update({
+          points_balance: newRefereeBalance,
+          lifetime_points_earned: newRefereeLifetime,
+          updated_at: new Date().toISOString(),
+        }).eq('id', refereeStatus.id);
+
+        await supabase.from('loyalty_points_transactions').insert({
+          member_loyalty_status_id: refereeStatus.id,
+          member_user_id: referredMember.id,
+          transaction_type: 'earned',
+          points_amount: refereePoints,
+          balance_after: newRefereeBalance,
+          description: 'Referral signup bonus',
+          reference_id: referrerStatus.member_user_id,
+        });
+
+        // Check tier upgrade for referee after bonus points
+        await supabase.rpc('check_tier_upgrade', { p_member_loyalty_status_id: refereeStatus.id });
+
+        console.log(`[referral] Awarded ${refereePoints} pts to referee ${referredMember.id}. New balance: ${newRefereeBalance}`);
+      }
     }
   } catch (err) {
     // Non-fatal: order processing must not be blocked by referral errors

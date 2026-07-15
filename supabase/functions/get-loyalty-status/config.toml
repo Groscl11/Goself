@@ -1,0 +1,2 @@
+[functions.get-loyalty-status]
+verify_jwt = false

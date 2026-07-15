@@ -101,8 +101,11 @@ interface Order {
 
 interface CampaignClaim {
   token_id: string;
+  campaign_rule_id: string;
+  campaign_name: string;
   claimed_at: string;
   shopify_order_ref: string | null;
+  order_number: string | null;
   rewards: { reward_id: string; reward_title: string; voucher_code: string; redemption_url: string | null }[];
 }
 
@@ -228,14 +231,26 @@ export function MemberDetail() {
     if (!id) return;
     setLoading(true);
     try {
-      // Phase 1: get member first so we have the email for orders query
-      const memberRes = await supabase.from('member_users').select('*').eq('id', id).maybeSingle();
+      // Phase 1: get member first so we have the email + client_id for scoping
+      // SECURITY (H-08): scope by client_id so a user cannot load any tenant's
+      // member by UUID substitution. RLS on member_users already enforces this,
+      // but we also scope explicitly here as defence-in-depth.
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const { data: callerProfile } = authUser
+        ? await supabase.from('profiles').select('client_id').eq('id', authUser.id).maybeSingle()
+        : { data: null };
+      const callerClientId = callerProfile?.client_id ?? null;
+
+      const memberQuery = supabase.from('member_users').select('*').eq('id', id);
+      if (callerClientId) memberQuery.eq('client_id', callerClientId);
+      const memberRes = await memberQuery.maybeSingle();
       if (memberRes.error || !memberRes.data) { navigate('/client/members'); return; }
       const memberData = memberRes.data;
       const memberEmail = memberData.email;
+      const memberClientId = memberData.client_id;
       setMember(memberData);
 
-      // Phase 2: all other data in parallel
+      // Phase 2: all other data in parallel — all scoped to memberClientId
       const [
         membershipRes, allocRes, voucherRes,
         redemptionRes, txnRes, sourceRes, lsRes, pointsRes, ordersRes, campaignRes,
@@ -248,14 +263,15 @@ export function MemberDetail() {
         supabase.from('member_sources').select('*').eq('member_id', id).order('created_at', { ascending: true }).limit(1).maybeSingle(),
         supabase.from('member_loyalty_status').select('*, program:loyalty_programs(name)').eq('member_user_id', id).order('created_at', { ascending: false }),
         supabase.from('loyalty_points_transactions').select('*').eq('member_user_id', id).order('created_at', { ascending: false }).limit(200),
-        // Match orders by member_id OR customer_email (older orders may only have email)
+        // Match orders by member_id OR customer_email — scoped to this tenant's client_id
         supabase.from('shopify_orders')
           .select('id, order_id, order_number, total_price, currency, order_status, processed_at, created_at, customer_email')
+          .eq('client_id', memberClientId)
           .or(`member_id.eq.${id},customer_email.eq.${memberEmail}`)
           .order('created_at', { ascending: false }),
         // Campaign token claims — rewards stored as JSONB, not in vouchers table
         supabase.from('campaign_tokens')
-          .select('id, claimed_at, claimed_rewards, shopify_order_ref')
+          .select('id, campaign_rule_id, claimed_at, claimed_rewards, shopify_order_ref')
           .eq('is_claimed', true)
           .or(`member_id.eq.${id},email.eq.${memberEmail}`)
           .order('claimed_at', { ascending: false }),
@@ -276,15 +292,36 @@ export function MemberDetail() {
 
       setOrders((ordersRes.data ?? []) as Order[]);
 
-      const claims: CampaignClaim[] = (campaignRes.data ?? [])
-        .filter((r: any) => Array.isArray(r.claimed_rewards) && r.claimed_rewards.length > 0)
-        .map((r: any) => ({
+      // Phase 3: enrich campaign claims with campaign name + readable order number
+      const rawClaims = (campaignRes.data ?? []).filter(
+        (r: any) => Array.isArray(r.claimed_rewards) && r.claimed_rewards.length > 0
+      );
+      if (rawClaims.length > 0) {
+        const ruleIds = [...new Set<string>(rawClaims.map((r: any) => r.campaign_rule_id).filter(Boolean))];
+        const orderRefs = [...new Set<string>(rawClaims.map((r: any) => r.shopify_order_ref).filter(Boolean))];
+        const [rulesRes, ordNumRes] = await Promise.all([
+          ruleIds.length > 0
+            ? supabase.from('campaign_rules').select('id, name').in('id', ruleIds)
+            : { data: [] as any[] },
+          orderRefs.length > 0
+            ? supabase.from('shopify_orders').select('order_id, order_number').in('order_id', orderRefs).eq('client_id', memberClientId)
+            : { data: [] as any[] },
+        ]);
+        const ruleMap: Record<string, string> = Object.fromEntries((rulesRes.data ?? []).map((r: any) => [r.id, r.name]));
+        const orderMap: Record<string, string> = Object.fromEntries((ordNumRes.data ?? []).map((o: any) => [String(o.order_id), o.order_number]));
+        const claims: CampaignClaim[] = rawClaims.map((r: any) => ({
           token_id: r.id,
+          campaign_rule_id: r.campaign_rule_id,
+          campaign_name: ruleMap[r.campaign_rule_id] ?? 'Campaign',
           claimed_at: r.claimed_at,
           shopify_order_ref: r.shopify_order_ref ?? null,
+          order_number: r.shopify_order_ref ? (orderMap[String(r.shopify_order_ref)] ?? null) : null,
           rewards: r.claimed_rewards,
         }));
-      setCampaignClaims(claims);
+        setCampaignClaims(claims);
+      } else {
+        setCampaignClaims([]);
+      }
 
       // Set adjustStatusId: prefer from loyaltyStatuses, fallback to status ID inside transactions
       if (lsData.length > 0) {
@@ -621,52 +658,85 @@ export function MemberDetail() {
             {/* Vouchers */}
             {activeTab === 'vouchers' && (
               <div className="space-y-6">
-                {/* Standard vouchers */}
+                {/* Standard vouchers — grid */}
                 {vouchers.length > 0 && (
-                  <div className="space-y-3">
-                    {vouchers.map((v) => (
-                      <div key={v.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
-                        <div>
-                          <p className="font-semibold text-gray-900">{v.reward.title}</p>
-                          <div className="flex gap-3 mt-1 text-xs text-gray-500">
-                            <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{v.code}</span>
-                            {v.expires_at && (
-                              <span className={isExpired(v.expires_at) ? 'text-red-600 font-medium' : isExpiringSoon(v.expires_at) ? 'text-orange-600 font-medium' : ''}>
-                                {isExpired(v.expires_at) ? `Expired ${fmt(v.expires_at)}` : `Expires ${fmt(v.expires_at)}`}
-                              </span>
-                            )}
-                            {v.redeemed_at && <span>Redeemed: {fmt(v.redeemed_at)}</span>}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Vouchers</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {vouchers.map((v) => (
+                        <div key={v.id} className="border rounded-xl p-4 space-y-3 hover:shadow-sm transition-shadow">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold text-gray-900 text-sm leading-snug">{v.reward.title}</p>
+                            <StatusBadge status={v.status} />
+                          </div>
+                          <span className="inline-block font-mono bg-gray-100 text-gray-800 px-2.5 py-1 rounded text-sm font-semibold tracking-wider">
+                            {v.code}
+                          </span>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                            <div>
+                              <p className="text-gray-400">Status</p>
+                              <p className="font-medium text-gray-700 capitalize">{v.status}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-400">Claimed</p>
+                              <p className="font-medium text-gray-700">{fmt(v.redeemed_at ?? null)}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-gray-400">Expiry</p>
+                              <p className={`font-medium ${isExpired(v.expires_at) ? 'text-red-600' : isExpiringSoon(v.expires_at) ? 'text-orange-600' : 'text-gray-700'}`}>
+                                {v.expires_at ? fmt(v.expires_at) : '—'}
+                                {isExpired(v.expires_at) && ' (Expired)'}
+                                {isExpiringSoon(v.expires_at) && ' (Soon)'}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                        <StatusBadge status={v.status} />
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {/* Campaign instant-link claimed rewards */}
+                {/* Campaign instant-link claimed rewards — grid */}
                 {campaignClaims.length > 0 && (
-                  <div className="space-y-3">
-                    {vouchers.length > 0 && (
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Campaign Rewards</p>
-                    )}
-                    {campaignClaims.map((claim) =>
-                      claim.rewards.map((r) => (
-                        <div key={`${claim.token_id}-${r.reward_id}`} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
-                          <div>
-                            <p className="font-semibold text-gray-900">{r.reward_title}</p>
-                            <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
-                              <span className="font-mono bg-purple-50 text-purple-700 px-2 py-0.5 rounded">{r.voucher_code}</span>
-                              <span>Claimed: {fmt(claim.claimed_at)}</span>
-                              {claim.shopify_order_ref && (
-                                <span className="text-gray-400">Order: {claim.shopify_order_ref}</span>
-                              )}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Campaign Rewards</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {campaignClaims.map((claim) =>
+                        claim.rewards.map((r) => (
+                          <div key={`${claim.token_id}-${r.reward_id}`} className="border rounded-xl p-4 space-y-3 hover:shadow-sm transition-shadow">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-semibold text-gray-900 text-sm leading-snug">{r.reward_title}</p>
+                              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 shrink-0">Campaign</span>
+                            </div>
+                            <span className="inline-block font-mono bg-purple-50 text-purple-700 px-2.5 py-1 rounded text-sm font-semibold tracking-wider">
+                              {r.voucher_code}
+                            </span>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                              <div>
+                                <p className="text-gray-400">Campaign</p>
+                                <p className="font-medium text-gray-700 truncate" title={claim.campaign_name}>{claim.campaign_name}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-400">Order</p>
+                                <p className="font-medium text-gray-700 font-mono">{claim.order_number ?? '—'}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-400">Claimed</p>
+                                <p className="font-medium text-gray-700">{fmt(claim.claimed_at)}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-400">Status</p>
+                                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Claimed</span>
+                              </div>
+                              <div className="col-span-2">
+                                <p className="text-gray-400">Expiry</p>
+                                <p className="font-medium text-gray-500">—</p>
+                              </div>
                             </div>
                           </div>
-                          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">Campaign</span>
-                        </div>
-                      ))
-                    )}
+                        ))
+                      )}
+                    </div>
                   </div>
                 )}
 

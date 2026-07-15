@@ -1,18 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
-
-function jsonResponse(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
+import { getCorsHeaders } from "../_shared/cors.ts";
 
 async function resolveClientId(supabase: any, shopDomain?: string | null) {
   if (!shopDomain) return null;
@@ -28,6 +16,15 @@ async function resolveClientId(supabase: any, shopDomain?: string | null) {
 }
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req);
+
+  function jsonResponse(data: unknown, status = 200) {
+    return new Response(JSON.stringify(data), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
@@ -41,6 +38,35 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    // ── SECURITY: Verify caller identity ─────────────────────────────────────
+    // This function uses service_role (bypasses RLS) and adopts marketplace offers
+    // on behalf of a client. Without this check, any authenticated user could adopt
+    // offers for any other tenant by passing a foreign client_id or shop_domain.
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const callerJwt = authHeader.replace('Bearer ', '').trim();
+    const anonKey = (Deno.env.get('SUPABASE_ANON_KEY') ?? '').trim();
+
+    if (!callerJwt || callerJwt === anonKey) {
+      return jsonResponse({ success: false, error: 'Unauthorized' }, 401);
+    }
+
+    const callerClient = createClient(Deno.env.get('SUPABASE_URL')!, callerJwt);
+    const { data: { user: callerUser }, error: userErr } = await callerClient.auth.getUser();
+    if (userErr || !callerUser) {
+      return jsonResponse({ success: false, error: 'Unauthorized — invalid token' }, 401);
+    }
+
+    const { data: callerProfile } = await supabase
+      .from('profiles')
+      .select('client_id, role')
+      .eq('id', callerUser.id)
+      .maybeSingle();
+
+    if (!callerProfile) {
+      return jsonResponse({ success: false, error: 'Forbidden — profile not found' }, 403);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     const body = await req.json().catch(() => ({}));
     const offerId = body.offer_id as string | undefined;
@@ -62,6 +88,13 @@ Deno.serve(async (req: Request) => {
     const clientId = clientIdFromBody ?? await resolveClientId(supabase, shopDomain);
     if (!clientId) {
       return jsonResponse({ success: false, error: "Store not found" }, 404);
+    }
+
+    // SECURITY: verify the resolved clientId matches the caller's own client
+    // (admins may act on behalf of any client)
+    const isAdmin = callerProfile.role === 'admin';
+    if (!isAdmin && callerProfile.client_id !== clientId) {
+      return jsonResponse({ success: false, error: "Forbidden — you may only adopt offers for your own store" }, 403);
     }
 
     const { data: offer, error: offerError } = await supabase
@@ -122,7 +155,7 @@ Deno.serve(async (req: Request) => {
         access_type: accessType,
         points_cost: pointsCost,
         max_per_member: maxPerMember,
-        is_active: true,
+        is_active: false, // off by default — client enables via Widget Rewards tab
       })
       .select("id")
       .single();

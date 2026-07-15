@@ -163,7 +163,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
   const [allBrands, setAllBrands] = useState<{ id: string; name: string }[]>([]);
   const [showRewardPicker, setShowRewardPicker] = useState(false);
   const [rewardType, setRewardType] = useState(initial?.reward_action?.reward_type ?? 'auto');
-  const [rewardSelectionMode, setRewardSelectionMode] = useState(initial?.reward_action?.reward_selection_mode ?? 'fixed');
+  const [rewardSelectionMode, setRewardSelectionMode] = useState<'fixed' | 'choice'>(initial?.reward_action?.reward_selection_mode ?? (initial?.rule_mode === 'instant_reward' ? 'choice' : 'fixed'));
   const [minRewardsChoice, setMinRewardsChoice] = useState(initial?.reward_action?.min_rewards_choice ?? 1);
   const [maxRewardsChoice, setMaxRewardsChoice] = useState(initial?.reward_action?.max_rewards_choice ?? 1);
 
@@ -213,7 +213,7 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
     setMaxCust('');
     setRewardPool([]);
     setRewardType('auto');
-    setRewardSelectionMode('fixed');
+    setRewardSelectionMode(nextMode === 'instant_reward' ? 'choice' : 'fixed');
     setMinRewardsChoice(1);
     setMaxRewardsChoice(1);
     setStep(1);
@@ -268,13 +268,14 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
       const { data: ownRewards, error: e1 } = await supabase
         .from('rewards')
         .select(`
-          id, title, description, value_description, image_url, category,
-          coupon_type, status, expiry_date, owner_client_id, available_codes,
-          offer_type,
+          id, reward_id, title, description, image_url, offer_category, offer_priority,
+          coupon_type, status, valid_until, owner_client_id, available_codes,
+          offer_type, reward_type, discount_value, min_purchase_amount,
+          terms_conditions, steps_to_redeem,
           brands ( id, name, logo_url )
         `)
         .eq('owner_client_id', clientId)
-        .or('expiry_date.is.null,expiry_date.gt.' + new Date().toISOString());
+        .or('valid_until.is.null,valid_until.gt.' + new Date().toISOString());
 
       if (e1) console.error('[loadAvailableRewards] own rewards:', e1);
 
@@ -282,13 +283,14 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
       const { data: mktRewards, error: e2 } = await supabase
         .from('rewards')
         .select(`
-          id, title, description, value_description, image_url, category,
-          coupon_type, status, expiry_date, owner_client_id, available_codes,
-          offer_type,
+          id, reward_id, title, description, image_url, offer_category, offer_priority,
+          coupon_type, status, valid_until, owner_client_id, available_codes,
+          offer_type, reward_type, discount_value, min_purchase_amount,
+          terms_conditions, steps_to_redeem,
           brands ( id, name, logo_url )
         `)
         .eq('offer_type', 'marketplace_offer')
-        .or('expiry_date.is.null,expiry_date.gt.' + new Date().toISOString());
+        .or('valid_until.is.null,valid_until.gt.' + new Date().toISOString());
 
       if (e2) console.error('[loadAvailableRewards] marketplace rewards:', e2);
 
@@ -308,14 +310,21 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
         .filter((r: any) => r.coupon_type !== 'unique' || (r.available_codes ?? 0) > 0)
         .map((r: any) => ({
           id: r.id,
+          reward_id: r.reward_id ?? null,
           title: r.title,
           description: r.description,
-          value_description: r.value_description,
           image_url: r.image_url,
-          category: r.category,
+          offer_category: r.offer_category ?? null,
+          offer_priority: r.offer_priority ?? 0,
           coupon_type: r.coupon_type || 'unique',
+          offer_type: r.offer_type ?? null,
+          reward_type: r.reward_type ?? null,
+          discount_value: r.discount_value ?? null,
+          min_purchase_amount: r.min_purchase_amount ?? null,
+          terms_conditions: r.terms_conditions ?? null,
+          steps_to_redeem: r.steps_to_redeem ?? null,
           status: r.status,
-          expiry_date: r.expiry_date,
+          expiry_date: r.valid_until ?? null,
           available_vouchers: r.available_codes ?? 0,
           brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,
         }));
@@ -339,6 +348,12 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
  
   async function save() {
     if (!name.trim()) { setError('Campaign name is required'); return; }
+    if (!startDate) { setError('Start date is required'); return; }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (startDate < todayStr) { setError('Start date cannot be in the past'); return; }
+    if (!endDate) { setError('End date is required'); return; }
+    if (endDate <= startDate) { setError('End date must be after start date'); return; }
+    if (!linkExpiry || Number(linkExpiry) < 1) { setError('Reward link expiry is required (minimum 1 hr)'); return; }
     setSaving(true); setError('');
     try {
       const finalTriggerType: TriggerType = (mode === 'standalone' || mode === 'instant_reward') ? 'advanced' : triggerType;
@@ -460,6 +475,13 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
               <div className="grid gap-3">
                 {[
                   {
+                    value: 'instant_reward' as RuleMode,
+                    icon: '⚡',
+                    title: 'Instant Reward Campaign',
+                    desc: 'Generate reward links instantly on the thank-you page — no waiting. Works with the Instant Post-Purchase Rewards plugin.',
+                    tags: ['Instant', 'Thank-you page', 'No delay'],
+                  },
+                  {
                     value: 'standalone' as RuleMode,
                     icon: '🎁',
                     title: 'Reward Campaign',
@@ -483,7 +505,10 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                 ].map(opt => (
                   <button
                     key={opt.value}
-                    onClick={() => setMode(opt.value)}
+                    onClick={() => {
+                      setMode(opt.value);
+                      setRewardSelectionMode(opt.value === 'instant_reward' ? 'choice' : 'fixed');
+                    }}
                     className={`text-left p-4 rounded-xl border-2 transition-all ${
                       mode === opt.value
                         ? 'border-gray-900 bg-gray-50'
@@ -725,13 +750,15 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Start date</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Start date *</label>
                   <input type="date" value={startDate} onChange={e => setStart(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
                     className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">End date</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">End date *</label>
                   <input type="date" value={endDate} onChange={e => setEnd(e.target.value)}
+                    min={startDate || new Date().toISOString().slice(0, 10)}
                     className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
                 </div>
               </div>
@@ -743,8 +770,8 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                     className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward link expiry (hrs)</label>
-                  <input type="number" value={linkExpiry} onChange={e => setLinkExp(e.target.value)} placeholder="72"
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reward link expiry (hrs) *</label>
+                  <input type="number" value={linkExpiry} onChange={e => setLinkExp(e.target.value)} placeholder="72" min="1"
                     className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
                 </div>
               </div>
@@ -786,11 +813,15 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Type</span>
-                  <span className="font-medium text-gray-900">{mode === 'standalone' ? 'Reward Campaign' : 'Membership Campaign'}</span>
+                  <span className="font-medium text-gray-900">
+                    {mode === 'standalone' ? 'Reward Campaign' : mode === 'instant_reward' ? 'Instant Reward Campaign' : 'Membership Campaign'}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Trigger</span>
-                  <span className="font-medium text-gray-900">{mode === 'standalone' ? `${conditions.length} condition(s)` : TRIGGER_LABELS[triggerType]}</span>
+                  <span className="font-medium text-gray-900">
+                    {mode === 'standalone' ? `${conditions.length} condition(s)` : mode === 'instant_reward' ? 'Instant (post-purchase)' : TRIGGER_LABELS[triggerType]}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Duration</span>
@@ -847,7 +878,7 @@ export default function CampaignsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<CampaignRule | null>(null);
   const [defaultMode, setDefaultMode] = useState<RuleMode>('standalone');
-  const [filter, setFilter] = useState<'all' | 'standalone' | 'membership'>('all');
+  const [filter, setFilter] = useState<'all' | 'standalone' | 'membership' | 'instant_reward'>('all');
   const [deleting, setDeleting] = useState<string | null>(null);
   const navigate = useNavigate();
   const [copiedCampaignId, setCopiedCampaignId] = useState<string | null>(null);
@@ -871,6 +902,11 @@ export default function CampaignsPage() {
       return;
     }
 
+    // ruleIds is derived from campaign_rules scoped by .eq('client_id', clientId) above,
+    // so .in('campaign_rule_id', ruleIds) on each table below is indirectly client-scoped.
+    // campaign_reward_pools has no direct client_id column — indirect scoping via ruleIds is correct.
+    // campaign_trigger_logs has no direct client_id column — indirect scoping via ruleIds is correct.
+    // campaign_rule_evaluations has no direct client_id column — indirect scoping via ruleIds is correct.
     const [poolRes, logsRes, evalRes] = await Promise.all([
       supabase.from('campaign_reward_pools').select('campaign_rule_id, reward_id').in('campaign_rule_id', ruleIds),
       supabase.from('campaign_trigger_logs').select('campaign_rule_id, trigger_result').in('campaign_rule_id', ruleIds),
@@ -969,6 +1005,7 @@ export default function CampaignsPage() {
     totalEnrollments: campaigns.reduce((s, c) => s + (c.current_enrollments ?? 0), 0),
     reward: campaigns.filter(c => c.rule_mode === 'standalone').length,
     membership: campaigns.filter(c => c.rule_mode === 'membership').length,
+    instant: campaigns.filter(c => c.rule_mode === 'instant_reward').length,
   };
  
   return (
@@ -1000,12 +1037,13 @@ export default function CampaignsPage() {
           </div>
  
           {/* Stats row */}
-          <div className="grid grid-cols-5 gap-3 mb-6">
+          <div className="grid grid-cols-6 gap-3 mb-6">
             {[
               { label: 'Total',       value: stats.total,           color: 'text-gray-900' },
               { label: 'Active',      value: stats.active,          color: 'text-emerald-600' },
               { label: 'Enrollments', value: stats.totalEnrollments, color: 'text-blue-600' },
               { label: 'Reward',      value: stats.reward,          color: 'text-violet-600' },
+              { label: 'Instant',     value: stats.instant,         color: 'text-orange-500' },
               { label: 'Membership',  value: stats.membership,      color: 'text-amber-600' },
             ].map(s => (
               <div key={s.label} className="bg-white border border-gray-200 rounded-xl p-3 text-center">
@@ -1018,9 +1056,10 @@ export default function CampaignsPage() {
           {/* Filter chips */}
           <div className="flex gap-2 mb-4">
             {[
-              { id: 'all',        label: `All (${stats.total})` },
-              { id: 'standalone', label: `Reward (${stats.reward})` },
-              { id: 'membership', label: `Membership (${stats.membership})` },
+              { id: 'all',           label: `All (${stats.total})` },
+              { id: 'standalone',    label: `Reward (${stats.reward})` },
+              { id: 'instant_reward', label: `Instant (${stats.instant})` },
+              { id: 'membership',    label: `Membership (${stats.membership})` },
             ].map(f => (
               <button
                 key={f.id}

@@ -24,3 +24,8 @@ dist-ssr
 
 # Local Netlify folder
 .netlify
+
+# Compiled/temp bundles (may contain hardcoded keys)
+tmp_live_*.js
+tmp_live_*.html
+dist/

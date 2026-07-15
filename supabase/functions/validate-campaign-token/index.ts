@@ -57,11 +57,14 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (tokenError || !tokenRow) {
+      console.warn(`[validate] not_found token=${token} err=${tokenError?.message}`);
       return new Response(
         JSON.stringify({ valid: false, reason: "not_found" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log(`[validate] token=${token} claimed=${tokenRow.is_claimed} pre_verified=${(tokenRow as any).is_pre_verified} expires=${tokenRow.expires_at}`);
 
     if (tokenRow.is_claimed) {
       return new Response(
@@ -91,10 +94,11 @@ Deno.serve(async (req: Request) => {
     }
 
     // Identity gate: skipped when the token was issued from a trusted Shopify session
-    // (is_pre_verified=true set by the webhook — customer was authenticated by Shopify).
-    // Also skipped when the Shopify plugin passes is_pre_verified:true in the request
-    // body (Phase 5 get-order-token flow, customer confirmed logged in on Shopify side).
-    const preVerified = !!(tokenRow as any).is_pre_verified || body.is_pre_verified === true;
+    // (is_pre_verified=true set server-side by shopify-webhook or get-order-token
+    // using the service_role key — the only trusted source for this flag).
+    // SECURITY: body.is_pre_verified is intentionally NOT trusted — a caller
+    // could pass is_pre_verified:true to bypass identity verification entirely.
+    const preVerified = !!(tokenRow as any).is_pre_verified;
     if (!preVerified) {
       if (!identity) {
         const hints: string[] = [];
@@ -121,13 +125,52 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── Qualifying-order gate ────────────────────────────────────────────────
+    // Verify this customer has at least one order that genuinely qualified for
+    // this campaign (trigger_result = 'success' in campaign_trigger_logs).
+    // This is the server-side backstop that blocks tokens issued via the
+    // email/phone fallback path when a previous order's success log was
+    // inadvertently matched for a new non-qualifying order.
+    //
+    // SKIPPED for is_pre_verified tokens: those were issued by get-campaign-reward-link
+    // only after it already confirmed a success trigger log exists. Re-checking here
+    // creates a race condition (trigger log may not be committed yet when the user
+    // clicks the banner immediately after checkout).
+    if (!preVerified && (tokenRow.email || tokenRow.phone)) {
+      let qualifyQuery = supabase
+        .from("campaign_trigger_logs")
+        .select("id")
+        .eq("campaign_rule_id", campaign.id)
+        .eq("trigger_result", "success");
+
+      if (tokenRow.email && tokenRow.phone) {
+        qualifyQuery = qualifyQuery.or(
+          `customer_email.eq.${tokenRow.email},customer_phone.eq.${tokenRow.phone}`
+        );
+      } else if (tokenRow.email) {
+        qualifyQuery = qualifyQuery.eq("customer_email", tokenRow.email);
+      } else {
+        qualifyQuery = qualifyQuery.eq("customer_phone", tokenRow.phone);
+      }
+
+      const { data: qualifyingLog } = await qualifyQuery.limit(1).maybeSingle();
+
+      if (!qualifyingLog) {
+        console.warn(`validate-campaign-token: no qualifying order for token ${token} — rejecting`);
+        return new Response(
+          JSON.stringify({ valid: false, reason: "no_qualifying_order" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     const { data: poolRows, error: poolError } = await supabase
       .from("campaign_reward_pools")
       .select(`
         sort_order,
         rewards (
-          id, title, description, value_description, image_url, category, coupon_type,
-          expiry_date, status, available_codes, generic_coupon_code,
+          id, title, description, image_url, offer_category, coupon_type,
+          valid_until, status, available_codes, generic_coupon_code,
           brands ( id, name, logo_url )
         )
       `)
@@ -151,8 +194,8 @@ Deno.serve(async (req: Request) => {
         if (rewardIds.length > 0) {
           const { data: fullRewards } = await supabase
             .from("rewards")
-            .select(`id, title, description, value_description, image_url, category, coupon_type,
-              expiry_date, status, available_codes, generic_coupon_code,
+            .select(`id, title, description, image_url, offer_category, coupon_type,
+              valid_until, status, available_codes, generic_coupon_code,
               brands ( id, name, logo_url )`)
             .in("id", rewardIds);
           if (fullRewards) rawRewards = fullRewards;
@@ -164,16 +207,15 @@ Deno.serve(async (req: Request) => {
     const rewards = rawRewards
       .filter((r: any) => {
         if (!r || r.status !== "active") return false;
-        if (r.expiry_date && new Date(r.expiry_date) <= now) return false;
+        if (r.valid_until && new Date(r.valid_until) <= now) return false;
         return true;
       })
       .map((r: any) => ({
         id: r.id,
         title: r.title,
         description: r.description,
-        value_description: r.value_description,
         image_url: r.image_url,
-        category: r.category,
+        category: r.offer_category,
         coupon_type: r.coupon_type,
         generic_coupon_code: r.generic_coupon_code || null,
         brand: r.brands ? { id: r.brands.id, name: r.brands.name, logo_url: r.brands.logo_url } : null,
@@ -187,7 +229,6 @@ Deno.serve(async (req: Request) => {
           verified: true,
           campaign_id: campaign.id,
           campaign_name: campaign.name,
-          email: tokenRow.email,
           expires_at: tokenRow.expires_at,
           reward_selection_mode: campaign.reward_selection_mode,
           min_rewards: campaign.min_rewards_choice,
@@ -275,27 +316,30 @@ Deno.serve(async (req: Request) => {
       if (reward.coupon_type === "generic" && reward.generic_coupon_code) {
         voucherCode = reward.generic_coupon_code;
       } else {
-        // For unique-code rewards, claim one offer_codes slot
-        const { data: offerCode } = await supabase
-          .from("offer_codes").select("id, code")
-          .eq("offer_id", rewardId).eq("status", "available")
-          .limit(1).maybeSingle();
+        // For unique-code rewards, claim one offer_codes slot atomically.
+        // SECURITY (H-07): the previous two-step SELECT + UPDATE had a race condition
+        // where concurrent requests could SELECT the same code then both set voucherCode
+        // (upErr is null even when 0 rows are updated). Using UPDATE ... RETURNING gives
+        // true atomic semantics: only the request that wins the DB lock gets the row back.
+        const { data: claimResult, error: upErr } = await supabase
+          .from("offer_codes")
+          .update({
+            status: "assigned",
+            assigned_at: new Date().toISOString(),
+            assigned_to_member_id: memberId ?? null,
+            distributed_by_client_id: campaign.client_id,
+            global_user_id: memberDataForTracking?.global_user_id ?? null,
+            member_email: memberDataForTracking?.email ?? null,
+            code_source: "campaign",
+            source_rule_id: campaign.id,
+          })
+          .eq("offer_id", rewardId)
+          .eq("status", "available")
+          .select("id, code")
+          .limit(1);
 
-        if (offerCode) {
-          const { error: upErr } = await supabase
-            .from("offer_codes")
-            .update({
-              status: "assigned",
-              assigned_at: new Date().toISOString(),
-              assigned_to_member_id: memberId ?? null,
-              distributed_by_client_id: campaign.client_id,
-              global_user_id: memberDataForTracking?.global_user_id ?? null,
-              member_email: memberDataForTracking?.email ?? null,
-              code_source: "campaign",
-              source_rule_id: campaign.id,
-            })
-            .eq("id", offerCode.id).eq("status", "available");
-          if (!upErr) voucherCode = offerCode.code;
+        if (!upErr && claimResult && claimResult.length > 0) {
+          voucherCode = claimResult[0].code;
         }
 
 

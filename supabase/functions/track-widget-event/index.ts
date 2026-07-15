@@ -46,7 +46,7 @@ Deno.serve(async (req: Request) => {
     if (error) {
       console.error("Error tracking widget event:", error);
       return new Response(
-        JSON.stringify({ error: error.message }),
+        JSON.stringify({ error: 'Internal server error' }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -64,7 +64,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error("Error in track-widget-event:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'Internal server error' }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -5,7 +5,6 @@ import {
   Receipt,
   Cog,
   GitBranch,
-  Link2,
   Tag,
   Megaphone,
   Building2,
@@ -15,9 +14,13 @@ import {
   BarChart3,
   ShoppingCart,
   Zap,
-  Sparkles,
   Settings,
   CreditCard,
+  Link,
+  UserCheck,
+  Ticket,
+  MousePointerClick,
+  PieChart,
 } from 'lucide-react';
 
 export const clientMenuItems = [
@@ -61,12 +64,6 @@ export const clientMenuItems = [
     path: '/client/referral-tracking',
     icon: <GitBranch className="w-4 h-4" />,
   },
-  {
-    section: 'Referral',
-    label: 'Reward Links',
-    path: '/client/tokenized-links',
-    icon: <Link2 className="w-4 h-4" />,
-  },
 
   // ── REWARDS & OFFERS ──────────────────────────────────────────────────────
   {
@@ -81,7 +78,6 @@ export const clientMenuItems = [
     path: '/client/campaigns',
     icon: <Megaphone className="w-4 h-4" />,
   },
-
   {
     section: 'Rewards & Offers',
     label: 'Brand Network',
@@ -93,6 +89,32 @@ export const clientMenuItems = [
     label: 'Campaign Logs',
     path: '/client/campaign-logs',
     icon: <ScrollText className="w-4 h-4" />,
+  },
+
+  // ── AFFILIATES & ATTRIBUTION ──────────────────────────────────────────────
+  {
+    section: 'Affiliates',
+    label: 'Partners',
+    path: '/client/affiliates',
+    icon: <UserCheck className="w-4 h-4" />,
+  },
+  {
+    section: 'Affiliates',
+    label: 'Coupon Codes',
+    path: '/client/attribution/coupons',
+    icon: <Ticket className="w-4 h-4" />,
+  },
+  {
+    section: 'Affiliates',
+    label: 'UTM Links',
+    path: '/client/attribution/utm',
+    icon: <MousePointerClick className="w-4 h-4" />,
+  },
+  {
+    section: 'Affiliates',
+    label: 'Attribution Reports',
+    path: '/client/attribution/reports',
+    icon: <PieChart className="w-4 h-4" />,
   },
 
   // ── COMMUNICATIONS ────────────────────────────────────────────────────────
@@ -127,12 +149,7 @@ export const clientMenuItems = [
     label: 'Integrations',
     path: '/client/integrations',
     icon: <Zap className="w-4 h-4" />,
-  },
-  {
-    section: 'Platform',
-    label: 'Widgets & Embed',
-    path: '/client/widgets',
-    icon: <Sparkles className="w-4 h-4" />,
+    adminOnly: true,
   },
 
   // ── ACCOUNT ───────────────────────────────────────────────────────────────

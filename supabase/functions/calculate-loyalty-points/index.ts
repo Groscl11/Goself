@@ -23,6 +23,22 @@ Deno.serve(async (req: Request) => {
 
     const { order_amount, shop_domain, customer_email, order_id }: RequestBody = await req.json();
 
+    // SECURITY (H-20): require authenticated caller. This function uses
+    // service_role and any authenticated user could query loyalty calculations
+    // for any shop without this check.
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const callerJwt = authHeader.replace('Bearer ', '').trim();
+    const anonKey = (Deno.env.get('SUPABASE_ANON_KEY') ?? '').trim();
+
+    // Allow service-role calls (from internal edge functions / webhooks)
+    // and authenticated user calls (dashboard). Reject pure anon key calls.
+    if (!callerJwt || callerJwt === anonKey) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (!order_amount || !shop_domain) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields: order_amount and shop_domain are required' }),
@@ -214,7 +230,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('Error calculating loyalty points:', error);
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error' }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

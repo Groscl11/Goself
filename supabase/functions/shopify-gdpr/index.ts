@@ -13,22 +13,20 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Shopify-Topic, X-Shopify-Shop-Domain, X-Shopify-Hmac-Sha256",
-};
+const JSON_HEADER = { "Content-Type": "application/json" };
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: JSON_HEADER,
+    });
   }
 
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: JSON_HEADER,
     });
   }
 
@@ -38,17 +36,24 @@ Deno.serve(async (req: Request) => {
 
   const body = await req.text();
 
-  // Verify HMAC signature
+  // SECURITY (H-16): fail closed — never process GDPR webhooks without HMAC.
+  // A missing secret must be treated as a misconfiguration, not a bypass condition.
+  // Unverified GDPR requests could trigger PII deletion or data export routines.
   const webhookSecret = Deno.env.get("SHOPIFY_WEBHOOK_SECRET") ?? "";
-  if (webhookSecret) {
-    const valid = await verifyHmac(body, hmacHeader, webhookSecret);
-    if (!valid) {
-      console.warn(`[GDPR] Invalid HMAC for ${topic} from ${shopDomain}`);
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+  if (!webhookSecret) {
+    console.error(`[GDPR] SHOPIFY_WEBHOOK_SECRET not set — rejecting ${topic} from ${shopDomain}`);
+    return new Response(JSON.stringify({ error: "Service misconfigured" }), {
+      status: 500,
+      headers: JSON_HEADER,
+    });
+  }
+  const valid = await verifyHmac(body, hmacHeader, webhookSecret);
+  if (!valid) {
+    console.error(`[GDPR] Invalid HMAC for ${topic} from ${shopDomain}`);
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: JSON_HEADER,
+    });
   }
 
   let payload: Record<string, unknown> = {};
@@ -99,7 +104,7 @@ Deno.serve(async (req: Request) => {
   // Shopify requirement: always return 200 quickly
   return new Response(JSON.stringify({ received: true, topic }), {
     status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: JSON_HEADER,
   });
 });
 

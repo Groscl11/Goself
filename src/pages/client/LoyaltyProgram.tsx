@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from '../../lib/supabase';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -351,6 +351,26 @@ export default function LoyaltyProgram() {
       setEditingTier(null);
       loadTiers(program.id);
       resetTierForm();
+
+      // Background: recalculate tiers for all existing members so anyone who
+      // already qualifies for the new/updated tier is moved immediately.
+      fetch(`${supabaseUrl}/functions/v1/recalculate-member-tiers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${supabaseAnonKey}`,
+          apikey: supabaseAnonKey,
+        },
+        body: JSON.stringify({ program_id: program.id }),
+      })
+        .then(r => r.json())
+        .then(result => {
+          if (result.upgraded > 0) {
+            alert(`✅ Tier saved! ${result.upgraded} member${result.upgraded !== 1 ? 's' : ''} automatically upgraded to their new tier.`);
+          }
+        })
+        .catch(err => console.warn('[tier-backfill] non-critical error:', err));
+
     } catch (error: any) {
       console.error('Error saving tier:', error);
       const msg = error?.message || error?.details || error?.hint || JSON.stringify(error);

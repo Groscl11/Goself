@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Drawer } from './Drawers';
 import { supabase } from '../../lib/supabase';
 import { uploadOfferCodesDirect } from '../../lib/offerCodes';
-import { AccessType, PARTNER_CATEGORIES } from '../../types/offers';
+import { AccessType } from '../../types/offers';
+import { OFFER_CATEGORIES } from './NewOfferDrawer';
+import { PartnerPickerField } from './PartnerPickerField';
 
 interface PartnerWizardProps {
   open: boolean;
@@ -17,6 +19,12 @@ type Step = 1 | 2 | 3;
 
 const STEP_LABELS = ['Partner details', 'Upload codes', 'Distribution config'];
 
+const REWARD_TYPES = [
+  { value: 'flat_discount',       label: 'Flat discount',       hint: 'Fixed amount off (e.g. ₹100 off)' },
+  { value: 'percentage_discount', label: 'Percentage discount', hint: 'Percent off order total (e.g. 20% off)' },
+  { value: 'free_item',           label: 'Free item',           hint: 'Complimentary product or service' },
+];
+
 export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget, onCreated }: PartnerWizardProps) {
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
@@ -25,16 +33,24 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   const [parsedCodes, setParsedCodes] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [partnerId, setPartnerId] = useState<string | null>(null);
+
   const [form, setForm] = useState({
     // Step 1
-    partner_name: '',
-    category: 'Food & Drink',
+    title: '',
+    description: '',
+    offer_category: 'other',
+    reward_type: 'flat_discount',
+    discount_value: '',
+    max_discount_value: '',
+    min_purchase_amount: '',
     image_url: '',
+    banner_url: '',
     steps_to_redeem: '',
     redemption_link: '',
     terms_conditions: '',
     // Step 2
-    coupon_type: 'unique',
+    coupon_type: 'unique',        // 'unique' = CSV upload, 'generic' = manual fixed code
     generic_coupon_code: '',
     valid_until: '',
     // Step 3
@@ -77,10 +93,13 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   function reset() {
     setStep(1); setLoading(false); setError(''); setSuccess('');
     setParsedCodes([]);
+    setPartnerId(null);
     setForm({
-      partner_name: '', category: 'Food & Drink', terms_conditions: '',
+      title: '', description: '', offer_category: 'other',
+      reward_type: 'flat_discount', discount_value: '', max_discount_value: '', min_purchase_amount: '',
       image_url: '',
-      steps_to_redeem: '', redemption_link: '',
+      banner_url: '',
+      steps_to_redeem: '', redemption_link: '', terms_conditions: '',
       coupon_type: 'unique', generic_coupon_code: '', valid_until: '',
       points_cost: '', max_per_member: '1', access_type: 'points_redemption',
     });
@@ -91,11 +110,18 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     if (!editTarget?.offer) return;
     const offer = editTarget.offer;
     const dist = editTarget.distribution;
+    setPartnerId(offer.partner_id ?? null);
     setForm({
-      partner_name: (offer.title ?? '').split(' — ')[0] || '',
-      category: offer.tags?.[0] || 'Food & Drink',
+      title: offer.title ?? '',
+      description: offer.description ?? '',
+      offer_category: offer.offer_category || 'other',
+      reward_type: offer.reward_type ?? 'flat_discount',
+      discount_value: offer.discount_value != null ? String(offer.discount_value) : '',
+      max_discount_value: offer.max_discount_value != null ? String(offer.max_discount_value) : '',
+      min_purchase_amount: offer.min_purchase_amount != null ? String(offer.min_purchase_amount) : '',
       image_url: offer.image_url ?? '',
-      steps_to_redeem: offer.steps_to_redeem ?? offer.description ?? '',
+      banner_url: offer.banner_url ?? '',
+      steps_to_redeem: offer.steps_to_redeem ?? '',
       redemption_link: offer.redemption_link ?? '',
       terms_conditions: offer.terms_conditions ?? '',
       coupon_type: offer.coupon_type ?? 'unique',
@@ -125,14 +151,15 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   function validateStep(): boolean {
     setError('');
     if (step === 1) {
-      if (!form.partner_name.trim()) { setError('Partner name is required'); return false; }
+      if (!form.title.trim()) { setError('Offer title is required'); return false; }
+      if (!form.image_url.trim()) { setError('Partner logo image is required'); return false; }
     }
     if (step === 2) {
       if (!editTarget && form.coupon_type === 'unique' && parsedCodes.length === 0) {
-        setError('Please upload or paste at least one code'); return false;
+        setError('Please upload at least one code via CSV'); return false;
       }
       if (form.coupon_type === 'generic' && !form.generic_coupon_code.trim()) {
-        setError('Generic code is required'); return false;
+        setError('Manual code is required'); return false;
       }
     }
     if (step === 3) {
@@ -154,25 +181,35 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       const isEdit = Boolean(editTarget?.offer?.id);
       let offerId = editTarget?.offer?.id as string | undefined;
 
-      const rewardPayload = {
-        title: `${form.partner_name} — ${form.category}`,
-        description: form.steps_to_redeem || null,
+      // Both generic (fixed shared code) and unique (CSV-uploaded) use 'csv_uploaded' as
+      // that is the only non-Shopify CodeSource value in the type. A future 'manual' variant
+      // can be added to CodeSource when needed.
+      const codeSource: 'csv_uploaded' = 'csv_uploaded';
+
+      const rewardPayload: Record<string, any> = {
+        title: form.title.trim(),
+        description: form.description.trim() || null,
         image_url: form.image_url.trim() || null,
+        banner_url: form.banner_url.trim() || null,
         redemption_link: form.redemption_link || null,
         terms_conditions: form.terms_conditions || null,
+        steps_to_redeem: form.steps_to_redeem || null,
         offer_type: 'partner_voucher',
-        code_source: 'csv_uploaded',
+        offer_category: form.offer_category || 'other',
+        code_source: codeSource,
         coupon_type: form.coupon_type,
         generic_coupon_code: form.coupon_type === 'generic' ? form.generic_coupon_code.trim() : null,
-        tracking_type: 'manual',
-        reward_type: 'other',
-        currency: 'INR',
-        is_active: true,
+        reward_type: form.reward_type,
+        discount_value: form.discount_value ? Number(form.discount_value) : null,
+        max_discount_value: (form.reward_type === 'percentage_discount' && form.max_discount_value)
+          ? Number(form.max_discount_value) : null,
+        min_purchase_amount: form.min_purchase_amount ? Number(form.min_purchase_amount) : null,
         status: 'active',
-        owner_client_id: clientId,
         client_id: clientId,
+        owner_client_id: clientId,
+        partner_id: partnerId || null,
         valid_until: form.valid_until || null,
-        tags: [form.category],
+        // tags intentionally omitted — not written to DB
       };
 
       if (isEdit && offerId) {
@@ -191,7 +228,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
         offerId = reward.id;
       }
 
-      // 2. Upload unique codes
+      // 2. Upload unique codes (CSV path)
       if (offerId && form.coupon_type === 'unique' && parsedCodes.length > 0) {
         const uploadResult = await uploadOfferCodesDirect({
           supabase,
@@ -204,13 +241,13 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
         }
       }
 
-      // 3. Insert offer_distributions
+      // 3. Insert / update offer_distributions
       if (offerId) {
         const distributionPayload = {
           access_type: form.access_type,
           points_cost: showPoints ? Number(form.points_cost) : null,
           max_per_member: Number(form.max_per_member) || 1,
-          is_active: true,
+          is_active: false, // off by default — client enables via Widget Rewards tab
         };
 
         const { data: existingDistributions, error: existingDistErr } = await (supabase as any)
@@ -233,8 +270,8 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
           if (distUpdateErr) throw distUpdateErr;
 
           const duplicateActiveIds = (existingDistributions ?? [])
-            .filter((distribution: { id: string; is_active: boolean }) => distribution.id !== latestDistribution.id && distribution.is_active)
-            .map((distribution: { id: string }) => distribution.id);
+            .filter((d: { id: string; is_active: boolean }) => d.id !== latestDistribution.id && d.is_active)
+            .map((d: { id: string }) => d.id);
 
           if (duplicateActiveIds.length > 0) {
             const { error: deactivateDupesErr } = await (supabase as any)
@@ -262,12 +299,13 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   }
 
   const showPoints = form.access_type !== 'campaign_reward';
+  const isPercentage = form.reward_type === 'percentage_discount';
 
   return (
     <Drawer
       open={open}
       onClose={handleClose}
-      title="Add partner voucher"
+      title={editTarget ? 'Edit partner voucher' : 'Add partner voucher'}
       subtitle={`Step ${step} of 3 — ${STEP_LABELS[step - 1]}`}
       footer={
         <div className="flex items-center gap-3">
@@ -279,7 +317,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
           )}
           <button onClick={handleNext} disabled={loading}
             className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-60 ml-auto transition-colors">
-            {loading ? 'Saving...' : step === 3 ? 'Add Partner Voucher' : 'Next →'}
+            {loading ? 'Saving...' : step === 3 ? (editTarget ? 'Update Partner Voucher' : 'Add Partner Voucher') : 'Next →'}
           </button>
         </div>
       }
@@ -298,25 +336,100 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
       {/* Step 1 — Partner details */}
       {step === 1 && (
         <div className="space-y-4">
-          <Field label="Partner / brand name *">
-            <input value={form.partner_name} onChange={e => set('partner_name', e.target.value)}
-              placeholder="e.g. CafeZ, Nike, BookMyShow"
+          <Field label="Select existing partner (optional)">
+            <PartnerPickerField
+              value={partnerId}
+              clientId={clientId}
+              onChange={pid => setPartnerId(pid)}
+            />
+            <p className="text-[11px] text-gray-400 mt-1">Leave blank to create ad-hoc — or pick from your partner list to link the voucher to a known partner.</p>
+          </Field>
+
+          <Field label="Offer title *">
+            <input value={form.title} onChange={e => set('title', e.target.value)}
+              placeholder="e.g. Flat ₹100 off at CafeZ, 20% off Nike footwear"
               className="input-base" />
           </Field>
+
+          <Field label="Description">
+            <textarea value={form.description} onChange={e => set('description', e.target.value)}
+              rows={2} placeholder="Brief description of the offer shown to members..."
+              className="input-base resize-none" />
+          </Field>
+
           <Field label="Category">
-            <select value={form.category} onChange={e => set('category', e.target.value)} className="input-base">
-              {PARTNER_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            <select value={form.offer_category} onChange={e => set('offer_category', e.target.value)} className="input-base">
+              {OFFER_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </Field>
-          <Field label="Offer image URL (optional)">
-            <input value={form.image_url} onChange={e => set('image_url', e.target.value)}
-              placeholder="https://cdn.partner.com/offer-banner.jpg"
-              className="input-base" />
-            {form.image_url && (
-              <img src={form.image_url} alt="preview" className="mt-2 h-16 w-auto rounded-lg border border-gray-200 object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            )}
+
+          {/* Reward type + discount fields */}
+          <Field label="Reward type">
+            <div className="space-y-2">
+              {REWARD_TYPES.map(rt => (
+                <label key={rt.value} className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                  <input type="radio" name="reward_type" value={rt.value}
+                    checked={form.reward_type === rt.value}
+                    onChange={() => set('reward_type', rt.value)}
+                    className="accent-gray-900 mt-0.5" />
+                  <div>
+                    <div className="text-sm font-medium text-gray-800">{rt.label}</div>
+                    <div className="text-xs text-gray-500">{rt.hint}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
           </Field>
-          <Field label="Steps to Redeem">
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={isPercentage ? 'Discount %' : 'Discount value (₹)'}>
+              <input type="number" min={0} value={form.discount_value}
+                onChange={e => set('discount_value', e.target.value)}
+                placeholder={isPercentage ? 'e.g. 20' : 'e.g. 100'}
+                className="input-base" />
+            </Field>
+            {isPercentage && (
+              <Field label="Max discount cap (₹)">
+                <input type="number" min={0} value={form.max_discount_value}
+                  onChange={e => set('max_discount_value', e.target.value)}
+                  placeholder="e.g. 500"
+                  className="input-base" />
+              </Field>
+            )}
+            <Field label="Min purchase amount (₹)">
+              <input type="number" min={0} value={form.min_purchase_amount}
+                onChange={e => set('min_purchase_amount', e.target.value)}
+                placeholder="e.g. 299 (0 = no min)"
+                className="input-base" />
+            </Field>
+          </div>
+
+          <Field label="Partner logo image" hint="Recommended: 400×400 px square, PNG or WebP, transparent background">
+            <OfferImageUpload
+              value={form.image_url}
+              onChange={url => set('image_url', url)}
+              clientId={clientId}
+              icon="🏷️"
+              uploadLabel="Click or drag to upload partner logo"
+              dimensionHint="400×400 px · PNG or WebP · max 2 MB"
+              folder="offer-images"
+            />
+          </Field>
+
+          <Field label="Reward banner (optional)" hint="Wide promotional banner shown in redemption screens · 1200×400 px recommended">
+            <OfferImageUpload
+              value={form.banner_url}
+              onChange={url => set('banner_url', url)}
+              clientId={clientId}
+              icon="🎨"
+              uploadLabel="Click or drag to upload reward banner"
+              dimensionHint="1200×400 px · PNG, JPG, WebP · max 4 MB"
+              previewClass="h-24 w-full max-w-sm"
+              folder="offer-banners"
+            />
+          </Field>
+
+          <Field label="Steps to redeem">
             <textarea value={form.steps_to_redeem} onChange={e => set('steps_to_redeem', e.target.value)}
               rows={3} placeholder="1) Visit store 2) Add item 3) Apply voucher..."
               className="input-base resize-none" />
@@ -334,20 +447,31 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
         </div>
       )}
 
-      {/* Step 2 — Upload codes */}
+      {/* Step 2 — Code source */}
       {step === 2 && (
         <div className="space-y-4">
-          <Field label="Code type">
-            <div className="flex gap-4">
-              {['unique', 'generic'].map(ct => (
-                <label key={ct} className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="coupon_type" value={ct}
-                    checked={form.coupon_type === ct}
-                    onChange={() => set('coupon_type', ct)}
-                    className="accent-gray-900" />
-                  <span className="text-sm text-gray-700 capitalize">{ct} codes</span>
-                </label>
-              ))}
+          <Field label="How are codes provided?">
+            <div className="space-y-2">
+              <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                <input type="radio" name="coupon_type" value="unique"
+                  checked={form.coupon_type === 'unique'}
+                  onChange={() => set('coupon_type', 'unique')}
+                  className="accent-gray-900 mt-0.5" />
+                <div>
+                  <div className="text-sm font-medium text-gray-800">CSV upload — unique codes</div>
+                  <div className="text-xs text-gray-500">Each member gets a different one-time code from your CSV file</div>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                <input type="radio" name="coupon_type" value="generic"
+                  checked={form.coupon_type === 'generic'}
+                  onChange={() => set('coupon_type', 'generic')}
+                  className="accent-gray-900 mt-0.5" />
+                <div>
+                  <div className="text-sm font-medium text-gray-800">Manual code — fixed / shared code</div>
+                  <div className="text-xs text-gray-500">All members receive the same code (e.g. PARTNER20)</div>
+                </div>
+              </label>
             </div>
           </Field>
 
@@ -362,7 +486,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
                     <div className="text-xs text-gray-400 mb-3 max-h-24 overflow-y-auto font-mono">
                       {parsedCodes.slice(0, 5).join(', ')}{parsedCodes.length > 5 ? ` ... +${parsedCodes.length - 5} more` : ''}
                     </div>
-                    <button onClick={() => { setParsedCodes([]); }}
+                    <button onClick={() => setParsedCodes([])}
                       className="text-xs text-red-500 hover:text-red-700 mr-3">
                       Clear
                     </button>
@@ -392,9 +516,9 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
               </div>
             </Field>
           ) : (
-            <Field label="Generic code *">
+            <Field label="Enter the fixed code *">
               <input value={form.generic_coupon_code} onChange={e => set('generic_coupon_code', e.target.value.toUpperCase())}
-                placeholder="e.g. CAFEZ20"
+                placeholder="e.g. PARTNER20"
                 className="input-base font-mono" />
               <p className="text-xs text-gray-400 mt-1">All members will receive the same code</p>
             </Field>
@@ -452,13 +576,18 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Summary</p>
             <div className="text-sm text-gray-700 space-y-1">
-              <div><span className="text-gray-500">Partner:</span> {form.partner_name}</div>
-              <div><span className="text-gray-500">Category:</span> {form.category}</div>
+              <div><span className="text-gray-500">Title:</span> {form.title}</div>
+              <div><span className="text-gray-500">Category:</span> {OFFER_CATEGORIES.find(c => c.value === form.offer_category)?.label ?? form.offer_category}</div>
+              <div><span className="text-gray-500">Reward type:</span> {REWARD_TYPES.find(r => r.value === form.reward_type)?.label ?? form.reward_type}
+                {form.discount_value ? ` · ${isPercentage ? form.discount_value + '%' : '₹' + form.discount_value}` : ''}
+                {isPercentage && form.max_discount_value ? ` (max ₹${form.max_discount_value})` : ''}
+                {form.min_purchase_amount ? ` · min ₹${form.min_purchase_amount}` : ''}
+              </div>
               {form.redemption_link && <div><span className="text-gray-500">Redemption URL:</span> {form.redemption_link}</div>}
               <div><span className="text-gray-500">Codes:</span>{' '}
                 {form.coupon_type === 'generic'
-                  ? `Generic (${form.generic_coupon_code || '—'})`
-                  : `${parsedCodes.length} unique codes`}
+                  ? `Fixed code (${form.generic_coupon_code || '—'})`
+                  : `${parsedCodes.length} unique codes (CSV)`}
               </div>
               <div><span className="text-gray-500">Access:</span>{' '}
                 {form.access_type === 'points_redemption' ? `${form.points_cost || 'Not set'} pts to redeem`
@@ -475,11 +604,95 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</label>
+      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+      {hint && <p className="text-xs text-gray-400 mb-1.5">{hint}</p>}
       {children}
+    </div>
+  );
+}
+
+function OfferImageUpload({
+  value, onChange, clientId,
+  icon = '🖼️',
+  uploadLabel = 'Click or drag to upload',
+  dimensionHint = 'PNG, JPG, WebP · max 2 MB',
+  previewClass = 'h-20 w-auto',
+  folder = 'offer-images',
+}: {
+  value: string;
+  onChange: (url: string) => void;
+  clientId: string;
+  icon?: string;
+  uploadLabel?: string;
+  dimensionHint?: string;
+  previewClass?: string;
+  folder?: string;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [urlMode, setUrlMode] = useState(!value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFile(file: File) {
+    if (!file.type.startsWith('image/')) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop() ?? 'jpg';
+      const path = `${folder}/${clientId}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from('client-assets').upload(path, file, { upsert: true, contentType: file.type });
+      if (error) throw error;
+      const { data: pub } = supabase.storage.from('client-assets').getPublicUrl(path);
+      onChange(pub.publicUrl);
+      setUrlMode(false);
+    } catch (err: any) {
+      alert('Upload failed: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }
+
+  return (
+    <div className="space-y-2">
+      {value && (
+        <div className="relative inline-block">
+          <img src={value} alt="preview" className={`${previewClass} rounded-xl border border-gray-200 object-cover`}
+            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <button type="button" onClick={() => { onChange(''); setUrlMode(true); }}
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600">✕</button>
+        </div>
+      )}
+      {!value && (
+        <div onDrop={handleDrop} onDragOver={e => e.preventDefault()}
+          className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:border-gray-400 transition-colors cursor-pointer"
+          onClick={() => inputRef.current?.click()}>
+          {uploading ? <div className="text-xs text-gray-500">Uploading…</div> : (
+            <>
+              <div className="text-2xl mb-1">{icon}</div>
+              <div className="text-xs font-medium text-gray-600">{uploadLabel}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{dimensionHint}</div>
+            </>
+          )}
+          <input ref={inputRef} type="file" accept="image/*" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => setUrlMode(v => !v)} className="text-xs text-blue-600 hover:underline">
+          {urlMode ? 'Hide URL field' : 'Or paste image URL'}
+        </button>
+      </div>
+      {urlMode && (
+        <input type="url" value={value} onChange={e => onChange(e.target.value)}
+          placeholder="https://example.com/image.png" className="input-base text-xs" />
+      )}
     </div>
   );
 }
