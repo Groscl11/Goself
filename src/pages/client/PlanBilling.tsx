@@ -31,8 +31,9 @@ interface ClientConfig {
     price_monthly: number;
     price_annual: number;
   } | null;
-  modules: string[];
-  features: string[];
+  // Edge function returns Record<string, boolean>; DB fallback returns string[]. Handle both.
+  modules: string[] | Record<string, boolean>;
+  features: string[] | Record<string, boolean>;
   locked_feature_hints: Record<string, string>;
 }
 
@@ -247,8 +248,16 @@ export function PlanBilling() {
   const status = subscription?.status ?? 'active';
   const statusConfig = STATUS_CONFIG[status as SubscriptionStatus] ?? STATUS_CONFIG.active;
   const planName = config?.plan?.name ?? 'Free';
-  const enabledFeatures = new Set(config?.features ?? []);
-  const enabledModules = new Set(config?.modules ?? []);
+
+  // The edge function returns modules/features as Record<string,boolean>;
+  // the DB fallback returns string[]. Normalise both into a Set of enabled keys.
+  function toEnabledSet(val: string[] | Record<string, boolean> | null | undefined): Set<string> {
+    if (!val) return new Set();
+    if (Array.isArray(val)) return new Set(val);
+    return new Set(Object.entries(val).filter(([, v]) => v).map(([k]) => k));
+  }
+  const enabledFeatures = toEnabledSet(config?.features);
+  const enabledModules = toEnabledSet(config?.modules);
 
   return (
     <DashboardLayout menuItems={clientMenuItems} title="Plan & Billing">
