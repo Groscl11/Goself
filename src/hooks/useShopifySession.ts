@@ -31,6 +31,12 @@ export function useShopifySession() {
     let cancelled = false;
 
     async function pingSessionToken() {
+      // Skip if already authenticated with a valid refresh token.
+      // Empty/missing refresh_token means the session can't auto-renew — treat as missing.
+      const { data: { session: existing } } = await supabase.auth.getSession();
+      if (existing?.refresh_token && !cancelled) return;
+      if (cancelled) return;
+
       const w = window as any;
       const bridge = w.shopify ?? (await loadAppBridge());
       if (!bridge?.idToken) return;
@@ -43,6 +49,9 @@ export function useShopifySession() {
         return;
       }
 
+      const shopDomain = (bridge as any).config?.shop as string | undefined;
+      if (!shopDomain) return;
+
       if (cancelled) return;
 
       try {
@@ -52,16 +61,19 @@ export function useShopifySession() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${sessionToken}`,
           },
-          body: JSON.stringify({ session_token: sessionToken }),
+          body: JSON.stringify({ session_token: sessionToken, shop: shopDomain }),
         });
 
         if (!res.ok || cancelled) return;
 
         const data = await res.json().catch(() => null);
-        if (data?.success && data.access_token && !cancelled) {
+        // Only set the session if we have both tokens — an empty refresh_token
+        // causes setSession to throw (AuthSessionMissingError) or prevents
+        // auto-renewal after 1 hour, leading to silent anon-mode and RLS errors.
+        if (data?.success && data.access_token && data.refresh_token && !cancelled) {
           await supabase.auth.setSession({
             access_token: data.access_token,
-            refresh_token: data.refresh_token || '',
+            refresh_token: data.refresh_token,
           });
         }
       } catch {
@@ -70,6 +82,19 @@ export function useShopifySession() {
     }
 
     pingSessionToken();
-    return () => { cancelled = true; };
+
+    // Re-run exchange if the session expires and Supabase auto-refresh fails.
+    // This happens when the refresh_token is invalid/missing — the client fires
+    // SIGNED_OUT, and without this listener the user silently becomes anon.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' && !cancelled) {
+        pingSessionToken();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 }
