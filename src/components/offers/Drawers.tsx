@@ -31,7 +31,7 @@ export function Drawer({ open, onClose, title, subtitle, width = 'max-w-lg', chi
         onClick={onClose}
       />
       {/* Panel — slides in from right */}
-      <div className={`relative ml-auto h-full ${width} w-full bg-white shadow-xl flex flex-col`}>
+      <div className={`relative z-10 ml-auto h-full ${width} w-full bg-white shadow-xl flex flex-col`}>
         {/* Header */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-gray-200 flex-shrink-0">
           <div>
