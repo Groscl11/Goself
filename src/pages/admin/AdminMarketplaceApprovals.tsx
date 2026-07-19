@@ -140,7 +140,8 @@ export function AdminMarketplaceApprovals() {
 
   const offerCounts = useMemo(() => ({
     all:      offers.length,
-    pending:  offers.filter(o => (o as any).marketplace_status === 'pending').length,
+    // null marketplace_status means not yet reviewed — treat as pending
+    pending:  offers.filter(o => { const ms = (o as any).marketplace_status; return ms === 'pending' || ms == null; }).length,
     approved: offers.filter(o => (o as any).marketplace_status === 'approved').length,
     rejected: offers.filter(o => (o as any).marketplace_status === 'rejected').length,
   }), [offers]);
@@ -156,7 +157,9 @@ export function AdminMarketplaceApprovals() {
 
   const filteredOffers = useMemo(() => offers.filter(o => {
     const ms = (o as any).marketplace_status;
-    if (subFilter !== 'all' && ms !== subFilter) return false;
+    // null marketplace_status = not yet reviewed, treat as pending
+    const effectiveStatus = ms ?? 'pending';
+    if (subFilter !== 'all' && effectiveStatus !== subFilter) return false;
     const q = subSearch.toLowerCase();
     if (q) {
       return (
