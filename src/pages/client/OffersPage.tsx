@@ -750,7 +750,7 @@ export default function OffersPage() {
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th className="px-3 py-3 w-10" />
-                      {['Reward ID', 'Title', 'Discount Type', 'Code Type', 'Codes', 'Usage', 'Valid Until', 'Status', ''].map(h => (
+                      {['Reward ID', 'Title', 'Discount Type', 'Codes', 'Usage', 'Valid Until', 'Status', ''].map(h => (
                         <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -761,7 +761,7 @@ export default function OffersPage() {
                       const inWidget = dists.some(d => d.is_active && ['points_redemption', 'both', 'free_claim'].includes(d.access_type));
                       const campaignCount = (offer as any).campaign_usage_count ?? 0;
                       const codesLabel = offer.coupon_type === 'generic'
-                        ? 'Reusable' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}`;
+                        ? 'Reusable / Generic' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}`;
                       const isLowStock = offer.coupon_type === 'unique' && (offer.available_codes ?? 0) < 10;
                       const rewardId = (offer as any).reward_id || ('RWD-' + offer.id.slice(0, 8).toUpperCase());
                       return (
@@ -782,10 +782,6 @@ export default function OffersPage() {
                           {/* Discount Type */}
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs text-gray-600">{discountTypeLabel(offer.reward_type)}</span>
-                          </td>
-                          {/* Code Type */}
-                          <td className="px-3 py-3">
-                            <span className="text-xs text-gray-600 capitalize">{offer.coupon_type}</span>
                           </td>
                           {/* Codes */}
                           <td className="px-3 py-3 whitespace-nowrap">
@@ -863,7 +859,7 @@ export default function OffersPage() {
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th className="px-3 py-3 w-10" />
-                      {['Reward ID', 'Title', 'Discount Type', 'Code Type', 'Codes', 'Valid Until', 'Status', ''].map(h => (
+                      {['Reward ID', 'Title', 'Discount Type', 'Codes', 'Valid Until', 'Status', ''].map(h => (
                         <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -872,7 +868,7 @@ export default function OffersPage() {
                     {partnerFiltered.map(offer => {
                       const dist = getDistForOffer(offer);
                       const codesLabel = offer.coupon_type === 'generic'
-                        ? 'Reusable' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}`;
+                        ? 'Reusable / Generic' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}`;
                       const rewardId = (offer as any).reward_id || ('RWD-' + offer.id.slice(0, 8).toUpperCase());
                       return (
                         <tr key={offer.id} className="hover:bg-gray-50/60 transition-colors">
@@ -891,9 +887,6 @@ export default function OffersPage() {
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs text-gray-600">{discountTypeLabel(offer.reward_type)}</span>
-                          </td>
-                          <td className="px-3 py-3">
-                            <span className="text-xs text-gray-600 capitalize">{offer.coupon_type}</span>
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs font-medium text-gray-700">{codesLabel}</span>
@@ -951,7 +944,7 @@ export default function OffersPage() {
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th className="px-3 py-3 w-10" />
-                      {['Reward ID', 'Title', 'Submitted', 'Discount Type', 'Code Type', 'Codes', 'Marketplace Status', ''].map(h => (
+                      {['Reward ID', 'Title', 'Submitted', 'Discount Type', 'Codes', 'Marketplace Status', ''].map(h => (
                         <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -961,7 +954,7 @@ export default function OffersPage() {
                       const hasPendingEdit = !!pendingEditMap[offer.id];
                       const submittedAt = (offer as any).marketplace_submitted_at;
                       const codesLabel = offer.coupon_type === 'generic'
-                        ? 'Reusable' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}`;
+                        ? 'Reusable / Generic' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}`;
                       const rewardId = (offer as any).reward_id || ('RWD-' + offer.id.slice(0, 8).toUpperCase());
                       const editLabel = hasPendingEdit ? 'Update Edit Request'
                         : (offer as any).marketplace_status === 'approved' ? 'Request Edit' : 'Edit & Resubmit';
@@ -985,9 +978,6 @@ export default function OffersPage() {
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs text-gray-600">{discountTypeLabel(offer.reward_type)}</span>
-                          </td>
-                          <td className="px-3 py-3">
-                            <span className="text-xs text-gray-600 capitalize">{offer.coupon_type}</span>
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs font-medium text-gray-700">{codesLabel}</span>
