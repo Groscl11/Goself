@@ -74,6 +74,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
   const [success, setSuccess] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const [parsedCodes, setParsedCodes] = useState<string[]>([]);
+  const [useExpiry, setUseExpiry] = useState(false);
 
   // Shopify import picker state
   const [shopifyRules, setShopifyRules] = useState<ShopifyPriceRule[]>([]);
@@ -135,7 +136,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         description: editOffer.description ?? '',
         image_url: editOffer.image_url ?? '',
         banner_url: (editOffer as any).banner_url ?? '',
-        offer_category: (editOffer as any).offer_category ?? 'other',
+        offer_category: (editOffer as any).offer_category ?? '',
         offer_priority: String((editOffer as any).offer_priority ?? 0),
         starts_at: (editOffer as any).starts_at ? String((editOffer as any).starts_at).slice(0, 10) : '',
         reward_type: editOffer.reward_type as RewardType,
@@ -152,6 +153,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
         steps_to_redeem: editOffer.steps_to_redeem ?? '',
         shopify_prefix: '', shopify_usage_limit: '1', shopify_applies_to: 'all',
       });
+      setUseExpiry(Boolean(editOffer.valid_until));
     } else if (!open) {
       resetState();
     }
@@ -166,13 +168,14 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     setShopifySearch(''); setShopifyPicked(false); setShopifyFetched(false);
     setShopifyCreating(false);
     setForm({
-      title: '', description: '', image_url: '', banner_url: '', offer_category: 'other', offer_priority: '0',
+      title: '', description: '', image_url: '', banner_url: '', offer_category: '', offer_priority: '0',
       starts_at: '', reward_type: 'flat_discount', discount_value: '',
       max_cap: '', min_purchase_amount: '', coupon_type: 'unique', generic_coupon_code: '',
       codes_count: '10', code_paste: '', valid_until: '',
       redemption_link: '', terms_conditions: '', steps_to_redeem: '',
       shopify_prefix: '', shopify_usage_limit: '1', shopify_applies_to: 'all',
     });
+    setUseExpiry(false);
   }
 
   // Fetch Shopify price rules when Import flow is selected
@@ -248,19 +251,39 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     reader.readAsText(file);
   }
 
+  const GENERIC_CODE_RE = /^[A-Z0-9_-]+$/i;
+
   async function handleSubmit() {
     setError(''); setLoading(true);
     try {
-      if (!form.title.trim()) throw new Error('Title is required');
-      if (!form.discount_value && flow !== 'generic') throw new Error('Discount value is required');
+      if (!form.title.trim()) throw new Error('Offer title is required');
+
+      if (!form.offer_category) throw new Error('Please select an offer category');
+
+      if (form.reward_type !== 'free_item') {
+        if (!form.discount_value) throw new Error('Discount value is required');
+        const dv = Number(form.discount_value);
+        if (dv <= 0) throw new Error('Discount value must be greater than 0');
+        if (form.reward_type === 'percentage_discount' && dv > 100)
+          throw new Error('Percentage discount cannot exceed 100%');
+      }
+
+      // Validate the coupon code for generic-type offers
+      const resolvedCouponTypeEarly = flow === 'generic' ? 'generic' : form.coupon_type;
+      if (resolvedCouponTypeEarly === 'generic') {
+        const code = form.generic_coupon_code.trim();
+        if (!code) throw new Error('Coupon code is required');
+        if (/\s/.test(code)) throw new Error('Coupon code must not contain spaces');
+        if (!GENERIC_CODE_RE.test(code)) throw new Error('Coupon code may only contain letters, numbers, hyphens and underscores');
+      }
+
       if (mode === 'marketplace') {
         if (!form.redemption_link.trim()) throw new Error('Redemption URL is required for marketplace offers');
         if (!form.terms_conditions.trim()) throw new Error('Terms & conditions are required for marketplace offers');
         if (!form.steps_to_redeem.trim()) throw new Error('Steps to redeem are required for marketplace offers');
       }
 
-      // Resolve the actual coupon_type: if flow is 'generic', always use 'generic'
-      const resolvedCouponType = flow === 'generic' ? 'generic' : form.coupon_type;
+      const resolvedCouponType = resolvedCouponTypeEarly;
 
       const codeSource: CodeSource =
         flow === 'shopify_generated' ? 'shopify_generated'
@@ -516,7 +539,7 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
               icon: '🏷️',
             },
           ].map(opt => (
-            <button key={opt.id} onClick={() => { setFlow(opt.id); if (opt.id === 'shopify_imported') fetchShopifyDiscounts(); }}
+            <button key={opt.id} onClick={() => { setFlow(opt.id); if (opt.id === 'shopify_imported' || opt.id === 'shopify_generated') fetchShopifyDiscounts(); }}
               className="w-full text-left flex items-start gap-4 p-4 rounded-xl border border-gray-200 hover:border-gray-400 hover:bg-gray-50 transition-all">
               <span className="text-xl">{opt.icon}</span>
               <div>
@@ -629,6 +652,22 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
             </div>
           )}
 
+          {/* Shopify Generate flow: token-expired banner (shown before form) */}
+          {flow === 'shopify_generated' && shopifyTokenExpired && !editOffer && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <p className="font-medium">Your Shopify store connection has expired.</p>
+              <p className="text-xs text-red-600 mt-0.5">Reconnect to generate discount codes in Shopify.</p>
+              {shopifyReconnectUrl ? (
+                <a href={shopifyReconnectUrl} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700 transition-colors">
+                  🔗 Reconnect Shopify Store →
+                </a>
+              ) : (
+                <p className="text-xs text-red-500 italic mt-1">Please reinstall the GoSelf app from your Shopify admin.</p>
+              )}
+            </div>
+          )}
+
           {/* Shopify picked confirmation banner */}
           {flow === 'shopify_imported' && shopifyPicked && !editOffer && (
             <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
@@ -694,8 +733,9 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
           </Field>
 
           {/* Offer category */}
-          <Field label="Offer category">
+          <Field label="Offer category *">
             <select value={form.offer_category} onChange={e => set('offer_category', e.target.value)} className="input-base">
+              <option value="">Select a category…</option>
               {OFFER_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </Field>
@@ -852,11 +892,20 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
             </Field>
           )}
 
-          {/* Expiry */}
-          <Field label="Expiry date">
-            <input type="date" value={form.valid_until} onChange={e => set('valid_until', e.target.value)}
-              className="input-base" />
-          </Field>
+          {/* Expiry — opt-in toggle */}
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={useExpiry} onChange={e => {
+                setUseExpiry(e.target.checked);
+                if (!e.target.checked) set('valid_until', '');
+              }} className="accent-gray-900" />
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Set expiry date</span>
+            </label>
+            {useExpiry && (
+              <input type="date" value={form.valid_until} onChange={e => set('valid_until', e.target.value)}
+                className="input-base mt-2" />
+            )}
+          </div>
 
           {/* Marketplace-only mandatory fields */}
           {mode === 'marketplace' && (

@@ -151,15 +151,27 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   function validateStep(): boolean {
     setError('');
     if (step === 1) {
+      if (!partnerId) { setError('Please select a partner for this voucher'); return false; }
       if (!form.title.trim()) { setError('Offer title is required'); return false; }
       if (!form.image_url.trim()) { setError('Partner logo image is required'); return false; }
     }
     if (step === 2) {
+      if (form.reward_type !== 'free_item') {
+        if (!form.discount_value) { setError('Discount value is required'); return false; }
+        const dv = Number(form.discount_value);
+        if (dv <= 0) { setError('Discount value must be greater than 0'); return false; }
+        if (form.reward_type === 'percentage_discount' && dv > 100) {
+          setError('Percentage discount cannot exceed 100%'); return false;
+        }
+      }
       if (!editTarget && form.coupon_type === 'unique' && parsedCodes.length === 0) {
         setError('Please upload at least one code via CSV'); return false;
       }
-      if (form.coupon_type === 'generic' && !form.generic_coupon_code.trim()) {
-        setError('Manual code is required'); return false;
+      if (form.coupon_type === 'generic') {
+        const code = form.generic_coupon_code.trim();
+        if (!code) { setError('Coupon code is required'); return false; }
+        if (/\s/.test(code)) { setError('Coupon code must not contain spaces'); return false; }
+        if (!/^[A-Z0-9_-]+$/i.test(code)) { setError('Coupon code may only contain letters, numbers, hyphens and underscores'); return false; }
       }
     }
     if (step === 3) {
