@@ -713,7 +713,7 @@ export default function OffersPage() {
                               <Btn onClick={() => window.location.href = `/client/campaigns?offer_id=${offer.id}`}>
                                 Use in Campaign
                               </Btn>
-                              <MoreMenu offer={offer} onRefresh={fetchStoreOffers} clientId={clientId} />
+                              <MoreMenu offer={offer} onRefresh={fetchStoreOffers} clientId={clientId} hideMarketplace />
                             </>
                           }
                         />
@@ -1417,7 +1417,7 @@ function MktRow({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => vo
 }
  
 // ─── More menu (⋯) ────────────────────────────────────────────────────────────
-function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () => void; clientId: string }) {
+function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false }: { offer: Offer; onRefresh: () => void; clientId: string; hideMarketplace?: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
  
@@ -1467,7 +1467,7 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
       </Btn>
       {open && (
         <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
-          {(() => {
+          {!hideMarketplace && (() => {
             const ms = (offer as any).marketplace_status as string | undefined;
             if (ms === 'unlist_requested') {
               return (
