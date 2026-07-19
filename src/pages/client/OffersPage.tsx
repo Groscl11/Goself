@@ -941,7 +941,7 @@ export default function OffersPage() {
                             <MoreMenu
                               offer={offer} onRefresh={fetchPartnerOffers} clientId={clientId} hideMarketplace hidePause
                               onEdit={() => setPartnerEditTarget({ offer, distribution: dist })}
-                              onCodes={() => setCodesDrawer(offer)}
+                              onCodes={offer.coupon_type === 'unique' ? () => setCodesDrawer(offer) : undefined}
                               onCampaign={() => { window.location.href = `/client/campaigns?offer_id=${offer.id}`; }}
                             />
                           </td>
@@ -1050,7 +1050,7 @@ export default function OffersPage() {
                           <td className="px-3 py-3">
                             <MoreMenu
                               offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} hidePause
-                              onCodes={() => setCodesDrawer(offer)}
+                              onCodes={offer.coupon_type === 'unique' ? () => setCodesDrawer(offer) : undefined}
                               onEdit={() => { setEditOffer(offer); setNewOfferOpen(true); }}
                             />
                           </td>
