@@ -14,7 +14,7 @@ import { NewOfferDrawer } from '../../components/offers/NewOfferDrawer';
 import { PartnerWizard } from '../../components/offers/PartnerWizard';
  
 // ─── Tab ids ─────────────────────────────────────────────────────────────────
-type TabId = 'store' | 'partner' | 'marketplace' | 'distribution';
+type TabId = 'store' | 'partner' | 'marketplace' | 'submissions' | 'distribution';
 
 // ─── Widget catalog item ──────────────────────────────────────────────────────
 interface WidgetItem {
@@ -41,7 +41,8 @@ interface WidgetItem {
 const TABS: { id: TabId; label: string }[] = [
   { id: 'store',        label: 'My Store Offers' },
   { id: 'partner',      label: 'Partner Vouchers' },
-  { id: 'marketplace',  label: 'Marketplace' },
+  { id: 'submissions',  label: 'My Marketplace Submissions' },
+  { id: 'marketplace',  label: 'Brand Offers Marketplace' },
   { id: 'distribution', label: 'Widget Rewards' },
 ];
  
@@ -103,7 +104,6 @@ export default function OffersPage() {
   const [mktOffers, setMktOffers] = useState<MarketplaceOffer[]>([]);
   const [mktLoading, setMktLoading] = useState(false);
   const [mktFilter, setMktFilter] = useState('All');
-  const [mktSubtab, setMktSubtab] = useState<'browse' | 'submit'>('browse');
   const [mktSearch, setMktSearch] = useState('');
   const [mktBrand, setMktBrand] = useState('All');
   const [mktHideOutOfStock, setMktHideOutOfStock] = useState(true);
@@ -372,12 +372,9 @@ export default function OffersPage() {
     if (activeTab === 'store')        fetchStoreOffers();
     if (activeTab === 'partner')      fetchPartnerOffers();
     if (activeTab === 'marketplace')  fetchMarketplace();
+    if (activeTab === 'submissions')  fetchSubmissions();
     if (activeTab === 'distribution') fetchWidgetCatalog();
-  }, [activeTab, fetchStoreOffers, fetchPartnerOffers, fetchMarketplace, fetchWidgetCatalog]);
- 
-  useEffect(() => {
-    if (mktSubtab === 'submit' && activeTab === 'marketplace') fetchSubmissions();
-  }, [mktSubtab, activeTab, fetchSubmissions]);
+  }, [activeTab, fetchStoreOffers, fetchPartnerOffers, fetchMarketplace, fetchSubmissions, fetchWidgetCatalog]);
  
   // ── Helpers ─────────────────────────────────────────────────────────────────
   function getDistForOffer(offer: Offer): OfferDistribution | null {
@@ -781,24 +778,54 @@ export default function OffersPage() {
           </div>
         )}
  
-        {/* ── TAB 3: Marketplace ────────────────────────────────────────────── */}
+        {/* ── TAB 3: My Marketplace Submissions ────────────────────────────── */}
+        {activeTab === 'submissions' && (
+          <div>
+            <div className="flex justify-end mb-4">
+              <Btn size="md" onClick={() => { setNewOfferMode('marketplace'); setNewOfferOpen(true); }}>+ Submit an Offer</Btn>
+            </div>
+            <div className="space-y-3">
+              {submissionsLoading
+                ? [...Array(2)].map((_, i) => <CardSkeleton key={i} />)
+                : submissions.length === 0
+                  ? <EmptyState
+                      title="No marketplace submissions yet"
+                      description="Submit an offer to make it available for other GoSelf clients to adopt for their members."
+                      action={<Btn size="md" onClick={() => { setNewOfferMode('marketplace'); setNewOfferOpen(true); }}>+ Submit first offer</Btn>}
+                    />
+                  : submissions.map(offer => {
+                      const hasPendingEdit = !!pendingEditMap[offer.id];
+                      return (
+                        <OfferCard
+                          key={offer.id}
+                          offer={offer}
+                          distribution={null}
+                          showSource
+                          sourceLabel={<MarketplaceStatusBadge offer={offer} hasPendingEdit={hasPendingEdit} />}
+                          actions={
+                            <>
+                              <Btn onClick={() => setCodesDrawer(offer)}>Manage Codes</Btn>
+                              <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>
+                                {hasPendingEdit
+                                  ? 'Update Edit Request'
+                                  : (offer as any).marketplace_status === 'approved'
+                                    ? 'Request Edit'
+                                    : 'Edit & Resubmit'}
+                              </Btn>
+                              <MoreMenu offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} />
+                            </>
+                          }
+                        />
+                      );
+                    })}
+            </div>
+          </div>
+        )}
+
+        {/* ── TAB 4: Brand Offers Marketplace ──────────────────────────────── */}
         {activeTab === 'marketplace' && (
           <div>
-            {/* Sub-tabs */}
-            <div className="flex gap-2 mb-5">
-              {(['browse', 'submit'] as const).map(st => (
-                <button key={st} onClick={() => setMktSubtab(st)}
-                  className={`px-4 py-2 text-sm rounded-lg border transition-colors
-                    ${mktSubtab === st
-                      ? 'bg-gray-900 text-white border-gray-900'
-                      : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'}`}>
-                  {st === 'browse' ? 'Browse & Adopt' : 'My Submissions'}
-                </button>
-              ))}
-            </div>
- 
-            {/* Browse sub-tab */}
-            {mktSubtab === 'browse' && (
+            {(
               <div>
                 {/* Search + Brand filter + Category chips */}
                 <div className="flex flex-wrap gap-2 mb-3 items-center">
@@ -892,54 +919,10 @@ export default function OffersPage() {
                 )}
               </div>
             )}
-
-            {/* Submissions sub-tab */}
-            {mktSubtab === 'submit' && (
-              <div>
-                <div className="flex justify-end mb-4">
-                  <Btn size="md" onClick={() => { setNewOfferMode('marketplace'); setNewOfferOpen(true); }}>+ Submit an Offer</Btn>
-                </div>
-                <div className="space-y-3">
-                  {submissionsLoading
-                    ? [...Array(2)].map((_, i) => <CardSkeleton key={i} />)
-                    : submissions.length === 0
-                      ? <EmptyState
-                          title="No marketplace submissions yet"
-                          description="Submit an offer to make it available for other GoSelf clients to adopt for their members."
-                          action={<Btn size="md" onClick={() => { setNewOfferMode('marketplace'); setNewOfferOpen(true); }}>+ Submit first offer</Btn>}
-                        />
-                      : submissions.map(offer => {
-                          const hasPendingEdit = !!pendingEditMap[offer.id];
-                          return (
-                            <OfferCard
-                              key={offer.id}
-                              offer={offer}
-                              distribution={null}
-                              showSource
-                              sourceLabel={<MarketplaceStatusBadge offer={offer} hasPendingEdit={hasPendingEdit} />}
-                              actions={
-                                <>
-                                  <Btn onClick={() => setCodesDrawer(offer)}>Manage Codes</Btn>
-                                  <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>
-                                    {hasPendingEdit
-                                      ? 'Update Edit Request'
-                                      : (offer as any).marketplace_status === 'approved'
-                                        ? 'Request Edit'
-                                        : 'Edit & Resubmit'}
-                                  </Btn>
-                                  <MoreMenu offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} />
-                                </>
-                              }
-                            />
-                          );
-                        })}
-                </div>
-              </div>
-            )}
           </div>
         )}
  
-        {/* ── TAB 4: Widget Rewards ─────────────────────────────────────────── */}
+        {/* ── TAB 5: Widget Rewards ─────────────────────────────────────────── */}
         {activeTab === 'distribution' && (
           <div>
             {/* Header bar: description + search + filters */}
