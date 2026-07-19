@@ -1,5 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 
+const FOCUSABLE = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
 // ─── Base Drawer ─────────────────────────────────────────────────────────────
 interface DrawerProps {
   open: boolean;
@@ -12,7 +21,7 @@ interface DrawerProps {
 }
 
 export function Drawer({ open, onClose, title, subtitle, width = 'max-w-lg', children, footer }: DrawerProps) {
-  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) document.body.style.overflow = 'hidden';
@@ -20,18 +29,45 @@ export function Drawer({ open, onClose, title, subtitle, width = 'max-w-lg', chi
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
+  // Focus trap: move focus into the panel when it opens
+  useEffect(() => {
+    if (!open || !panelRef.current) return;
+    const firstFocusable = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)[0];
+    firstFocusable?.focus();
+  }, [open]);
+
+  // Tab trap: keep keyboard focus inside the panel while it's open
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key !== 'Tab' || !panelRef.current) return;
+      const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      {/* Overlay */}
+      {/* Overlay — inert so background elements can't receive focus */}
       <div
-        ref={overlayRef}
         className="absolute inset-0 bg-black/30 backdrop-blur-sm"
         onClick={onClose}
+        aria-hidden="true"
       />
       {/* Panel — slides in from right */}
-      <div className={`relative z-10 ml-auto h-full ${width} w-full bg-white shadow-xl flex flex-col`}>
+      <div ref={panelRef} className={`relative z-10 ml-auto h-full ${width} w-full bg-white shadow-xl flex flex-col`}>
         {/* Header */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-gray-200 flex-shrink-0">
           <div>
