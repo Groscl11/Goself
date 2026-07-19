@@ -1,4 +1,5 @@
 import { ReactNode, useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -24,18 +25,30 @@ const COLLAPSED_KEY = 'goself_sidebar_collapsed';
 // ── Tooltip wrapper (shown only in collapsed mode) ────────────────────────────
 function NavTooltip({ label, section, children }: { label: string; section?: string; children: ReactNode }) {
   const [visible, setVisible] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
   const ref = useRef<HTMLDivElement>(null);
+
+  function handleMouseEnter() {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      setPos({ top: rect.top + rect.height / 2, left: rect.right + 10 });
+    }
+    setVisible(true);
+  }
 
   return (
     <div
       ref={ref}
       className="relative flex items-center"
-      onMouseEnter={() => setVisible(true)}
+      onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setVisible(false)}
     >
       {children}
-      {visible && (
-        <div className="absolute left-full ml-2.5 z-[200] whitespace-nowrap">
+      {visible && createPortal(
+        <div
+          className="fixed z-[9999] whitespace-nowrap pointer-events-none"
+          style={{ top: pos.top, left: pos.left, transform: 'translateY(-50%)' }}
+        >
           <div className="bg-gray-900 text-white px-2.5 py-1.5 rounded-lg shadow-lg">
             {section && (
               <p className="text-[9px] font-bold tracking-widest uppercase text-gray-400 mb-0.5 leading-none">{section}</p>
@@ -43,7 +56,8 @@ function NavTooltip({ label, section, children }: { label: string; section?: str
             <p className="text-xs font-medium leading-none">{label}</p>
             <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
