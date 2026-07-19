@@ -18,16 +18,18 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Offer, RewardsEditRequest } from '../../types/offers';
 
-type FilterStatus = 'all' | 'pending' | 'approved' | 'rejected';
+type FilterStatus = 'all' | 'pending' | 'approved' | 'rejected' | 'unlist_requested';
 type SubTab = 'submissions' | 'edits';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function statusBadgeCls(s: string) {
   return ({
-    approved: 'bg-green-100 text-green-700',
-    rejected: 'bg-red-100 text-red-700',
-    pending:  'bg-yellow-100 text-yellow-700',
+    approved:          'bg-green-100 text-green-700',
+    rejected:          'bg-red-100 text-red-700',
+    pending:           'bg-yellow-100 text-yellow-700',
+    unlist_requested:  'bg-orange-100 text-orange-700',
+    unlisted:          'bg-gray-100 text-gray-500',
   } as Record<string, string>)[s] ?? 'bg-gray-100 text-gray-600';
 }
 
@@ -139,11 +141,12 @@ export function AdminMarketplaceApprovals() {
   // ── Counts ───────────────────────────────────────────────────────────────────
 
   const offerCounts = useMemo(() => ({
-    all:      offers.length,
+    all:              offers.length,
     // null marketplace_status means not yet reviewed — treat as pending
-    pending:  offers.filter(o => { const ms = (o as any).marketplace_status; return ms === 'pending' || ms == null; }).length,
-    approved: offers.filter(o => (o as any).marketplace_status === 'approved').length,
-    rejected: offers.filter(o => (o as any).marketplace_status === 'rejected').length,
+    pending:          offers.filter(o => { const ms = (o as any).marketplace_status; return ms === 'pending' || ms == null; }).length,
+    approved:         offers.filter(o => (o as any).marketplace_status === 'approved').length,
+    rejected:         offers.filter(o => (o as any).marketplace_status === 'rejected').length,
+    unlist_requested: offers.filter(o => (o as any).marketplace_status === 'unlist_requested').length,
   }), [offers]);
 
   const editCounts = useMemo(() => ({
@@ -159,7 +162,9 @@ export function AdminMarketplaceApprovals() {
     const ms = (o as any).marketplace_status;
     // null marketplace_status = not yet reviewed, treat as pending
     const effectiveStatus = ms ?? 'pending';
-    if (subFilter !== 'all' && effectiveStatus !== subFilter) return false;
+    if (subFilter !== 'all' && subFilter !== 'pending' && effectiveStatus !== subFilter) return false;
+    // pending filter includes null + 'pending'; unlist_requested shown only via its own filter
+    if (subFilter === 'pending' && effectiveStatus !== 'pending') return false;
     const q = subSearch.toLowerCase();
     if (q) {
       return (
@@ -222,8 +227,41 @@ export function AdminMarketplaceApprovals() {
     fetchOffers();
   }
 
-  function openOfferReview(offer: Offer, act: 'approve' | 'reject') {
-    setReviewOffer(offer); setOfferAction(act);
+  async function handleApproveUnlist() {
+    if (!reviewOffer) return;
+    setOfferSaving(true); setOfferError(null);
+    const { error } = await supabase
+      .from('rewards')
+      .update({
+        marketplace_status: 'unlisted',
+        marketplace_reviewed_at: new Date().toISOString(),
+        status: 'draft',
+      })
+      .eq('id', reviewOffer.id);
+    setOfferSaving(false);
+    if (error) { setOfferError(error.message); return; }
+    closeOfferReview();
+    fetchOffers();
+  }
+
+  async function handleDenyUnlist() {
+    if (!reviewOffer) return;
+    setOfferSaving(true); setOfferError(null);
+    const { error } = await supabase
+      .from('rewards')
+      .update({
+        marketplace_status: 'approved',
+        marketplace_reviewed_at: new Date().toISOString(),
+      })
+      .eq('id', reviewOffer.id);
+    setOfferSaving(false);
+    if (error) { setOfferError(error.message); return; }
+    closeOfferReview();
+    fetchOffers();
+  }
+
+  function openOfferReview(offer: Offer, act: 'approve' | 'reject' | 'approve_unlist' | 'deny_unlist') {
+    setReviewOffer(offer); setOfferAction(act as any);
     setOfferReason(''); setOfferError(null);
   }
   function closeOfferReview() { setReviewOffer(null); setOfferAction(null); }
@@ -282,12 +320,13 @@ export function AdminMarketplaceApprovals() {
   // ── Stat cards ────────────────────────────────────────────────────────────────
 
   const statCards = (counts: typeof offerCounts, filter: FilterStatus, setFilter: (f: FilterStatus) => void) => (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
       {([
-        { label: 'Total',    value: 'all',      count: counts.all,      color: 'text-gray-800',   bg: 'bg-gray-50'   },
-        { label: 'Pending',  value: 'pending',  count: counts.pending,  color: 'text-yellow-700', bg: 'bg-yellow-50' },
-        { label: 'Approved', value: 'approved', count: counts.approved, color: 'text-green-700',  bg: 'bg-green-50'  },
-        { label: 'Rejected', value: 'rejected', count: counts.rejected, color: 'text-red-700',    bg: 'bg-red-50'    },
+        { label: 'Total',          value: 'all',              count: counts.all,              color: 'text-gray-800',   bg: 'bg-gray-50'   },
+        { label: 'Pending',        value: 'pending',          count: counts.pending,          color: 'text-yellow-700', bg: 'bg-yellow-50' },
+        { label: 'Approved',       value: 'approved',         count: counts.approved,         color: 'text-green-700',  bg: 'bg-green-50'  },
+        { label: 'Rejected',       value: 'rejected',         count: counts.rejected,         color: 'text-red-700',    bg: 'bg-red-50'    },
+        { label: 'Unlist Requests', value: 'unlist_requested', count: counts.unlist_requested, color: 'text-orange-700', bg: 'bg-orange-50' },
       ] as { label: string; value: FilterStatus; count: number; color: string; bg: string }[]).map(s => (
         <button key={s.value} onClick={() => setFilter(s.value)}
           className={`${s.bg} rounded-xl p-4 text-left border-2 transition-all ${filter === s.value ? 'border-blue-400 shadow-sm' : 'border-transparent hover:border-gray-200'}`}>
@@ -411,7 +450,7 @@ export function AdminMarketplaceApprovals() {
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex gap-2 justify-end">
-                                {ms === 'pending' && (
+                                {(ms === 'pending' || ms == null) && (
                                   <>
                                     <button onClick={() => openOfferReview(offer, 'approve')}
                                       className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-green-50 text-green-700 hover:bg-green-100 border border-green-200">
@@ -435,7 +474,19 @@ export function AdminMarketplaceApprovals() {
                                     <Check className="w-3 h-3" /> Approve
                                   </button>
                                 )}
-                                <button onClick={() => openOfferReview(offer, ms === 'pending' ? 'approve' : 'reject')}
+                                {ms === 'unlist_requested' && (
+                                  <>
+                                    <button onClick={() => openOfferReview(offer, 'approve_unlist' as any)}
+                                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200">
+                                      <Check className="w-3 h-3" /> Approve Unlist
+                                    </button>
+                                    <button onClick={() => openOfferReview(offer, 'deny_unlist' as any)}
+                                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200">
+                                      <X className="w-3 h-3" /> Deny
+                                    </button>
+                                  </>
+                                )}
+                                <button onClick={() => openOfferReview(offer, (ms === 'pending' || ms == null) ? 'approve' : ms === 'unlist_requested' ? 'approve_unlist' as any : 'reject')}
                                   title="View details"
                                   className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200">
                                   <Eye className="w-3 h-3" />
@@ -570,11 +621,16 @@ export function AdminMarketplaceApprovals() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div className="flex items-center gap-2">
-                {offerAction === 'approve'
+                {(offerAction === 'approve' || (offerAction as string) === 'deny_unlist')
                   ? <CheckCircle className="w-5 h-5 text-green-600" />
-                  : <XCircle    className="w-5 h-5 text-red-500" />}
+                  : (offerAction as string) === 'approve_unlist'
+                    ? <XCircle className="w-5 h-5 text-orange-500" />
+                    : <XCircle className="w-5 h-5 text-red-500" />}
                 <h2 className="font-semibold text-gray-900">
-                  {offerAction === 'approve' ? 'Approve Offer' : 'Reject Offer'}
+                  {offerAction === 'approve' ? 'Approve Offer'
+                    : (offerAction as string) === 'approve_unlist' ? 'Approve Unlist Request'
+                    : (offerAction as string) === 'deny_unlist' ? 'Deny Unlist Request'
+                    : 'Reject Offer'}
                 </h2>
               </div>
               <button onClick={closeOfferReview} className="text-gray-400 hover:text-gray-600">
@@ -686,6 +742,38 @@ export function AdminMarketplaceApprovals() {
                       className="flex-1 bg-red-600 hover:bg-red-700 text-white">
                       <XCircle className="w-4 h-4 mr-1.5" />
                       {offerSaving ? 'Rejecting…' : 'Reject'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {(offerAction as string) === 'approve_unlist' && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
+                    Approving the unlist will remove this offer from the marketplace immediately. Adopters will lose access.
+                  </div>
+                  <div className="flex gap-3">
+                    <Button variant="secondary" onClick={closeOfferReview} className="flex-1">Cancel</Button>
+                    <Button onClick={handleApproveUnlist} disabled={offerSaving}
+                      className="flex-1 bg-orange-600 hover:bg-orange-700 text-white">
+                      <Check className="w-4 h-4 mr-1.5" />
+                      {offerSaving ? 'Processing…' : 'Approve Unlist'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {(offerAction as string) === 'deny_unlist' && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                    Denying the request keeps this offer live on the marketplace.
+                  </div>
+                  <div className="flex gap-3">
+                    <Button variant="secondary" onClick={closeOfferReview} className="flex-1">Cancel</Button>
+                    <Button onClick={handleDenyUnlist} disabled={offerSaving}
+                      className="flex-1 bg-gray-700 hover:bg-gray-800 text-white">
+                      <X className="w-4 h-4 mr-1.5" />
+                      {offerSaving ? 'Processing…' : 'Deny — Keep Live'}
                     </Button>
                   </div>
                 </div>

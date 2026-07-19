@@ -1310,6 +1310,10 @@ function MarketplaceStatusBadge({ offer, hasPendingEdit = false }: { offer: Offe
         ✕ Rejected{reason ? `: ${reason.slice(0, 60)}${reason.length > 60 ? '…' : ''}` : ''}
       </span>
     );
+  } else if (status === 'unlist_requested') {
+    mainBadge = <span className="text-xs text-orange-600 font-medium">⏳ Unlist pending admin review</span>;
+  } else if (status === 'unlisted') {
+    mainBadge = <span className="text-xs text-gray-500 font-medium">✕ Unlisted from marketplace</span>;
   }
 
   return (
@@ -1426,9 +1430,10 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
   }, []);
  
   async function toggleMarketplace() {
-    const nowMarketplace = offer.offer_type !== 'marketplace_offer';
-    if (nowMarketplace) {
-      // Submit path: set pending, keep status = draft until admin approves
+    const ms = (offer as any).marketplace_status as string | undefined;
+    const isLive = ms === 'approved';
+    if (!isLive) {
+      // Submit / re-submit path
       await supabase.from('rewards').update({
         offer_type: 'marketplace_offer',
         marketplace_status: 'pending',
@@ -1436,11 +1441,9 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
         status: 'draft',
       }).eq('id', offer.id).eq('owner_client_id', clientId);
     } else {
-      // Unlist path: clear marketplace columns
+      // Request unlist — admin must approve before it goes offline
       await supabase.from('rewards').update({
-        offer_type: 'store_discount',
-        marketplace_status: null,
-        marketplace_rejection_reason: null,
+        marketplace_status: 'unlist_requested',
       }).eq('id', offer.id).eq('owner_client_id', clientId);
     }
     setOpen(false);
@@ -1464,10 +1467,23 @@ function MoreMenu({ offer, onRefresh, clientId }: { offer: Offer; onRefresh: () 
       </Btn>
       {open && (
         <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
-          <button onClick={toggleMarketplace}
-            className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
-            {offer.offer_type === 'marketplace_offer' ? 'Unlist from Marketplace' : 'Submit to Marketplace'}
-          </button>
+          {(() => {
+            const ms = (offer as any).marketplace_status as string | undefined;
+            if (ms === 'unlist_requested') {
+              return (
+                <span className="block w-full text-left px-4 py-2.5 text-xs text-gray-400 border-b border-gray-100 cursor-default">
+                  Unlist pending review
+                </span>
+              );
+            }
+            const label = ms === 'approved' ? 'Request Unlist' : 'Submit to Marketplace';
+            return (
+              <button onClick={toggleMarketplace}
+                className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+                {label}
+              </button>
+            );
+          })()}
           <button onClick={togglePause}
             className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50">
             {offer.status === 'paused' ? 'Reactivate' : 'Pause offer'}
