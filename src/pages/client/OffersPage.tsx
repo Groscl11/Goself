@@ -1419,7 +1419,9 @@ function MktRow({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => vo
 // ─── More menu (⋯) ────────────────────────────────────────────────────────────
 function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false }: { offer: Offer; onRefresh: () => void; clientId: string; hideMarketplace?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [pauseConfirm, setPauseConfirm] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const campaignCount = ((offer as any).campaign_usage_count as number) ?? 0;
  
   useEffect(() => {
     function h(e: MouseEvent) {
@@ -1450,46 +1452,83 @@ function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false }: { off
     onRefresh();
   }
  
-  async function togglePause() {
-    await supabase.from('rewards').update({
-      status: offer.status === 'paused' ? 'active' : 'paused',
-    }).eq('id', offer.id).eq('owner_client_id', clientId);
+  function handlePauseClick() {
     setOpen(false);
+    if (offer.status !== 'inactive' && campaignCount > 0) {
+      setPauseConfirm(true);
+    } else {
+      doPause();
+    }
+  }
+
+  async function doPause() {
+    await supabase.from('rewards').update({
+      status: offer.status === 'inactive' ? 'active' : 'inactive',
+    }).eq('id', offer.id).eq('owner_client_id', clientId);
+    setPauseConfirm(false);
     onRefresh();
   }
- 
+
   return (
-    <div className="relative ml-auto" ref={ref}>
-      <Btn onClick={() => setOpen(v => !v)}>
-        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-          <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
-        </svg>
-      </Btn>
-      {open && (
-        <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
-          {!hideMarketplace && (() => {
-            const ms = (offer as any).marketplace_status as string | undefined;
-            if (ms === 'unlist_requested') {
+    <>
+      <div className="relative ml-auto" ref={ref}>
+        <Btn onClick={() => setOpen(v => !v)}>
+          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+            <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
+          </svg>
+        </Btn>
+        {open && (
+          <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+            {!hideMarketplace && (() => {
+              const ms = (offer as any).marketplace_status as string | undefined;
+              if (ms === 'unlist_requested') {
+                return (
+                  <span className="block w-full text-left px-4 py-2.5 text-xs text-gray-400 border-b border-gray-100 cursor-default">
+                    Unlist pending review
+                  </span>
+                );
+              }
+              const label = ms === 'approved' ? 'Request Unlist' : 'Submit to Marketplace';
               return (
-                <span className="block w-full text-left px-4 py-2.5 text-xs text-gray-400 border-b border-gray-100 cursor-default">
-                  Unlist pending review
-                </span>
+                <button onClick={toggleMarketplace}
+                  className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+                  {label}
+                </button>
               );
-            }
-            const label = ms === 'approved' ? 'Request Unlist' : 'Submit to Marketplace';
-            return (
-              <button onClick={toggleMarketplace}
-                className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
-                {label}
-              </button>
-            );
-          })()}
-          <button onClick={togglePause}
-            className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50">
-            {offer.status === 'paused' ? 'Reactivate' : 'Pause offer'}
-          </button>
+            })()}
+            <button onClick={handlePauseClick}
+              className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50">
+              {offer.status === 'inactive' ? 'Reactivate' : 'Pause offer'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {pauseConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Pause "{offer.title}"?</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  This offer is active in{' '}
+                  <span className="font-semibold text-amber-700">{campaignCount} campaign{campaignCount !== 1 ? 's' : ''}</span>.
+                  Pausing will stop members from earning it through those campaigns until you reactivate.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Btn variant="ghost" onClick={() => setPauseConfirm(false)}>Cancel</Btn>
+              <Btn variant="danger" onClick={doPause}>Pause anyway</Btn>
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
