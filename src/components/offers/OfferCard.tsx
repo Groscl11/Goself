@@ -29,7 +29,7 @@ export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; variant: BadgeProps['variant'] }> = {
     active:    { label: 'Active',    variant: 'green' },
     draft:     { label: 'Draft',     variant: 'gray' },
-    paused:    { label: 'Paused',    variant: 'amber' },
+    inactive:  { label: 'Paused',    variant: 'amber' },
     exhausted: { label: 'Exhausted', variant: 'red' },
     expired:   { label: 'Expired',   variant: 'red' },
   };

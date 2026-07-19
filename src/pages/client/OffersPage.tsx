@@ -1452,7 +1452,7 @@ function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false }: { off
  
   async function togglePause() {
     await supabase.from('rewards').update({
-      status: offer.status === 'paused' ? 'active' : 'paused',
+      status: offer.status === 'inactive' ? 'active' : 'inactive',
     }).eq('id', offer.id).eq('owner_client_id', clientId);
     setOpen(false);
     onRefresh();
@@ -1486,7 +1486,7 @@ function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false }: { off
           })()}
           <button onClick={togglePause}
             className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50">
-            {offer.status === 'paused' ? 'Reactivate' : 'Pause offer'}
+            {offer.status === 'inactive' ? 'Reactivate' : 'Pause offer'}
           </button>
         </div>
       )}
