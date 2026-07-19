@@ -67,6 +67,26 @@ function CardSkeleton() {
   );
 }
  
+function TableSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="h-10 bg-gray-50 border-b border-gray-200" />
+      {[...Array(rows)].map((_, i) => (
+        <div key={i} className="flex items-center gap-4 px-4 py-3.5 border-b border-gray-100 last:border-0 animate-pulse">
+          <div className="h-5 w-24 bg-gray-100 rounded" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-4 w-40 bg-gray-100 rounded" />
+            <div className="h-3 w-24 bg-gray-50 rounded" />
+          </div>
+          <div className="h-5 w-16 bg-gray-100 rounded-full" />
+          <div className="h-5 w-14 bg-gray-100 rounded-full" />
+          <div className="h-7 w-20 bg-gray-100 rounded-lg" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function OffersPage() {
   const { profile } = useAuth();
@@ -94,6 +114,9 @@ export default function OffersPage() {
   const [storeOffers, setStoreOffers] = useState<Offer[]>([]);
   const [storeLoading, setStoreLoading] = useState(false);
   const [storeFilter, setStoreFilter] = useState('all');
+  const [storeSearch, setStoreSearch] = useState('');
+  const [partnerSearch, setPartnerSearch] = useState('');
+  const [submissionsSearch, setSubmissionsSearch] = useState('');
  
   // Partner vouchers state
   const [partnerOffers, setPartnerOffers] = useState<Offer[]>([]);
@@ -392,11 +415,26 @@ export default function OffersPage() {
   }
  
   const storeFiltered = storeOffers.filter(o => {
-    if (storeFilter === 'all') return true;
-    if (storeFilter === 'active') return o.status === 'active';
-    if (storeFilter === 'draft') return o.status === 'draft';
-    if (storeFilter === 'low') return o.coupon_type === 'unique' && (o.available_codes ?? 0) < 10;
+    if (storeFilter === 'active' && o.status !== 'active') return false;
+    if (storeFilter === 'draft' && o.status !== 'draft') return false;
+    if (storeFilter === 'low' && !(o.coupon_type === 'unique' && (o.available_codes ?? 0) < 10)) return false;
+    if (storeSearch.trim()) {
+      const q = storeSearch.trim().toLowerCase();
+      if (!o.title.toLowerCase().includes(q) && !o.id.toLowerCase().includes(q) && !((o as any).reward_id ?? '').toLowerCase().includes(q)) return false;
+    }
     return true;
+  });
+
+  const partnerFiltered = partnerOffers.filter(o => {
+    if (!partnerSearch.trim()) return true;
+    const q = partnerSearch.trim().toLowerCase();
+    return o.title.toLowerCase().includes(q) || o.id.toLowerCase().includes(q) || ((o as any).reward_id ?? '').toLowerCase().includes(q);
+  });
+
+  const submissionsFiltered = submissions.filter(o => {
+    if (!submissionsSearch.trim()) return true;
+    const q = submissionsSearch.trim().toLowerCase();
+    return o.title.toLowerCase().includes(q) || o.id.toLowerCase().includes(q) || ((o as any).reward_id ?? '').toLowerCase().includes(q);
   });
  
   const MKT_FILTERS = ['All', 'Fashion', 'Food & Drink', 'Lifestyle', 'Health', 'Electronics'];
@@ -652,76 +690,95 @@ export default function OffersPage() {
         {/* ── TAB 1: My Store Offers ────────────────────────────────────────── */}
         {activeTab === 'store' && (
           <div>
-            <FilterRow
-              filters={[
-                { id: 'all',    label: 'All' },
-                { id: 'active', label: 'Active' },
-                { id: 'draft',  label: 'Draft' },
-                { id: 'low',    label: 'Low stock' },
-              ]}
-              active={storeFilter}
-              onChange={setStoreFilter}
-            />
-            <div className="space-y-3">
-              {storeLoading
-                ? [...Array(2)].map((_, i) => <CardSkeleton key={i} />)
-                : storeFiltered.length === 0
-                  ? <EmptyState
-                      title="No store offers yet"
-                      description="Create discount codes that your loyalty members can redeem with points or claim via campaigns."
-                      action={
-                        <Btn size="md" onClick={() => { setNewOfferMode('store'); setNewOfferOpen(true); }}>
-                          + Create your first offer
-                        </Btn>
-                      }
-                    />
-                  : storeFiltered.map(offer => {
-                      const dist = getDistForOffer(offer);
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input type="text" placeholder="Search by title, reward ID..." value={storeSearch}
+                  onChange={e => setStoreSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gray-300" />
+              </div>
+              <FilterRow
+                filters={[
+                  { id: 'all', label: 'All' }, { id: 'active', label: 'Active' },
+                  { id: 'draft', label: 'Draft' }, { id: 'low', label: 'Low stock' },
+                ]}
+                active={storeFilter} onChange={setStoreFilter}
+              />
+            </div>
+
+            {storeLoading ? <TableSkeleton /> : storeFiltered.length === 0 ? (
+              <EmptyState
+                title="No store offers yet"
+                description="Create discount codes that your loyalty members can redeem with points or claim via campaigns."
+                action={<Btn size="md" onClick={() => { setNewOfferMode('store'); setNewOfferOpen(true); }}>+ Create your first offer</Btn>}
+              />
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+                <table className="w-full text-sm" style={{ minWidth: '820px' }}>
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {['Reward ID', 'Title', 'Discount', 'Type', 'Codes', 'Valid Until', 'Status', ''].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {storeFiltered.map(offer => {
                       const dists = (offer.offer_distributions ?? []) as any[];
-                      const inWidget = dists.some(d =>
-                        d.is_active && ['points_redemption', 'both', 'free_claim'].includes(d.access_type)
-                      );
+                      const inWidget = dists.some(d => d.is_active && ['points_redemption', 'both', 'free_claim'].includes(d.access_type));
                       const campaignCount = (offer as any).campaign_usage_count ?? 0;
-                      const usageTags = (inWidget || campaignCount > 0) ? (
-                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                          {inWidget && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200">
-                              🔧 In widget
-                            </span>
-                          )}
-                          {campaignCount > 0 && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-purple-50 text-purple-700 border border-purple-200">
-                              🎯 {campaignCount} campaign{campaignCount > 1 ? 's' : ''}
-                            </span>
-                          )}
-                        </div>
-                      ) : null;
+                      const discountLabel = offer.reward_type === 'percentage_discount' && offer.discount_value != null
+                        ? `${offer.discount_value}% off`
+                        : offer.discount_value ? `₹${offer.discount_value.toLocaleString('en-IN')} off` : '—';
+                      const codesLabel = offer.coupon_type === 'generic'
+                        ? 'Reusable' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}`;
+                      const isLowStock = offer.coupon_type === 'unique' && (offer.available_codes ?? 0) < 10;
+                      const rewardId = (offer as any).reward_id || ('RWD-' + offer.id.slice(0, 8).toUpperCase());
                       return (
-                        <OfferCard key={offer.id} offer={offer} distribution={dist}
-                          context="store"
-                          showSource={usageTags !== null}
-                          sourceLabel={usageTags}
-                          actions={
-                            <>
-                              <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>Edit Offer</Btn>
-                              {offer.coupon_type === 'unique' && (
-                                <Btn onClick={() => setCodesDrawer(offer)}>Manage Codes</Btn>
-                              )}
-                              <Btn onClick={() => window.location.href = `/client/campaigns?offer_id=${offer.id}`}>
-                                Use in Campaign
-                              </Btn>
+                        <tr key={offer.id} className="hover:bg-gray-50/60 transition-colors">
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{rewardId}</span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <p className="font-semibold text-gray-900 text-sm">{offer.title}</p>
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {inWidget && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-600 border border-blue-100">🔧 Widget</span>}
+                              {campaignCount > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600 border border-purple-100">🎯 {campaignCount} campaign{campaignCount > 1 ? 's' : ''}</span>}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="text-xs font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">{discountLabel}</span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="text-xs text-gray-600 capitalize">{offer.coupon_type}</span>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className={`text-xs font-medium ${isLowStock ? 'text-red-500' : 'text-gray-700'}`}>{codesLabel}</span>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="text-xs text-gray-500">
+                              {offer.valid_until ? new Date(offer.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5"><StatusBadge status={offer.status} /></td>
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-1.5 justify-end flex-nowrap">
+                              <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>Edit</Btn>
+                              {offer.coupon_type === 'unique' && <Btn onClick={() => setCodesDrawer(offer)}>Codes</Btn>}
+                              <Btn onClick={() => window.location.href = `/client/campaigns?offer_id=${offer.id}`}>Campaign</Btn>
                               <MoreMenu offer={offer} onRefresh={fetchStoreOffers} clientId={clientId} hideMarketplace />
-                            </>
-                          }
-                        />
+                            </div>
+                          </td>
+                        </tr>
                       );
                     })}
-            </div>
-            {!storeLoading && storeFiltered.length > 0 && (
-              <AddCard label="Add another store offer">
-                <Btn onClick={() => { setNewOfferMode('store'); setNewOfferOpen(true); }}>Generate via Shopify</Btn>
-                <Btn onClick={() => { setNewOfferMode('store'); setNewOfferOpen(true); }}>Import from Shopify</Btn>
-              </AddCard>
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
@@ -734,45 +791,83 @@ export default function OffersPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
-              <span className="text-sm text-amber-700">
-                Partner voucher redemptions are tracked manually. Use "Update Redemptions" to upload a CSV of redeemed codes.
-              </span>
+              <span className="text-sm text-amber-700">Partner voucher redemptions are tracked manually. Use "Update Redemptions" to upload a CSV of redeemed codes.</span>
             </div>
-            <div className="space-y-3">
-              {partnerLoading
-                ? [...Array(2)].map((_, i) => <CardSkeleton key={i} />)
-                : partnerOffers.length === 0
-                  ? <EmptyState
-                      title="No partner vouchers yet"
-                      description="Upload voucher codes from your offline brand partnerships for members to redeem."
-                      action={<Btn size="md" onClick={() => setPartnerWizardOpen(true)}>+ Add Partner Voucher</Btn>}
-                    />
-                  : partnerOffers.map(offer => {
+
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input type="text" placeholder="Search by partner name or reward ID..." value={partnerSearch}
+                  onChange={e => setPartnerSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gray-300" />
+              </div>
+              <Btn onClick={() => setPartnerWizardOpen(true)}>+ Add Partner Voucher</Btn>
+            </div>
+
+            {partnerLoading ? <TableSkeleton /> : partnerFiltered.length === 0 ? (
+              <EmptyState
+                title="No partner vouchers yet"
+                description="Upload voucher codes from your offline brand partnerships for members to redeem."
+                action={<Btn size="md" onClick={() => setPartnerWizardOpen(true)}>+ Add Partner Voucher</Btn>}
+              />
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+                <table className="w-full text-sm" style={{ minWidth: '760px' }}>
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {['Reward ID', 'Title', 'Type', 'Codes', 'Valid Until', 'Status', ''].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {partnerFiltered.map(offer => {
                       const dist = getDistForOffer(offer);
+                      const codesLabel = offer.coupon_type === 'generic'
+                        ? 'Reusable' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}`;
+                      const rewardId = (offer as any).reward_id || ('RWD-' + offer.id.slice(0, 8).toUpperCase());
                       return (
-                        <OfferCard key={offer.id} offer={offer} distribution={dist}
-                          actions={
-                            <>
+                        <tr key={offer.id} className="hover:bg-gray-50/60 transition-colors">
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{rewardId}</span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <p className="font-semibold text-gray-900 text-sm">{offer.title}</p>
+                            {(offer.steps_to_redeem || offer.description) && (
+                              <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">
+                                {offer.steps_to_redeem || offer.description}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="text-xs text-gray-600 capitalize">{offer.coupon_type}</span>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="text-xs font-medium text-gray-700">{codesLabel}</span>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="text-xs text-gray-500">
+                              {offer.valid_until ? new Date(offer.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5"><StatusBadge status={offer.status} /></td>
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-1.5 justify-end flex-nowrap">
                               <Btn onClick={() => setCodesDrawer(offer)}>Upload Codes</Btn>
-                              <Btn variant="default" className="border-amber-300 text-amber-700 hover:bg-amber-50">
-                                Update Redemptions
-                              </Btn>
-                              <Btn onClick={() => setPartnerEditTarget({ offer, distribution: dist })}>Edit Offer</Btn>
-                              <Btn onClick={() => setTab('distribution')}>Edit Points</Btn>
-                              <Btn onClick={() => window.location.href = `/client/campaigns?offer_id=${offer.id}`}>
-                                Use in Campaign
-                              </Btn>
-                            </>
-                          }
-                        />
+                              <Btn variant="default" className="border-amber-300 text-amber-700 hover:bg-amber-50" onClick={() => setCodesDrawer(offer)}>Redemptions</Btn>
+                              <Btn onClick={() => setPartnerEditTarget({ offer, distribution: dist })}>Edit</Btn>
+                              <Btn onClick={() => window.location.href = `/client/campaigns?offer_id=${offer.id}`}>Campaign</Btn>
+                            </div>
+                          </td>
+                        </tr>
                       );
                     })}
-            </div>
-            {!partnerLoading && (
-              <div className="mt-4">
-                <AddCard label="Add an offline partner voucher">
-                  <Btn onClick={() => setPartnerWizardOpen(true)}>+ Add Partner Voucher</Btn>
-                </AddCard>
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -781,44 +876,84 @@ export default function OffersPage() {
         {/* ── TAB 3: My Marketplace Submissions ────────────────────────────── */}
         {activeTab === 'submissions' && (
           <div>
-            <div className="flex justify-end mb-4">
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input type="text" placeholder="Search by title or reward ID..." value={submissionsSearch}
+                  onChange={e => setSubmissionsSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gray-300" />
+              </div>
               <Btn size="md" onClick={() => { setNewOfferMode('marketplace'); setNewOfferOpen(true); }}>+ Submit an Offer</Btn>
             </div>
-            <div className="space-y-3">
-              {submissionsLoading
-                ? [...Array(2)].map((_, i) => <CardSkeleton key={i} />)
-                : submissions.length === 0
-                  ? <EmptyState
-                      title="No marketplace submissions yet"
-                      description="Submit an offer to make it available for other GoSelf clients to adopt for their members."
-                      action={<Btn size="md" onClick={() => { setNewOfferMode('marketplace'); setNewOfferOpen(true); }}>+ Submit first offer</Btn>}
-                    />
-                  : submissions.map(offer => {
+
+            {submissionsLoading ? <TableSkeleton /> : submissionsFiltered.length === 0 ? (
+              <EmptyState
+                title="No marketplace submissions yet"
+                description="Submit an offer to make it available for other GoSelf clients to adopt for their members."
+                action={<Btn size="md" onClick={() => { setNewOfferMode('marketplace'); setNewOfferOpen(true); }}>+ Submit first offer</Btn>}
+              />
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+                <table className="w-full text-sm" style={{ minWidth: '800px' }}>
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {['Reward ID', 'Title', 'Submitted', 'Type', 'Codes', 'Marketplace Status', ''].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {submissionsFiltered.map(offer => {
                       const hasPendingEdit = !!pendingEditMap[offer.id];
+                      const submittedAt = (offer as any).marketplace_submitted_at;
+                      const codesLabel = offer.coupon_type === 'generic'
+                        ? 'Reusable' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}`;
+                      const rewardId = (offer as any).reward_id || ('RWD-' + offer.id.slice(0, 8).toUpperCase());
                       return (
-                        <OfferCard
-                          key={offer.id}
-                          offer={offer}
-                          distribution={null}
-                          showSource
-                          sourceLabel={<MarketplaceStatusBadge offer={offer} hasPendingEdit={hasPendingEdit} />}
-                          actions={
-                            <>
-                              <Btn onClick={() => setCodesDrawer(offer)}>Manage Codes</Btn>
+                        <tr key={offer.id} className="hover:bg-gray-50/60 transition-colors">
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{rewardId}</span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <p className="font-semibold text-gray-900 text-sm">{offer.title}</p>
+                            {offer.description && (
+                              <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{offer.description}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="text-xs text-gray-500">
+                              {submittedAt ? new Date(submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="text-xs text-gray-600 capitalize">{offer.coupon_type}</span>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="text-xs font-medium text-gray-700">{codesLabel}</span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <MarketplaceStatusBadge offer={offer} hasPendingEdit={hasPendingEdit} />
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-1.5 justify-end flex-nowrap">
+                              <Btn onClick={() => setCodesDrawer(offer)}>Codes</Btn>
                               <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>
-                                {hasPendingEdit
-                                  ? 'Update Edit Request'
-                                  : (offer as any).marketplace_status === 'approved'
-                                    ? 'Request Edit'
-                                    : 'Edit & Resubmit'}
+                                {hasPendingEdit ? 'Update Edit' : (offer as any).marketplace_status === 'approved' ? 'Request Edit' : 'Edit & Resubmit'}
                               </Btn>
                               <MoreMenu offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} hidePause />
-                            </>
-                          }
-                        />
+                            </div>
+                          </td>
+                        </tr>
                       );
                     })}
-            </div>
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
