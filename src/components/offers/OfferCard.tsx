@@ -30,6 +30,7 @@ export function StatusBadge({ status }: { status: string }) {
     active:    { label: 'Active',    variant: 'green' },
     draft:     { label: 'Draft',     variant: 'gray' },
     inactive:  { label: 'Paused',    variant: 'amber' },
+    pending:   { label: 'Pending',   variant: 'blue' },
     exhausted: { label: 'Exhausted', variant: 'red' },
     expired:   { label: 'Expired',   variant: 'red' },
   };
