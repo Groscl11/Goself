@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -159,6 +160,7 @@ export default function OffersPage() {
   const [adoptLoading, setAdoptLoading] = useState(false);
   const [adoptError, setAdoptError] = useState<string>('');
   const [newOfferDropdown, setNewOfferDropdown] = useState(false);
+  const [detailOffer, setDetailOffer] = useState<Offer | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
  
   // Close dropdown on outside click
@@ -226,15 +228,15 @@ export default function OffersPage() {
     const normalized = (data ?? []).map((offer: any) => {
       const codes = (offer.offer_codes ?? []) as Array<{ status: string }>;
       if (!codes.length) return offer;
-      const total = codes.length;
-      const available = codes.filter(c => c.status === 'available').length;
-      return {
-        ...offer,
-        total_codes_uploaded: total,
-        available_codes: available,
-      };
+      return { ...offer, total_codes_uploaded: codes.length, available_codes: codes.filter(c => c.status === 'available').length };
     });
-    setPartnerOffers(normalized);
+    const offerIds = normalized.map((o: any) => o.id as string);
+    let campaignUsageMap: Record<string, number> = {};
+    if (offerIds.length > 0) {
+      const { data: poolData } = await supabase.from('campaign_reward_pools').select('reward_id').in('reward_id', offerIds);
+      for (const p of poolData ?? []) campaignUsageMap[p.reward_id] = (campaignUsageMap[p.reward_id] ?? 0) + 1;
+    }
+    setPartnerOffers(normalized.map((o: any) => ({ ...o, campaign_usage_count: campaignUsageMap[o.id] ?? 0 })));
     setPartnerLoading(false);
   }, [clientId]);
  
@@ -299,7 +301,15 @@ export default function OffersPage() {
         .eq('status', 'pending'),
     ]);
     if (error) console.error('fetchSubmissions error:', error);
-    setSubmissions(data ?? []);
+    const submissionIds = (data ?? []).map((o: any) => o.id as string);
+    if (submissionIds.length > 0) {
+      const { data: poolData } = await supabase.from('campaign_reward_pools').select('reward_id').in('reward_id', submissionIds);
+      const submCampaignMap: Record<string, number> = {};
+      for (const p of poolData ?? []) submCampaignMap[p.reward_id] = (submCampaignMap[p.reward_id] ?? 0) + 1;
+      setSubmissions((data ?? []).map((o: any) => ({ ...o, campaign_usage_count: submCampaignMap[o.id] ?? 0 })));
+    } else {
+      setSubmissions(data ?? []);
+    }
     // Build a lookup: offer_id → pending edit request id
     const map: Record<string, string> = {};
     for (const req of editReqs ?? []) map[req.reward_id] = req.id;
@@ -778,6 +788,14 @@ export default function OffersPage() {
                           {/* Title */}
                           <td className="px-3 py-3">
                             <p className="font-semibold text-gray-900 text-sm leading-snug">{offer.title}</p>
+                            <button onClick={() => setDetailOffer(offer)}
+                              className="inline-flex items-center gap-1 text-[10px] text-gray-400 hover:text-blue-500 mt-0.5 transition-colors">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              View details
+                            </button>
                           </td>
                           {/* Discount Type */}
                           <td className="px-3 py-3 whitespace-nowrap">
@@ -859,7 +877,7 @@ export default function OffersPage() {
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th className="px-3 py-3 w-10" />
-                      {['Reward ID', 'Title', 'Discount Type', 'Codes', 'Valid Until', 'Status', ''].map(h => (
+                      {['Reward ID', 'Title', 'Discount Type', 'Codes', 'Usage', 'Valid Until', 'Status', ''].map(h => (
                         <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -884,12 +902,34 @@ export default function OffersPage() {
                             {(offer.steps_to_redeem || offer.description) && (
                               <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{offer.steps_to_redeem || offer.description}</p>
                             )}
+                            <button onClick={() => setDetailOffer(offer)}
+                              className="inline-flex items-center gap-1 text-[10px] text-gray-400 hover:text-blue-500 mt-0.5 transition-colors">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              View details
+                            </button>
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs text-gray-600">{discountTypeLabel(offer.reward_type)}</span>
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs font-medium text-gray-700">{codesLabel}</span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-col gap-0.5">
+                              {(() => {
+                                const dists = (offer.offer_distributions ?? []) as any[];
+                                const inWidget = dists.some(d => d.is_active && ['points_redemption', 'both', 'free_claim'].includes(d.access_type));
+                                const campaignCount = (offer as any).campaign_usage_count ?? 0;
+                                return <>
+                                  {inWidget && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-600 border border-blue-100 whitespace-nowrap">🔧 Widget</span>}
+                                  {campaignCount > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600 border border-purple-100 whitespace-nowrap">🎯 {campaignCount} campaign{campaignCount > 1 ? 's' : ''}</span>}
+                                  {!inWidget && campaignCount === 0 && <span className="text-xs text-gray-300">—</span>}
+                                </>;
+                              })()}
+                            </div>
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs text-gray-500">
@@ -944,7 +984,7 @@ export default function OffersPage() {
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th className="px-3 py-3 w-10" />
-                      {['Reward ID', 'Title', 'Submitted', 'Discount Type', 'Codes', 'Marketplace Status', ''].map(h => (
+                      {['Reward ID', 'Title', 'Submitted', 'Discount Type', 'Codes', 'Usage', 'Marketplace Status', ''].map(h => (
                         <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -970,6 +1010,14 @@ export default function OffersPage() {
                           <td className="px-3 py-3">
                             <p className="font-semibold text-gray-900 text-sm leading-snug">{offer.title}</p>
                             {offer.description && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{offer.description}</p>}
+                            <button onClick={() => setDetailOffer(offer)}
+                              className="inline-flex items-center gap-1 text-[10px] text-gray-400 hover:text-blue-500 mt-0.5 transition-colors">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              View details
+                            </button>
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs text-gray-500">
@@ -981,6 +1029,20 @@ export default function OffersPage() {
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs font-medium text-gray-700">{codesLabel}</span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-col gap-0.5">
+                              {(() => {
+                                const dists = (offer.offer_distributions ?? []) as any[];
+                                const inWidget = dists.some(d => d.is_active && ['points_redemption', 'both', 'free_claim'].includes(d.access_type));
+                                const campaignCount = (offer as any).campaign_usage_count ?? 0;
+                                return <>
+                                  {inWidget && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-600 border border-blue-100 whitespace-nowrap">🔧 Widget</span>}
+                                  {campaignCount > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600 border border-purple-100 whitespace-nowrap">🎯 {campaignCount} campaign{campaignCount > 1 ? 's' : ''}</span>}
+                                  {!inWidget && campaignCount === 0 && <span className="text-xs text-gray-300">—</span>}
+                                </>;
+                              })()}
+                            </div>
                           </td>
                           <td className="px-3 py-3">
                             <MarketplaceStatusBadge offer={offer} hasPendingEdit={hasPendingEdit} />
@@ -1453,6 +1515,8 @@ export default function OffersPage() {
         loading={adoptLoading}
         error={adoptError}
       />
+
+      {detailOffer && <OfferDetailModal offer={detailOffer} onClose={() => setDetailOffer(null)} />}
     </>
   );
 }
@@ -1586,23 +1650,23 @@ function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false, hidePau
   onEdit?: () => void; onCodes?: () => void; onCampaign?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
   const [pauseConfirm, setPauseConfirm] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
   const campaignCount = ((offer as any).campaign_usage_count as number) ?? 0;
- 
-  useEffect(() => {
-    function h(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+
+  function handleOpen() {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
     }
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
- 
+    setOpen(v => !v);
+  }
+
   async function toggleMarketplace() {
     const ms = (offer as any).marketplace_status as string | undefined;
     const isLive = ms === 'approved';
     if (!isLive) {
-      // Submit / re-submit path
       await supabase.from('rewards').update({
         offer_type: 'marketplace_offer',
         marketplace_status: 'pending',
@@ -1610,15 +1674,12 @@ function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false, hidePau
         status: 'draft',
       }).eq('id', offer.id).eq('owner_client_id', clientId);
     } else {
-      // Request unlist — admin must approve before it goes offline
-      await supabase.from('rewards').update({
-        marketplace_status: 'unlist_requested',
-      }).eq('id', offer.id).eq('owner_client_id', clientId);
+      await supabase.from('rewards').update({ marketplace_status: 'unlist_requested' })
+        .eq('id', offer.id).eq('owner_client_id', clientId);
     }
     setOpen(false);
     onRefresh();
   }
-
 
   function handlePauseClick() {
     setOpen(false);
@@ -1637,62 +1698,68 @@ function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false, hidePau
     onRefresh();
   }
 
-  return (
+  const ms = (offer as any).marketplace_status as string | undefined;
+
+  const dropdown = open ? createPortal(
     <>
-      <div className="relative ml-auto" ref={ref}>
-        <Btn onClick={() => setOpen(v => !v)}>
-          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-            <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
-          </svg>
-        </Btn>
-        {open && (
-          <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
-            {onEdit && (
-              <button onClick={() => { setOpen(false); onEdit(); }}
-                className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
-                Edit Offer
-              </button>
-            )}
-            {onCodes && (
-              <button onClick={() => { setOpen(false); onCodes(); }}
-                className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
-                Manage Codes
-              </button>
-            )}
-            {onCampaign && (
-              <button onClick={() => { setOpen(false); onCampaign(); }}
-                className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
-                Use in Campaign
-              </button>
-            )}
-            {!hideMarketplace && (() => {
-              const ms = (offer as any).marketplace_status as string | undefined;
-              if (ms === 'unlist_requested') {
-                return (
-                  <span className="block w-full text-left px-4 py-2.5 text-xs text-gray-400 border-b border-gray-100 cursor-default">
-                    Unlist pending review
-                  </span>
-                );
-              }
-              const label = ms === 'approved' ? 'Request Unlist' : 'Submit to Marketplace';
-              return (
-                <button onClick={toggleMarketplace}
-                  className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
-                  {label}
-                </button>
-              );
-            })()}
-            {!hidePause && (
-              <button onClick={handlePauseClick}
-                className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50">
-                {offer.status === 'inactive' ? 'Reactivate' : 'Pause offer'}
-              </button>
-            )}
-          </div>
+      <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
+      <div className="fixed z-[9999] w-48 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"
+        style={{ top: menuPos.top, right: menuPos.right }}>
+        {onEdit && (
+          <button onClick={() => { setOpen(false); onEdit(); }}
+            className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+            Edit Offer
+          </button>
+        )}
+        {onCodes && (
+          <button onClick={() => { setOpen(false); onCodes(); }}
+            className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+            Manage Codes
+          </button>
+        )}
+        {onCampaign && (
+          <button onClick={() => { setOpen(false); onCampaign(); }}
+            className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+            Use in Campaign
+          </button>
+        )}
+        {!hideMarketplace && (() => {
+          if (ms === 'unlist_requested') {
+            return <span className="block w-full text-left px-4 py-2.5 text-xs text-gray-400 border-b border-gray-100 cursor-default">Unlist pending review</span>;
+          }
+          if (ms === 'pending') {
+            return <span className="block w-full text-left px-4 py-2.5 text-xs text-gray-400 border-b border-gray-100 cursor-default">Pending admin review</span>;
+          }
+          const label = ms === 'approved' ? 'Request Unlist' : 'Submit to Marketplace';
+          return (
+            <button onClick={toggleMarketplace}
+              className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+              {label}
+            </button>
+          );
+        })()}
+        {!hidePause && (
+          <button onClick={handlePauseClick}
+            className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50">
+            {offer.status === 'inactive' ? 'Reactivate' : 'Pause offer'}
+          </button>
         )}
       </div>
+    </>,
+    document.body
+  ) : null;
 
-      {pauseConfirm && (
+  return (
+    <>
+      <button ref={btnRef} onClick={handleOpen}
+        className="inline-flex items-center font-medium rounded-lg transition-colors cursor-pointer px-3 py-1.5 text-xs gap-1.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50">
+        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+          <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
+        </svg>
+      </button>
+      {dropdown}
+
+      {pauseConfirm && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
             <div className="flex items-start gap-3 mb-4">
@@ -1711,12 +1778,128 @@ function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false, hidePau
               </div>
             </div>
             <div className="flex gap-2 justify-end">
-              <Btn variant="ghost" onClick={() => setPauseConfirm(false)}>Cancel</Btn>
-              <Btn variant="danger" onClick={doPause}>Pause anyway</Btn>
+              <button onClick={() => setPauseConfirm(false)}
+                className="inline-flex items-center font-medium rounded-lg transition-colors cursor-pointer px-3 py-1.5 text-xs gap-1.5 bg-transparent border-0 text-gray-500 hover:text-gray-700 hover:bg-gray-100">Cancel</button>
+              <button onClick={doPause}
+                className="inline-flex items-center font-medium rounded-lg transition-colors cursor-pointer px-3 py-1.5 text-xs gap-1.5 bg-white border border-red-300 text-red-600 hover:bg-red-50">Pause anyway</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
+  );
+}
+
+// ─── Offer detail modal ────────────────────────────────────────────────────────
+function OfferDetailModal({ offer, onClose }: { offer: Offer; onClose: () => void }) {
+  const discountLabel = offer.reward_type === 'percentage_discount' && offer.discount_value != null
+    ? `${offer.discount_value}% off`
+    : offer.discount_value ? `₹${offer.discount_value.toLocaleString('en-IN')} off`
+    : '—';
+  const ms = (offer as any).marketplace_status as string | undefined;
+  const submittedAt = (offer as any).marketplace_submitted_at as string | undefined;
+  const rejectionReason = (offer as any).marketplace_rejection_reason as string | undefined;
+
+  const msLabel: Record<string, { text: string; color: string }> = {
+    pending:          { text: 'Pending admin review', color: 'text-amber-600' },
+    approved:         { text: 'Live on marketplace', color: 'text-green-600' },
+    rejected:         { text: 'Rejected', color: 'text-red-600' },
+    unlist_requested: { text: 'Unlist pending review', color: 'text-orange-600' },
+    unlisted:         { text: 'Unlisted', color: 'text-gray-500' },
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9990] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-start gap-3 p-5 border-b border-gray-100">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-base font-semibold text-gray-900">{offer.title}</h2>
+              <StatusBadge status={offer.status} />
+            </div>
+            {offer.description && <p className="text-sm text-gray-500 mt-1">{offer.description}</p>}
+            <p className="text-xs text-gray-400 mt-1 font-mono">
+              {(offer as any).reward_id || ('RWD-' + offer.id.slice(0, 8).toUpperCase())}
+            </p>
+          </div>
+          <button onClick={onClose}
+            className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Details grid */}
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Discount', value: discountLabel },
+              { label: 'Reward type', value: offer.reward_type?.replace(/_/g, ' ') ?? '—' },
+              { label: 'Code type', value: offer.coupon_type === 'generic' ? 'Generic (reusable)' : 'Unique codes' },
+              { label: 'Available codes', value: offer.coupon_type === 'generic' ? 'Unlimited' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}` },
+              { label: 'Valid until', value: offer.valid_until ? new Date(offer.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : 'No expiry' },
+              { label: 'Tracking', value: offer.tracking_type === 'manual' ? 'Manual' : 'Automatic' },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">{label}</p>
+                <p className="text-sm font-medium text-gray-800 capitalize">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Marketplace status */}
+          {ms && (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Marketplace Status</p>
+              <p className={`text-sm font-medium ${msLabel[ms]?.color ?? 'text-gray-700'}`}>{msLabel[ms]?.text ?? ms}</p>
+              {ms === 'rejected' && rejectionReason && (
+                <p className="text-xs text-red-500 mt-1">Reason: {rejectionReason}</p>
+              )}
+              {submittedAt && (
+                <p className="text-xs text-gray-400 mt-1">Submitted {new Date(submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+              )}
+            </div>
+          )}
+
+          {/* Steps to redeem */}
+          {offer.steps_to_redeem && (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Steps to Redeem</p>
+              <p className="text-sm text-gray-700">{offer.steps_to_redeem}</p>
+            </div>
+          )}
+
+          {/* Redemption link */}
+          {offer.redemption_link && (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Redemption URL</p>
+              <a href={offer.redemption_link} target="_blank" rel="noreferrer"
+                className="text-sm text-blue-600 hover:underline break-all">{offer.redemption_link}</a>
+            </div>
+          )}
+
+          {/* Terms */}
+          {offer.terms_conditions && (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Terms & Conditions</p>
+              <p className="text-xs text-gray-600 leading-relaxed">{offer.terms_conditions}</p>
+            </div>
+          )}
+
+          {/* Generic code */}
+          {offer.coupon_type === 'generic' && offer.generic_coupon_code && (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Coupon Code</p>
+              <p className="text-sm font-mono font-bold text-gray-900 tracking-widest">{offer.generic_coupon_code}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
