@@ -812,7 +812,7 @@ export default function OffersPage() {
                                     ? 'Request Edit'
                                     : 'Edit & Resubmit'}
                               </Btn>
-                              <MoreMenu offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} />
+                              <MoreMenu offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} hidePause />
                             </>
                           }
                         />
@@ -1400,7 +1400,7 @@ function MktRow({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => vo
 }
  
 // ─── More menu (⋯) ────────────────────────────────────────────────────────────
-function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false }: { offer: Offer; onRefresh: () => void; clientId: string; hideMarketplace?: boolean }) {
+function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false, hidePause = false }: { offer: Offer; onRefresh: () => void; clientId: string; hideMarketplace?: boolean; hidePause?: boolean }) {
   const [open, setOpen] = useState(false);
   const [pauseConfirm, setPauseConfirm] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1480,10 +1480,12 @@ function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false }: { off
                 </button>
               );
             })()}
-            <button onClick={handlePauseClick}
-              className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50">
-              {offer.status === 'inactive' ? 'Reactivate' : 'Pause offer'}
-            </button>
+            {!hidePause && (
+              <button onClick={handlePauseClick}
+                className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50">
+                {offer.status === 'inactive' ? 'Reactivate' : 'Pause offer'}
+              </button>
+            )}
           </div>
         )}
       </div>
