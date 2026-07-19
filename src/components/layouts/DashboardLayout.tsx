@@ -22,7 +22,7 @@ interface DashboardLayoutProps {
 const COLLAPSED_KEY = 'goself_sidebar_collapsed';
 
 // ── Tooltip wrapper (shown only in collapsed mode) ────────────────────────────
-function NavTooltip({ label, children }: { label: string; children: ReactNode }) {
+function NavTooltip({ label, section, children }: { label: string; section?: string; children: ReactNode }) {
   const [visible, setVisible] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -36,8 +36,11 @@ function NavTooltip({ label, children }: { label: string; children: ReactNode })
       {children}
       {visible && (
         <div className="absolute left-full ml-2.5 z-[200] whitespace-nowrap">
-          <div className="bg-gray-900 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg shadow-lg">
-            {label}
+          <div className="bg-gray-900 text-white px-2.5 py-1.5 rounded-lg shadow-lg">
+            {section && (
+              <p className="text-[9px] font-bold tracking-widest uppercase text-gray-400 mb-0.5 leading-none">{section}</p>
+            )}
+            <p className="text-xs font-medium leading-none">{label}</p>
             <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
           </div>
         </div>
@@ -81,20 +84,38 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
     const sections = new Set<string>();
     return (
       <div className="h-full flex flex-col">
-        {/* Brand header */}
-        <div className={`border-b border-gray-200 flex items-center ${collapsed ? 'px-0 py-4 justify-center' : 'px-4 py-4'}`}>
+        {/* Brand header + collapse toggle */}
+        <div className={`border-b border-gray-200 flex items-center ${collapsed ? 'flex-col gap-1 py-3 px-1' : 'px-3 py-3 gap-2'}`}>
           {collapsed ? (
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-xs font-bold leading-none">G</span>
-            </div>
+            <>
+              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-xs font-bold leading-none">G</span>
+              </div>
+              <button
+                onClick={toggleCollapsed}
+                title="Expand sidebar"
+                className="w-8 h-7 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </>
           ) : (
-            <div className="min-w-0">
-              <h2 className="text-lg font-bold text-blue-600 leading-none">GoSelf</h2>
-              {theme.brandName && (
-                <p className="text-xs font-semibold text-gray-700 mt-0.5 truncate">{theme.brandName}</p>
-              )}
-              <p className="text-[10px] text-gray-400 mt-0.5">Client Portal</p>
-            </div>
+            <>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg font-bold text-blue-600 leading-none">GoSelf</h2>
+                {theme.brandName && (
+                  <p className="text-xs font-semibold text-gray-700 mt-0.5 truncate">{theme.brandName}</p>
+                )}
+                <p className="text-[10px] text-gray-400 mt-0.5">Client Portal</p>
+              </div>
+              <button
+                onClick={toggleCollapsed}
+                title="Collapse sidebar"
+                className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </>
           )}
         </div>
 
@@ -126,7 +147,7 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
                     <div className="flex flex-col">
                       <div className="flex items-center">
                         {collapsed ? (
-                          <NavTooltip label={item.label}>
+                          <NavTooltip label={item.label} section={item.section}>
                             <Link
                               to={item.path}
                               onClick={() => setSidebarOpen(false)}
@@ -180,24 +201,6 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
           </ul>
         </nav>
 
-        {/* Collapse toggle button */}
-        <div className={`border-t border-gray-200 ${collapsed ? 'p-2 flex justify-center' : 'p-2'}`}>
-          <button
-            onClick={toggleCollapsed}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className={`flex items-center gap-2 text-xs text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors
-              ${collapsed ? 'w-10 h-10 justify-center' : 'w-full px-2.5 py-2'}`}
-          >
-            {collapsed
-              ? <ChevronRight className="w-4 h-4" />
-              : (
-                <>
-                  <ChevronLeft className="w-4 h-4 flex-shrink-0" />
-                  <span className="truncate">Collapse</span>
-                </>
-              )}
-          </button>
-        </div>
       </div>
     );
   }
