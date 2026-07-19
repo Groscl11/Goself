@@ -412,7 +412,6 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
             marketplace_status: 'pending',
             marketplace_submitted_at: new Date().toISOString(),
           } : {}),
-          client_id: clientId || null,
           owner_client_id: clientId,
           brand_id: brandId || null,
           redeems_at_shop_domain: shopDomain || null,
