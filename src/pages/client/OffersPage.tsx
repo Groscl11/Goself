@@ -618,11 +618,39 @@ export default function OffersPage() {
     setTimeout(() => setWidgetSaved(p => ({ ...p, [item.rewardId]: false })), 2000);
   }
 
-  // ── Source type helper ────────────────────────────────────────────────────────
-  function sourceType(offer: Offer): 'own' | 'partner' | 'marketplace' {
-    if (offer.offer_type === 'store_discount') return 'own';
-    if (offer.offer_type === 'partner_voucher') return 'partner';
-    return 'marketplace';
+  // ── Copy-to-clipboard state ───────────────────────────────────────────────────
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  function copyRewardId(id: string) {
+    navigator.clipboard.writeText(id).catch(() => {});
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(p => (p === id ? null : p)), 1500);
+  }
+
+  // ── Discount type label ───────────────────────────────────────────────────────
+  function discountTypeLabel(rt: string): string {
+    const map: Record<string, string> = {
+      flat_discount: 'Flat', percentage_discount: '% Off',
+      free_item: 'Free Item', upto_discount: 'Upto',
+      fixed_value: 'Fixed', other: 'Other',
+    };
+    return map[rt] ?? rt;
+  }
+
+  // ── Brand logo cell ───────────────────────────────────────────────────────────
+  function BrandCell({ offer }: { offer: Offer }) {
+    const logoUrl = (offer as any).owner_client?.logo_url ?? (offer as any).image_url ?? null;
+    const name = (offer as any).owner_client?.name ?? offer.title ?? '';
+    const initials = name.split(/\s+/).slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('') || '?';
+    const [imgErr, setImgErr] = React.useState(false);
+    if (logoUrl && !imgErr) {
+      return <img src={logoUrl} alt={name} onError={() => setImgErr(true)}
+        className="w-8 h-8 rounded-lg object-cover border border-gray-200 flex-shrink-0" />;
+    }
+    return (
+      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-200 flex items-center justify-center flex-shrink-0">
+        <span className="text-[10px] font-bold text-indigo-600 leading-none">{initials}</span>
+      </div>
+    );
   }
  
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -718,11 +746,12 @@ export default function OffersPage() {
               />
             ) : (
               <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
-                <table className="w-full text-sm" style={{ minWidth: '820px' }}>
+                <table className="w-full text-sm" style={{ minWidth: '860px' }}>
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      {['Reward ID', 'Title', 'Discount', 'Type', 'Codes', 'Valid Until', 'Status', ''].map(h => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      <th className="px-3 py-3 w-10" />
+                      {['Reward ID', 'Title', 'Discount Type', 'Code Type', 'Codes', 'Usage', 'Valid Until', 'Status', ''].map(h => (
+                        <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -731,47 +760,61 @@ export default function OffersPage() {
                       const dists = (offer.offer_distributions ?? []) as any[];
                       const inWidget = dists.some(d => d.is_active && ['points_redemption', 'both', 'free_claim'].includes(d.access_type));
                       const campaignCount = (offer as any).campaign_usage_count ?? 0;
-                      const discountLabel = offer.reward_type === 'percentage_discount' && offer.discount_value != null
-                        ? `${offer.discount_value}% off`
-                        : offer.discount_value ? `₹${offer.discount_value.toLocaleString('en-IN')} off` : '—';
                       const codesLabel = offer.coupon_type === 'generic'
                         ? 'Reusable' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}`;
                       const isLowStock = offer.coupon_type === 'unique' && (offer.available_codes ?? 0) < 10;
                       const rewardId = (offer as any).reward_id || ('RWD-' + offer.id.slice(0, 8).toUpperCase());
                       return (
                         <tr key={offer.id} className="hover:bg-gray-50/60 transition-colors">
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{rewardId}</span>
+                          {/* Logo */}
+                          <td className="pl-3 pr-1 py-3"><BrandCell offer={offer} /></td>
+                          {/* Reward ID — click to copy */}
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <button onClick={() => copyRewardId(rewardId)} title="Click to copy"
+                              className="font-mono text-xs text-gray-500 bg-gray-100 hover:bg-gray-200 px-2 py-0.5 rounded transition-colors cursor-copy">
+                              {copiedId === rewardId ? <span className="text-green-600 font-medium">✓ Copied</span> : rewardId}
+                            </button>
                           </td>
-                          <td className="px-4 py-3.5">
-                            <p className="font-semibold text-gray-900 text-sm">{offer.title}</p>
-                            <div className="flex flex-wrap gap-1 mt-0.5">
-                              {inWidget && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-600 border border-blue-100">🔧 Widget</span>}
-                              {campaignCount > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600 border border-purple-100">🎯 {campaignCount} campaign{campaignCount > 1 ? 's' : ''}</span>}
-                            </div>
+                          {/* Title */}
+                          <td className="px-3 py-3">
+                            <p className="font-semibold text-gray-900 text-sm leading-snug">{offer.title}</p>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className="text-xs font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">{discountLabel}</span>
+                          {/* Discount Type */}
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <span className="text-xs text-gray-600">{discountTypeLabel(offer.reward_type)}</span>
                           </td>
-                          <td className="px-4 py-3.5">
+                          {/* Code Type */}
+                          <td className="px-3 py-3">
                             <span className="text-xs text-gray-600 capitalize">{offer.coupon_type}</span>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
+                          {/* Codes */}
+                          <td className="px-3 py-3 whitespace-nowrap">
                             <span className={`text-xs font-medium ${isLowStock ? 'text-red-500' : 'text-gray-700'}`}>{codesLabel}</span>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
+                          {/* Usage (widget + campaigns) */}
+                          <td className="px-3 py-3">
+                            <div className="flex flex-col gap-0.5">
+                              {inWidget && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-600 border border-blue-100 whitespace-nowrap">🔧 Widget</span>}
+                              {campaignCount > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600 border border-purple-100 whitespace-nowrap">🎯 {campaignCount} campaign{campaignCount > 1 ? 's' : ''}</span>}
+                              {!inWidget && campaignCount === 0 && <span className="text-xs text-gray-300">—</span>}
+                            </div>
+                          </td>
+                          {/* Valid Until */}
+                          <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs text-gray-500">
                               {offer.valid_until ? new Date(offer.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                             </span>
                           </td>
-                          <td className="px-4 py-3.5"><StatusBadge status={offer.status} /></td>
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-1.5 justify-end flex-nowrap">
-                              <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>Edit</Btn>
-                              {offer.coupon_type === 'unique' && <Btn onClick={() => setCodesDrawer(offer)}>Codes</Btn>}
-                              <Btn onClick={() => window.location.href = `/client/campaigns?offer_id=${offer.id}`}>Campaign</Btn>
-                              <MoreMenu offer={offer} onRefresh={fetchStoreOffers} clientId={clientId} hideMarketplace />
-                            </div>
+                          {/* Status */}
+                          <td className="px-3 py-3"><StatusBadge status={offer.status} /></td>
+                          {/* Actions */}
+                          <td className="px-3 py-3">
+                            <MoreMenu
+                              offer={offer} onRefresh={fetchStoreOffers} clientId={clientId} hideMarketplace
+                              onEdit={() => { setEditOffer(offer); setNewOfferOpen(true); }}
+                              onCodes={offer.coupon_type === 'unique' ? () => setCodesDrawer(offer) : undefined}
+                              onCampaign={() => { window.location.href = `/client/campaigns?offer_id=${offer.id}`; }}
+                            />
                           </td>
                         </tr>
                       );
@@ -816,11 +859,12 @@ export default function OffersPage() {
               />
             ) : (
               <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
-                <table className="w-full text-sm" style={{ minWidth: '760px' }}>
+                <table className="w-full text-sm" style={{ minWidth: '780px' }}>
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      {['Reward ID', 'Title', 'Type', 'Codes', 'Valid Until', 'Status', ''].map(h => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      <th className="px-3 py-3 w-10" />
+                      {['Reward ID', 'Title', 'Discount Type', 'Code Type', 'Codes', 'Valid Until', 'Status', ''].map(h => (
+                        <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -832,36 +876,41 @@ export default function OffersPage() {
                       const rewardId = (offer as any).reward_id || ('RWD-' + offer.id.slice(0, 8).toUpperCase());
                       return (
                         <tr key={offer.id} className="hover:bg-gray-50/60 transition-colors">
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{rewardId}</span>
+                          <td className="pl-3 pr-1 py-3"><BrandCell offer={offer} /></td>
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <button onClick={() => copyRewardId(rewardId)} title="Click to copy"
+                              className="font-mono text-xs text-gray-500 bg-gray-100 hover:bg-gray-200 px-2 py-0.5 rounded transition-colors cursor-copy">
+                              {copiedId === rewardId ? <span className="text-green-600 font-medium">✓ Copied</span> : rewardId}
+                            </button>
                           </td>
-                          <td className="px-4 py-3.5">
-                            <p className="font-semibold text-gray-900 text-sm">{offer.title}</p>
+                          <td className="px-3 py-3">
+                            <p className="font-semibold text-gray-900 text-sm leading-snug">{offer.title}</p>
                             {(offer.steps_to_redeem || offer.description) && (
-                              <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">
-                                {offer.steps_to_redeem || offer.description}
-                              </p>
+                              <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{offer.steps_to_redeem || offer.description}</p>
                             )}
                           </td>
-                          <td className="px-4 py-3.5">
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <span className="text-xs text-gray-600">{discountTypeLabel(offer.reward_type)}</span>
+                          </td>
+                          <td className="px-3 py-3">
                             <span className="text-xs text-gray-600 capitalize">{offer.coupon_type}</span>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
+                          <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs font-medium text-gray-700">{codesLabel}</span>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
+                          <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs text-gray-500">
                               {offer.valid_until ? new Date(offer.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                             </span>
                           </td>
-                          <td className="px-4 py-3.5"><StatusBadge status={offer.status} /></td>
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-1.5 justify-end flex-nowrap">
-                              <Btn onClick={() => setCodesDrawer(offer)}>Upload Codes</Btn>
-                              <Btn variant="default" className="border-amber-300 text-amber-700 hover:bg-amber-50" onClick={() => setCodesDrawer(offer)}>Redemptions</Btn>
-                              <Btn onClick={() => setPartnerEditTarget({ offer, distribution: dist })}>Edit</Btn>
-                              <Btn onClick={() => window.location.href = `/client/campaigns?offer_id=${offer.id}`}>Campaign</Btn>
-                            </div>
+                          <td className="px-3 py-3"><StatusBadge status={offer.status} /></td>
+                          <td className="px-3 py-3">
+                            <MoreMenu
+                              offer={offer} onRefresh={fetchPartnerOffers} clientId={clientId} hideMarketplace hidePause
+                              onEdit={() => setPartnerEditTarget({ offer, distribution: dist })}
+                              onCodes={() => setCodesDrawer(offer)}
+                              onCampaign={() => { window.location.href = `/client/campaigns?offer_id=${offer.id}`; }}
+                            />
                           </td>
                         </tr>
                       );
@@ -898,11 +947,12 @@ export default function OffersPage() {
               />
             ) : (
               <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
-                <table className="w-full text-sm" style={{ minWidth: '800px' }}>
+                <table className="w-full text-sm" style={{ minWidth: '820px' }}>
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      {['Reward ID', 'Title', 'Submitted', 'Type', 'Codes', 'Marketplace Status', ''].map(h => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      <th className="px-3 py-3 w-10" />
+                      {['Reward ID', 'Title', 'Submitted', 'Discount Type', 'Code Type', 'Codes', 'Marketplace Status', ''].map(h => (
+                        <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -913,39 +963,44 @@ export default function OffersPage() {
                       const codesLabel = offer.coupon_type === 'generic'
                         ? 'Reusable' : `${(offer.available_codes ?? 0).toLocaleString('en-IN')} / ${(offer.total_codes_uploaded ?? 0).toLocaleString('en-IN')}`;
                       const rewardId = (offer as any).reward_id || ('RWD-' + offer.id.slice(0, 8).toUpperCase());
+                      const editLabel = hasPendingEdit ? 'Update Edit Request'
+                        : (offer as any).marketplace_status === 'approved' ? 'Request Edit' : 'Edit & Resubmit';
                       return (
                         <tr key={offer.id} className="hover:bg-gray-50/60 transition-colors">
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{rewardId}</span>
+                          <td className="pl-3 pr-1 py-3"><BrandCell offer={offer} /></td>
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <button onClick={() => copyRewardId(rewardId)} title="Click to copy"
+                              className="font-mono text-xs text-gray-500 bg-gray-100 hover:bg-gray-200 px-2 py-0.5 rounded transition-colors cursor-copy">
+                              {copiedId === rewardId ? <span className="text-green-600 font-medium">✓ Copied</span> : rewardId}
+                            </button>
                           </td>
-                          <td className="px-4 py-3.5">
-                            <p className="font-semibold text-gray-900 text-sm">{offer.title}</p>
-                            {offer.description && (
-                              <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{offer.description}</p>
-                            )}
+                          <td className="px-3 py-3">
+                            <p className="font-semibold text-gray-900 text-sm leading-snug">{offer.title}</p>
+                            {offer.description && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{offer.description}</p>}
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
+                          <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs text-gray-500">
                               {submittedAt ? new Date(submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                             </span>
                           </td>
-                          <td className="px-4 py-3.5">
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <span className="text-xs text-gray-600">{discountTypeLabel(offer.reward_type)}</span>
+                          </td>
+                          <td className="px-3 py-3">
                             <span className="text-xs text-gray-600 capitalize">{offer.coupon_type}</span>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
+                          <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-xs font-medium text-gray-700">{codesLabel}</span>
                           </td>
-                          <td className="px-4 py-3.5">
+                          <td className="px-3 py-3">
                             <MarketplaceStatusBadge offer={offer} hasPendingEdit={hasPendingEdit} />
                           </td>
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-1.5 justify-end flex-nowrap">
-                              <Btn onClick={() => setCodesDrawer(offer)}>Codes</Btn>
-                              <Btn onClick={() => { setEditOffer(offer); setNewOfferOpen(true); }}>
-                                {hasPendingEdit ? 'Update Edit' : (offer as any).marketplace_status === 'approved' ? 'Request Edit' : 'Edit & Resubmit'}
-                              </Btn>
-                              <MoreMenu offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} hidePause />
-                            </div>
+                          <td className="px-3 py-3">
+                            <MoreMenu
+                              offer={offer} onRefresh={fetchSubmissions} clientId={clientId!} hidePause
+                              onCodes={() => setCodesDrawer(offer)}
+                              onEdit={() => { setEditOffer(offer); setNewOfferOpen(true); }}
+                            />
                           </td>
                         </tr>
                       );
@@ -1535,7 +1590,11 @@ function MktRow({ offer, onAdopt }: { offer: MarketplaceOffer; onAdopt: () => vo
 }
  
 // ─── More menu (⋯) ────────────────────────────────────────────────────────────
-function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false, hidePause = false }: { offer: Offer; onRefresh: () => void; clientId: string; hideMarketplace?: boolean; hidePause?: boolean }) {
+function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false, hidePause = false, onEdit, onCodes, onCampaign }: {
+  offer: Offer; onRefresh: () => void; clientId: string;
+  hideMarketplace?: boolean; hidePause?: boolean;
+  onEdit?: () => void; onCodes?: () => void; onCampaign?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [pauseConfirm, setPauseConfirm] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1598,6 +1657,24 @@ function MoreMenu({ offer, onRefresh, clientId, hideMarketplace = false, hidePau
         </Btn>
         {open && (
           <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+            {onEdit && (
+              <button onClick={() => { setOpen(false); onEdit(); }}
+                className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+                Edit Offer
+              </button>
+            )}
+            {onCodes && (
+              <button onClick={() => { setOpen(false); onCodes(); }}
+                className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+                Manage Codes
+              </button>
+            )}
+            {onCampaign && (
+              <button onClick={() => { setOpen(false); onCampaign(); }}
+                className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+                Use in Campaign
+              </button>
+            )}
             {!hideMarketplace && (() => {
               const ms = (offer as any).marketplace_status as string | undefined;
               if (ms === 'unlist_requested') {
