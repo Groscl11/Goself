@@ -1,15 +1,16 @@
 /**
  * AdminMarketplaceApprovals
  *
- * Two sub-tabs:
- *  1. New Submissions — approve/reject marketplace offer submissions
- *  2. Edit Requests   — approve/reject edit requests on already-approved offers
+ * Three sub-tabs:
+ *  1. New Submissions  — approve/reject marketplace offer submissions
+ *  2. Unlist Requests  — approve/deny client requests to remove from marketplace
+ *  3. Edit Requests    — approve/reject edit requests on already-approved offers
  */
 
 import { useState, useEffect, useMemo } from 'react';
 import {
   ShieldCheck, Search, CheckCircle, XCircle, Clock,
-  Building2, X, Check, AlertCircle, ChevronRight, Eye,
+  Building2, X, Check, AlertCircle, Eye, Users,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
@@ -19,7 +20,12 @@ import { Button } from '../../components/ui/Button';
 import { Offer, RewardsEditRequest } from '../../types/offers';
 
 type FilterStatus = 'all' | 'pending' | 'approved' | 'rejected' | 'unlist_requested';
-type SubTab = 'submissions' | 'edits';
+type SubTab = 'submissions' | 'unlist' | 'edits';
+
+interface AdoptingClient {
+  distributing_client_id: string;
+  client: { name: string; logo_url?: string | null } | null;
+}
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -73,30 +79,35 @@ export function AdminMarketplaceApprovals() {
   const [subTab, setSubTab] = useState<SubTab>('submissions');
 
   // ── Submissions state ────────────────────────────────────────────────────────
-  const [offers, setOffers]           = useState<Offer[]>([]);
+  const [offers, setOffers]               = useState<Offer[]>([]);
   const [offersLoading, setOffersLoading] = useState(true);
-  const [subSearch, setSubSearch]     = useState('');
-  const [subFilter, setSubFilter]     = useState<FilterStatus>('pending');
+  const [subSearch, setSubSearch]         = useState('');
+  const [subFilter, setSubFilter]         = useState<FilterStatus>('pending');
+  const [unlistSearch, setUnlistSearch]   = useState('');
 
-  // Reviewing submission
-  const [reviewOffer, setReviewOffer]   = useState<Offer | null>(null);
-  const [offerAction, setOfferAction]   = useState<'approve' | 'reject' | null>(null);
-  const [offerReason, setOfferReason]   = useState('');
-  const [offerSaving, setOfferSaving]   = useState(false);
-  const [offerError, setOfferError]     = useState<string | null>(null);
+  // Reviewing submission / unlist
+  const [reviewOffer, setReviewOffer]     = useState<Offer | null>(null);
+  const [offerAction, setOfferAction]     = useState<'approve' | 'reject' | 'approve_unlist' | 'deny_unlist' | null>(null);
+  const [offerReason, setOfferReason]     = useState('');
+  const [offerSaving, setOfferSaving]     = useState(false);
+  const [offerError, setOfferError]       = useState<string | null>(null);
+
+  // Adopting clients for unlist impact
+  const [adoptingClients, setAdoptingClients]         = useState<AdoptingClient[]>([]);
+  const [adoptingClientsLoading, setAdoptingClientsLoading] = useState(false);
 
   // ── Edit requests state ───────────────────────────────────────────────────────
-  const [editReqs, setEditReqs]         = useState<RewardsEditRequest[]>([]);
-  const [editLoading, setEditLoading]   = useState(true);
-  const [editSearch, setEditSearch]     = useState('');
-  const [editFilter, setEditFilter]     = useState<FilterStatus>('pending');
+  const [editReqs, setEditReqs]           = useState<RewardsEditRequest[]>([]);
+  const [editLoading, setEditLoading]     = useState(true);
+  const [editSearch, setEditSearch]       = useState('');
+  const [editFilter, setEditFilter]       = useState<FilterStatus>('pending');
 
   // Reviewing edit request
-  const [reviewEdit, setReviewEdit]     = useState<RewardsEditRequest | null>(null);
-  const [editAction, setEditAction]     = useState<'approve' | 'reject' | null>(null);
-  const [editReason, setEditReason]     = useState('');
-  const [editSaving, setEditSaving]     = useState(false);
-  const [editError, setEditError]       = useState<string | null>(null);
+  const [reviewEdit, setReviewEdit]       = useState<RewardsEditRequest | null>(null);
+  const [editAction, setEditAction]       = useState<'approve' | 'reject' | null>(null);
+  const [editReason, setEditReason]       = useState('');
+  const [editSaving, setEditSaving]       = useState(false);
+  const [editError, setEditError]         = useState<string | null>(null);
 
   useEffect(() => { fetchOffers(); fetchEditRequests(); }, []);
 
@@ -138,11 +149,23 @@ export function AdminMarketplaceApprovals() {
     setEditLoading(false);
   }
 
+  async function fetchAdoptingClients(offerId: string) {
+    setAdoptingClientsLoading(true);
+    setAdoptingClients([]);
+    const { data, error } = await supabase
+      .from('offer_distributions')
+      .select('distributing_client_id, client:clients!distributing_client_id(name, logo_url)')
+      .eq('offer_id', offerId)
+      .eq('is_active', true);
+    if (error) console.error('[AdminMarketplaceApprovals] fetchAdoptingClients error:', error);
+    setAdoptingClients((data ?? []) as unknown as AdoptingClient[]);
+    setAdoptingClientsLoading(false);
+  }
+
   // ── Counts ───────────────────────────────────────────────────────────────────
 
   const offerCounts = useMemo(() => ({
-    all:              offers.length,
-    // null marketplace_status means not yet reviewed — treat as pending
+    all:              offers.filter(o => (o as any).marketplace_status !== 'unlist_requested').length,
     pending:          offers.filter(o => { const ms = (o as any).marketplace_status; return ms === 'pending' || ms == null; }).length,
     approved:         offers.filter(o => (o as any).marketplace_status === 'approved').length,
     rejected:         offers.filter(o => (o as any).marketplace_status === 'rejected').length,
@@ -158,13 +181,12 @@ export function AdminMarketplaceApprovals() {
 
   // ── Filtered lists ────────────────────────────────────────────────────────────
 
+  // Submissions tab excludes unlist_requested (they have their own tab)
   const filteredOffers = useMemo(() => offers.filter(o => {
     const ms = (o as any).marketplace_status;
-    // null marketplace_status = not yet reviewed, treat as pending
+    if (ms === 'unlist_requested') return false;
     const effectiveStatus = ms ?? 'pending';
-    if (subFilter !== 'all' && subFilter !== 'pending' && effectiveStatus !== subFilter) return false;
-    // pending filter includes null + 'pending'; unlist_requested shown only via its own filter
-    if (subFilter === 'pending' && effectiveStatus !== 'pending') return false;
+    if (subFilter !== 'all' && effectiveStatus !== subFilter) return false;
     const q = subSearch.toLowerCase();
     if (q) {
       return (
@@ -175,6 +197,20 @@ export function AdminMarketplaceApprovals() {
     }
     return true;
   }), [offers, subFilter, subSearch]);
+
+  // Unlist tab — only unlist_requested
+  const filteredUnlist = useMemo(() => offers.filter(o => {
+    if ((o as any).marketplace_status !== 'unlist_requested') return false;
+    const q = unlistSearch.toLowerCase();
+    if (q) {
+      return (
+        o.title.toLowerCase().includes(q) ||
+        ((o as any).reward_id ?? '').toLowerCase().includes(q) ||
+        ((o.owner_client as any)?.name ?? '').toLowerCase().includes(q)
+      );
+    }
+    return true;
+  }), [offers, unlistSearch]);
 
   const filteredEdits = useMemo(() => editReqs.filter(r => {
     if (editFilter !== 'all' && r.status !== editFilter) return false;
@@ -261,23 +297,27 @@ export function AdminMarketplaceApprovals() {
   }
 
   function openOfferReview(offer: Offer, act: 'approve' | 'reject' | 'approve_unlist' | 'deny_unlist') {
-    setReviewOffer(offer); setOfferAction(act as any);
+    setReviewOffer(offer); setOfferAction(act);
     setOfferReason(''); setOfferError(null);
+    if (act === 'approve_unlist' || act === 'deny_unlist') {
+      fetchAdoptingClients(offer.id);
+    }
   }
-  function closeOfferReview() { setReviewOffer(null); setOfferAction(null); }
+  function closeOfferReview() {
+    setReviewOffer(null); setOfferAction(null);
+    setAdoptingClients([]); setAdoptingClientsLoading(false);
+  }
 
   // ── Approve / reject edit request ────────────────────────────────────────────
 
   async function handleApproveEdit() {
     if (!reviewEdit) return;
     setEditSaving(true); setEditError(null);
-    // Merge proposed_changes into the live rewards row
     const { error: rwErr } = await supabase
       .from('rewards')
       .update(reviewEdit.proposed_changes)
       .eq('id', reviewEdit.reward_id);
     if (rwErr) { setEditError(rwErr.message); setEditSaving(false); return; }
-    // Mark request approved
     const { error: reqErr } = await supabase
       .from('rewards_edit_requests')
       .update({
@@ -290,7 +330,7 @@ export function AdminMarketplaceApprovals() {
     if (reqErr) { setEditError(reqErr.message); return; }
     closeEditReview();
     fetchEditRequests();
-    fetchOffers(); // refresh offer list too since live row changed
+    fetchOffers();
   }
 
   async function handleRejectEdit() {
@@ -319,23 +359,139 @@ export function AdminMarketplaceApprovals() {
 
   // ── Stat cards ────────────────────────────────────────────────────────────────
 
-  const statCards = (counts: typeof offerCounts, filter: FilterStatus, setFilter: (f: FilterStatus) => void) => (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+  const subStatCards = (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       {([
-        { label: 'Total',          value: 'all',              count: counts.all,              color: 'text-gray-800',   bg: 'bg-gray-50'   },
-        { label: 'Pending',        value: 'pending',          count: counts.pending,          color: 'text-yellow-700', bg: 'bg-yellow-50' },
-        { label: 'Approved',       value: 'approved',         count: counts.approved,         color: 'text-green-700',  bg: 'bg-green-50'  },
-        { label: 'Rejected',       value: 'rejected',         count: counts.rejected,         color: 'text-red-700',    bg: 'bg-red-50'    },
-        { label: 'Unlist Requests', value: 'unlist_requested', count: counts.unlist_requested, color: 'text-orange-700', bg: 'bg-orange-50' },
-      ] as { label: string; value: FilterStatus; count: number; color: string; bg: string }[]).map(s => (
-        <button key={s.value} onClick={() => setFilter(s.value)}
-          className={`${s.bg} rounded-xl p-4 text-left border-2 transition-all ${filter === s.value ? 'border-blue-400 shadow-sm' : 'border-transparent hover:border-gray-200'}`}>
+        { label: 'Total',    value: 'all' as FilterStatus,      count: offerCounts.all,      color: 'text-gray-800',   bg: 'bg-gray-50'   },
+        { label: 'Pending',  value: 'pending' as FilterStatus,  count: offerCounts.pending,  color: 'text-yellow-700', bg: 'bg-yellow-50' },
+        { label: 'Approved', value: 'approved' as FilterStatus, count: offerCounts.approved, color: 'text-green-700',  bg: 'bg-green-50'  },
+        { label: 'Rejected', value: 'rejected' as FilterStatus, count: offerCounts.rejected, color: 'text-red-700',    bg: 'bg-red-50'    },
+      ]).map(s => (
+        <button key={s.value} onClick={() => setSubFilter(s.value)}
+          className={`${s.bg} rounded-xl p-4 text-left border-2 transition-all ${subFilter === s.value ? 'border-blue-400 shadow-sm' : 'border-transparent hover:border-gray-200'}`}>
           <div className={`text-2xl font-bold ${s.color}`}>{s.count}</div>
           <div className="text-sm text-gray-500 mt-0.5">{s.label}</div>
         </button>
       ))}
     </div>
   );
+
+  const editStatCards = (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+      {([
+        { label: 'Total',    value: 'all' as FilterStatus,      count: editCounts.all,      color: 'text-gray-800',   bg: 'bg-gray-50'   },
+        { label: 'Pending',  value: 'pending' as FilterStatus,  count: editCounts.pending,  color: 'text-yellow-700', bg: 'bg-yellow-50' },
+        { label: 'Approved', value: 'approved' as FilterStatus, count: editCounts.approved, color: 'text-green-700',  bg: 'bg-green-50'  },
+        { label: 'Rejected', value: 'rejected' as FilterStatus, count: editCounts.rejected, color: 'text-red-700',    bg: 'bg-red-50'    },
+      ]).map(s => (
+        <button key={s.value} onClick={() => setEditFilter(s.value)}
+          className={`${s.bg} rounded-xl p-4 text-left border-2 transition-all ${editFilter === s.value ? 'border-blue-400 shadow-sm' : 'border-transparent hover:border-gray-200'}`}>
+          <div className={`text-2xl font-bold ${s.color}`}>{s.count}</div>
+          <div className="text-sm text-gray-500 mt-0.5">{s.label}</div>
+        </button>
+      ))}
+    </div>
+  );
+
+  // ── Shared offer table row ────────────────────────────────────────────────────
+
+  function OfferRow({ offer, isUnlistTab }: { offer: Offer; isUnlistTab?: boolean }) {
+    const ms = (offer as any).marketplace_status as string;
+    return (
+      <tr className="hover:bg-gray-50/80 transition-colors">
+        <td className="px-4 py-3">
+          <span className="font-mono text-xs text-gray-500">{(offer as any).reward_id || '—'}</span>
+        </td>
+        <td className="px-4 py-3">
+          <p className="font-medium text-gray-900 max-w-[200px] truncate">{offer.title}</p>
+          {offer.description && (
+            <p className="text-xs text-gray-400 truncate max-w-[200px]">{offer.description}</p>
+          )}
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            {(offer.owner_client as any)?.logo_url ? (
+              <img src={(offer.owner_client as any).logo_url} alt="" className="w-6 h-6 rounded object-cover flex-shrink-0" />
+            ) : (
+              <div className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center flex-shrink-0">
+                <Building2 className="w-3 h-3 text-gray-400" />
+              </div>
+            )}
+            <span className="text-sm text-gray-700 truncate max-w-[120px]">
+              {(offer.owner_client as any)?.name ?? '—'}
+            </span>
+          </div>
+        </td>
+        <td className="px-4 py-3 text-xs text-gray-600 capitalize">
+          {((offer as any).offer_category ?? '—').replace(/_/g, ' ')}
+        </td>
+        <td className="px-4 py-3 text-xs text-gray-600 capitalize">{offer.coupon_type}</td>
+        <td className="px-4 py-3 text-xs text-gray-400">
+          {fmt((offer as any).marketplace_submitted_at)}
+        </td>
+        {!isUnlistTab && (
+          <td className="px-4 py-3 text-center">
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${statusBadgeCls(ms)}`}>
+              <StatusIcon s={ms} /> {ms}
+            </span>
+            {ms === 'rejected' && (offer as any).marketplace_rejection_reason && (
+              <p className="text-[10px] text-red-500 mt-0.5 max-w-[120px] truncate" title={(offer as any).marketplace_rejection_reason}>
+                {(offer as any).marketplace_rejection_reason}
+              </p>
+            )}
+          </td>
+        )}
+        <td className="px-4 py-3">
+          <div className="flex gap-2 justify-end">
+            {isUnlistTab ? (
+              <>
+                <button onClick={() => openOfferReview(offer, 'approve_unlist')}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200">
+                  <Check className="w-3 h-3" /> Approve Unlist
+                </button>
+                <button onClick={() => openOfferReview(offer, 'deny_unlist')}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200">
+                  <X className="w-3 h-3" /> Deny
+                </button>
+              </>
+            ) : (
+              <>
+                {(ms === 'pending' || ms == null) && (
+                  <>
+                    <button onClick={() => openOfferReview(offer, 'approve')}
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-green-50 text-green-700 hover:bg-green-100 border border-green-200">
+                      <Check className="w-3 h-3" /> Approve
+                    </button>
+                    <button onClick={() => openOfferReview(offer, 'reject')}
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-red-50 text-red-700 hover:bg-red-100 border border-red-200">
+                      <X className="w-3 h-3" /> Reject
+                    </button>
+                  </>
+                )}
+                {ms === 'approved' && (
+                  <button onClick={() => openOfferReview(offer, 'reject')}
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 border border-gray-200">
+                    <X className="w-3 h-3" /> Revoke
+                  </button>
+                )}
+                {ms === 'rejected' && (
+                  <button onClick={() => openOfferReview(offer, 'approve')}
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-green-50 text-green-700 hover:bg-green-100 border border-green-200">
+                    <Check className="w-3 h-3" /> Approve
+                  </button>
+                )}
+              </>
+            )}
+            <button onClick={() => openOfferReview(offer, isUnlistTab ? 'approve_unlist' : (ms === 'pending' || ms == null) ? 'approve' : 'reject')}
+              title="View details"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200">
+              <Eye className="w-3 h-3" />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -351,15 +507,16 @@ export function AdminMarketplaceApprovals() {
         {/* Sub-tabs */}
         <div className="flex gap-2 border-b border-gray-200">
           {([
-            { id: 'submissions' as SubTab, label: 'New Submissions', badge: offerCounts.pending },
-            { id: 'edits'       as SubTab, label: 'Edit Requests',   badge: editCounts.pending },
+            { id: 'submissions' as SubTab, label: 'New Submissions',  badge: offerCounts.pending,          badgeColor: 'bg-yellow-100 text-yellow-700' },
+            { id: 'unlist'      as SubTab, label: 'Unlist Requests',  badge: offerCounts.unlist_requested, badgeColor: 'bg-orange-100 text-orange-700' },
+            { id: 'edits'       as SubTab, label: 'Edit Requests',    badge: editCounts.pending,           badgeColor: 'bg-yellow-100 text-yellow-700' },
           ]).map(t => (
             <button key={t.id} onClick={() => setSubTab(t.id)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
                 ${subTab === t.id ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               {t.label}
               {t.badge > 0 && (
-                <span className="px-1.5 py-0.5 text-xs font-bold bg-yellow-100 text-yellow-700 rounded-full">
+                <span className={`px-1.5 py-0.5 text-xs font-bold rounded-full ${t.badgeColor}`}>
                   {t.badge}
                 </span>
               )}
@@ -370,7 +527,7 @@ export function AdminMarketplaceApprovals() {
         {/* ── SUB-TAB 1: New Submissions ───────────────────────────────────── */}
         {subTab === 'submissions' && (
           <div>
-            {statCards(offerCounts, subFilter, setSubFilter)}
+            {subStatCards}
             <Card>
               <div className="p-4 border-b border-gray-100">
                 <div className="relative max-w-sm">
@@ -404,98 +561,7 @@ export function AdminMarketplaceApprovals() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {filteredOffers.map(offer => {
-                        const ms = (offer as any).marketplace_status as string;
-                        return (
-                          <tr key={offer.id} className="hover:bg-gray-50/80 transition-colors">
-                            <td className="px-4 py-3">
-                              <span className="font-mono text-xs text-gray-500">{(offer as any).reward_id || '—'}</span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <p className="font-medium text-gray-900 max-w-[200px] truncate">{offer.title}</p>
-                              {offer.description && (
-                                <p className="text-xs text-gray-400 truncate max-w-[200px]">{offer.description}</p>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                {(offer.owner_client as any)?.logo_url ? (
-                                  <img src={(offer.owner_client as any).logo_url} alt="" className="w-6 h-6 rounded object-cover flex-shrink-0" />
-                                ) : (
-                                  <div className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center flex-shrink-0">
-                                    <Building2 className="w-3 h-3 text-gray-400" />
-                                  </div>
-                                )}
-                                <span className="text-sm text-gray-700 truncate max-w-[120px]">
-                                  {(offer.owner_client as any)?.name ?? '—'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-xs text-gray-600 capitalize">
-                              {((offer as any).offer_category ?? '—').replace(/_/g, ' ')}
-                            </td>
-                            <td className="px-4 py-3 text-xs text-gray-600 capitalize">{offer.coupon_type}</td>
-                            <td className="px-4 py-3 text-xs text-gray-400">
-                              {fmt((offer as any).marketplace_submitted_at)}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${statusBadgeCls(ms)}`}>
-                                <StatusIcon s={ms} /> {ms}
-                              </span>
-                              {ms === 'rejected' && (offer as any).marketplace_rejection_reason && (
-                                <p className="text-[10px] text-red-500 mt-0.5 max-w-[120px] truncate" title={(offer as any).marketplace_rejection_reason}>
-                                  {(offer as any).marketplace_rejection_reason}
-                                </p>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex gap-2 justify-end">
-                                {(ms === 'pending' || ms == null) && (
-                                  <>
-                                    <button onClick={() => openOfferReview(offer, 'approve')}
-                                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-green-50 text-green-700 hover:bg-green-100 border border-green-200">
-                                      <Check className="w-3 h-3" /> Approve
-                                    </button>
-                                    <button onClick={() => openOfferReview(offer, 'reject')}
-                                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-red-50 text-red-700 hover:bg-red-100 border border-red-200">
-                                      <X className="w-3 h-3" /> Reject
-                                    </button>
-                                  </>
-                                )}
-                                {ms === 'approved' && (
-                                  <button onClick={() => openOfferReview(offer, 'reject')}
-                                    className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 border border-gray-200">
-                                    <X className="w-3 h-3" /> Revoke
-                                  </button>
-                                )}
-                                {ms === 'rejected' && (
-                                  <button onClick={() => openOfferReview(offer, 'approve')}
-                                    className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-green-50 text-green-700 hover:bg-green-100 border border-green-200">
-                                    <Check className="w-3 h-3" /> Approve
-                                  </button>
-                                )}
-                                {ms === 'unlist_requested' && (
-                                  <>
-                                    <button onClick={() => openOfferReview(offer, 'approve_unlist' as any)}
-                                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200">
-                                      <Check className="w-3 h-3" /> Approve Unlist
-                                    </button>
-                                    <button onClick={() => openOfferReview(offer, 'deny_unlist' as any)}
-                                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200">
-                                      <X className="w-3 h-3" /> Deny
-                                    </button>
-                                  </>
-                                )}
-                                <button onClick={() => openOfferReview(offer, (ms === 'pending' || ms == null) ? 'approve' : ms === 'unlist_requested' ? 'approve_unlist' as any : 'reject')}
-                                  title="View details"
-                                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200">
-                                  <Eye className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {filteredOffers.map(offer => <OfferRow key={offer.id} offer={offer} />)}
                     </tbody>
                   </table>
                 </div>
@@ -504,10 +570,62 @@ export function AdminMarketplaceApprovals() {
           </div>
         )}
 
-        {/* ── SUB-TAB 2: Edit Requests ─────────────────────────────────────── */}
+        {/* ── SUB-TAB 2: Unlist Requests ───────────────────────────────────── */}
+        {subTab === 'unlist' && (
+          <div>
+            <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-xl text-sm text-orange-800 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-orange-600" />
+              <span>
+                These clients want to remove their offers from the marketplace. Approving will immediately revoke access for all adopter clients.
+                Denying keeps the offer live.
+              </span>
+            </div>
+
+            <div className="mb-4">
+              <div className="relative max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <input type="text" value={unlistSearch} onChange={e => setUnlistSearch(e.target.value)}
+                  placeholder="Search by title, reward ID or client…"
+                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white" />
+              </div>
+            </div>
+
+            <Card>
+              {offersLoading ? (
+                <div className="flex items-center justify-center min-h-60 text-gray-400 text-sm">Loading…</div>
+              ) : filteredUnlist.length === 0 ? (
+                <div className="flex flex-col items-center justify-center min-h-60 gap-3">
+                  <ShieldCheck className="w-12 h-12 text-gray-200" />
+                  <p className="text-sm text-gray-400">No pending unlist requests</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50/50">
+                        <th className="text-left px-4 py-3 font-medium text-gray-500">Reward ID</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500">Title</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500">Owner</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500">Category</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500">Type</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500">Submitted</th>
+                        <th className="px-4 py-3 w-56"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {filteredUnlist.map(offer => <OfferRow key={offer.id} offer={offer} isUnlistTab />)}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        {/* ── SUB-TAB 3: Edit Requests ─────────────────────────────────────── */}
         {subTab === 'edits' && (
           <div>
-            {statCards(editCounts, editFilter, setEditFilter)}
+            {editStatCards}
             <Card>
               <div className="p-4 border-b border-gray-100">
                 <div className="relative max-w-sm">
@@ -621,15 +739,15 @@ export function AdminMarketplaceApprovals() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div className="flex items-center gap-2">
-                {(offerAction === 'approve' || (offerAction as string) === 'deny_unlist')
+                {(offerAction === 'approve' || offerAction === 'deny_unlist')
                   ? <CheckCircle className="w-5 h-5 text-green-600" />
-                  : (offerAction as string) === 'approve_unlist'
+                  : offerAction === 'approve_unlist'
                     ? <XCircle className="w-5 h-5 text-orange-500" />
                     : <XCircle className="w-5 h-5 text-red-500" />}
                 <h2 className="font-semibold text-gray-900">
                   {offerAction === 'approve' ? 'Approve Offer'
-                    : (offerAction as string) === 'approve_unlist' ? 'Approve Unlist Request'
-                    : (offerAction as string) === 'deny_unlist' ? 'Deny Unlist Request'
+                    : offerAction === 'approve_unlist' ? 'Approve Unlist Request'
+                    : offerAction === 'deny_unlist' ? 'Deny Unlist Request'
                     : 'Reject Offer'}
                 </h2>
               </div>
@@ -708,6 +826,50 @@ export function AdminMarketplaceApprovals() {
                 </div>
               )}
 
+              {/* ── Adopter impact panel (unlist actions only) ──────────────── */}
+              {(offerAction === 'approve_unlist' || offerAction === 'deny_unlist') && (
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <Users className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm font-semibold text-gray-700">
+                      Impacted Clients
+                    </span>
+                    {!adoptingClientsLoading && (
+                      <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded-full ${adoptingClients.length > 0 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {adoptingClients.length} adopter{adoptingClients.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    {adoptingClientsLoading ? (
+                      <p className="text-xs text-gray-400 text-center py-3">Loading adopters…</p>
+                    ) : adoptingClients.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-3">No active adopters — safe to unlist.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs text-orange-700 mb-2">
+                          {offerAction === 'approve_unlist'
+                            ? 'Approving will immediately revoke this offer from these clients\' loyalty programs:'
+                            : 'These clients currently use this offer in their loyalty programs:'}
+                        </p>
+                        {adoptingClients.map((ac, i) => (
+                          <div key={ac.distributing_client_id ?? i} className="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-gray-50">
+                            {ac.client?.logo_url ? (
+                              <img src={ac.client.logo_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0 border border-gray-200" />
+                            ) : (
+                              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-200 flex items-center justify-center flex-shrink-0">
+                                <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+                              </div>
+                            )}
+                            <span className="text-sm text-gray-800 font-medium">{ac.client?.name ?? 'Unknown client'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {offerError && (
                 <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
                   <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -747,14 +909,17 @@ export function AdminMarketplaceApprovals() {
                 </div>
               )}
 
-              {(offerAction as string) === 'approve_unlist' && (
+              {offerAction === 'approve_unlist' && (
                 <div className="space-y-3">
                   <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
-                    Approving the unlist will remove this offer from the marketplace immediately. Adopters will lose access.
+                    Approving the unlist will remove this offer from the marketplace immediately.
+                    {adoptingClients.length > 0
+                      ? ` All ${adoptingClients.length} adopter client${adoptingClients.length !== 1 ? 's' : ''} will lose access.`
+                      : ' No clients will be impacted.'}
                   </div>
                   <div className="flex gap-3">
                     <Button variant="secondary" onClick={closeOfferReview} className="flex-1">Cancel</Button>
-                    <Button onClick={handleApproveUnlist} disabled={offerSaving}
+                    <Button onClick={handleApproveUnlist} disabled={offerSaving || adoptingClientsLoading}
                       className="flex-1 bg-orange-600 hover:bg-orange-700 text-white">
                       <Check className="w-4 h-4 mr-1.5" />
                       {offerSaving ? 'Processing…' : 'Approve Unlist'}
@@ -763,10 +928,11 @@ export function AdminMarketplaceApprovals() {
                 </div>
               )}
 
-              {(offerAction as string) === 'deny_unlist' && (
+              {offerAction === 'deny_unlist' && (
                 <div className="space-y-3">
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
                     Denying the request keeps this offer live on the marketplace.
+                    {adoptingClients.length > 0 && ` ${adoptingClients.length} client${adoptingClients.length !== 1 ? 's' : ''} will continue to have access.`}
                   </div>
                   <div className="flex gap-3">
                     <Button variant="secondary" onClick={closeOfferReview} className="flex-1">Cancel</Button>
@@ -802,7 +968,6 @@ export function AdminMarketplaceApprovals() {
             </div>
 
             <div className="p-5 space-y-4">
-              {/* Meta */}
               <div className="bg-gray-50 rounded-xl p-4 text-sm space-y-1">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Offer</span>
@@ -818,7 +983,6 @@ export function AdminMarketplaceApprovals() {
                 </div>
               </div>
 
-              {/* Before / after diff */}
               <div>
                 <p className="text-sm font-semibold text-gray-700 mb-3">Proposed Changes</p>
                 <FieldDiff label="Title"
@@ -845,7 +1009,6 @@ export function AdminMarketplaceApprovals() {
                 <FieldDiff label="Valid Until"
                   current={reviewEdit.reward?.valid_until}
                   proposed={reviewEdit.proposed_changes.valid_until} />
-                {/* Show any remaining fields not explicitly listed */}
                 {Object.keys(reviewEdit.proposed_changes)
                   .filter(k => !['title','description','terms_conditions','steps_to_redeem','discount_value','generic_coupon_code','redemption_link','valid_until'].includes(k))
                   .map(k => (
