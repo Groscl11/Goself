@@ -293,7 +293,9 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
       const rewardPayload = {
         title: form.title.trim(),
         description: form.description.trim() || null,
-        offer_type: mode === 'marketplace' ? 'marketplace_offer' : 'store_discount',
+        // Never overwrite offer_type on edit — preserve what's in the DB.
+        // Recalculate only for new offers where mode is the authoritative source.
+        offer_type: editOffer ? editOffer.offer_type : (mode === 'marketplace' ? 'marketplace_offer' : 'store_discount'),
         offer_category: form.offer_category || 'other',
         offer_priority: Number(form.offer_priority) || 0,
         starts_at: form.starts_at || null,
