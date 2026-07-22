@@ -173,6 +173,7 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
         if (/\s/.test(code)) { setError('Coupon code must not contain spaces'); return false; }
         if (!/^[A-Z0-9_-]+$/i.test(code)) { setError('Coupon code may only contain letters, numbers, hyphens and underscores'); return false; }
       }
+      if (!form.valid_until) { setError('Expiry date is required'); return false; }
     }
     if (step === 3) {
       const showPoints = form.access_type !== 'campaign_reward';
