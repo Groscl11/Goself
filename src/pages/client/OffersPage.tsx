@@ -940,7 +940,13 @@ export default function OffersPage() {
                           <td className="px-3 py-3">
                             <MoreMenu
                               offer={offer} onRefresh={fetchPartnerOffers} clientId={clientId} hideMarketplace hidePause
-                              onEdit={() => setPartnerEditTarget({ offer, distribution: dist })}
+                              onEdit={() => {
+                                const allDists = (offer.offer_distributions ?? []) as OfferDistribution[];
+                                const latestDist = allDists
+                                  .filter(d => d.distributing_client_id === clientId)
+                                  .sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime())[0] ?? null;
+                                setPartnerEditTarget({ offer, distribution: latestDist });
+                              }}
                               onCodes={offer.coupon_type === 'unique' ? () => setCodesDrawer(offer) : undefined}
                               onCampaign={() => { window.location.href = `/client/campaigns?offer_id=${offer.id}`; }}
                             />
