@@ -258,6 +258,8 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
     try {
       if (!form.title.trim()) throw new Error('Offer title is required');
 
+      if (!form.valid_until) throw new Error('Expiry date is required');
+
       if (!form.offer_category) throw new Error('Please select an offer category');
 
       if (form.reward_type !== 'free_item') {
@@ -894,19 +896,13 @@ export function NewOfferDrawer({ open, onClose, clientId, brandId, shopDomain, o
             </Field>
           )}
 
-          {/* Expiry — opt-in toggle */}
+          {/* Expiry — mandatory */}
           <div>
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input type="checkbox" checked={useExpiry} onChange={e => {
-                setUseExpiry(e.target.checked);
-                if (!e.target.checked) set('valid_until', '');
-              }} className="accent-gray-900" />
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Set expiry date</span>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              Expiry Date *
             </label>
-            {useExpiry && (
-              <input type="date" value={form.valid_until} onChange={e => set('valid_until', e.target.value)}
-                className="input-base mt-2" />
-            )}
+            <input type="date" value={form.valid_until} onChange={e => set('valid_until', e.target.value)}
+              className="input-base" />
           </div>
 
           {/* Marketplace-only mandatory fields */}
