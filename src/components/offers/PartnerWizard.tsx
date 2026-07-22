@@ -187,11 +187,23 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
     if (!validateStep()) return;
     if (step < 3) { setStep((step + 1) as Step); return; }
     if (!clientId) {
-      setError('Your session has expired. Please refresh the page and try again.');
+      setError('Session not ready — please refresh the page and try again.');
       return;
     }
     // Step 3 → submit
     setLoading(true);
+    try {
+      // Verify the Supabase session is valid before attempting INSERT.
+      // In Shopify embedded apps the iframe can lose the session silently.
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      if (!authSession) {
+        setError('Authentication required — please refresh the page to re-authenticate.');
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Non-fatal: proceed; the INSERT itself will surface auth errors.
+    }
     try {
       const showPoints = form.access_type !== 'campaign_reward';
       const isEdit = Boolean(editTarget?.offer?.id);
