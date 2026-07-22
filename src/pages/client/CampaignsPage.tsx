@@ -495,13 +495,6 @@ function CampaignDrawer({ open, onClose, initial, clientId, onSaved, defaultMode
                     desc: 'Automatically enroll members into your loyalty program when a trigger condition is met.',
                     tags: ['Auto-enroll', 'Order-based', 'Event-based'],
                   },
-                  {
-                    value: 'instant_reward' as RuleMode,
-                    icon: '⚡',
-                    title: 'Instant Reward Campaign',
-                    desc: 'Generate reward links instantly on the thank-you page — no waiting. Works with the Instant Post-Purchase Rewards plugin.',
-                    tags: ['Instant', 'Thank-you page', 'No delay'],
-                  },
                 ].map(opt => (
                   <button
                     key={opt.value}
