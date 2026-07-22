@@ -186,6 +186,10 @@ export function PartnerWizard({ open, onClose, clientId, shopDomain, editTarget,
   async function handleNext() {
     if (!validateStep()) return;
     if (step < 3) { setStep((step + 1) as Step); return; }
+    if (!clientId) {
+      setError('Your session has expired. Please refresh the page and try again.');
+      return;
+    }
     // Step 3 → submit
     setLoading(true);
     try {
