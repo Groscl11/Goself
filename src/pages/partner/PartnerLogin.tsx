@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Building2, Mail, KeyRound, ArrowRight, CheckCircle, AlertCircle } from 'lucide-react';
+import { Building2, Mail, ArrowRight, CheckCircle, AlertCircle, Inbox } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface ClientBranding {
@@ -11,7 +11,7 @@ interface ClientBranding {
   welcome_message: string | null;
 }
 
-type Step = 'email' | 'otp' | 'denied';
+type Step = 'email' | 'sent' | 'denied';
 
 export default function PartnerLogin() {
   const { slug } = useParams<{ slug: string }>();
@@ -23,7 +23,6 @@ export default function PartnerLogin() {
 
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -51,40 +50,21 @@ export default function PartnerLogin() {
     });
   }, [slug, navigate]);
 
-  async function handleSendOtp(e: React.FormEvent) {
+  async function handleSendLink(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
+      // redirectTo must be in Supabase's allowed redirect URLs list
+      const redirectTo = `${window.location.origin}/partner/${slug}/dashboard`;
+      const { error: linkError } = await supabase.auth.signInWithOtp({
         email: email.trim().toLowerCase(),
-        options: { shouldCreateUser: true },
+        options: { shouldCreateUser: true, emailRedirectTo: redirectTo },
       });
-      if (otpError) throw otpError;
-      setStep('otp');
+      if (linkError) throw linkError;
+      setStep('sent');
     } catch (err: any) {
-      setError(err.message || 'Could not send code. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleVerifyOtp(e: React.FormEvent) {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const { data, error: verifyError } = await supabase.auth.verifyOtp({
-        email: email.trim().toLowerCase(),
-        token: otp.trim(),
-        type: 'email',
-      });
-      if (verifyError) throw verifyError;
-      if (!data.session) throw new Error('Verification failed. Please try again.');
-      // Redirect — dashboard will verify partner access server-side
-      navigate(`/partner/${slug}/dashboard`, { replace: true });
-    } catch (err: any) {
-      setError(err.message || 'Invalid code. Please check and try again.');
+      setError(err.message || 'Could not send magic link. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -146,7 +126,7 @@ export default function PartnerLogin() {
                 </div>
               )}
 
-              <form onSubmit={handleSendOtp} className="space-y-4">
+              <form onSubmit={handleSendLink} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Email address
@@ -174,77 +154,38 @@ export default function PartnerLogin() {
                   {loading ? (
                     <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <>Send code <ArrowRight className="h-4 w-4" /></>
+                    <>Send magic link <ArrowRight className="h-4 w-4" /></>
                   )}
                 </button>
               </form>
             </>
           )}
 
-          {step === 'otp' && (
-            <>
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle className="h-5 w-5" style={{ color: accent }} />
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Check your email</h2>
-                </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  We sent a 6-digit code to <span className="font-medium text-gray-700 dark:text-gray-300">{email}</span>
-                </p>
+          {step === 'sent' && (
+            <div className="text-center py-2">
+              <div
+                className="h-14 w-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                style={{ backgroundColor: accent + '15' }}
+              >
+                <Inbox className="h-7 w-7" style={{ color: accent }} />
               </div>
-
-              {error && (
-                <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-600 dark:text-red-400">
-                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                  {error}
-                </div>
-              )}
-
-              <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Verification code
-                  </label>
-                  <div className="relative">
-                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={6}
-                      required
-                      value={otp}
-                      onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
-                      placeholder="123456"
-                      className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 text-sm tracking-widest font-mono"
-                      style={{ '--tw-ring-color': accent } as React.CSSProperties}
-                      autoFocus
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading || otp.length < 6}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-white text-sm font-medium transition-opacity disabled:opacity-50"
-                  style={{ backgroundColor: accent }}
-                >
-                  {loading ? (
-                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>Verify &amp; continue <ArrowRight className="h-4 w-4" /></>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setStep('email'); setOtp(''); setError(''); }}
-                  className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 py-1"
-                >
-                  Use a different email
-                </button>
-              </form>
-            </>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-2">Check your inbox</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+                We sent a sign-in link to
+              </p>
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-5">{email}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+                Click the <strong>Log In</strong> link in the email — it will open your partner dashboard directly.
+                The link expires in 1 hour.
+              </p>
+              <button
+                onClick={() => { setStep('email'); setError(''); }}
+                className="text-sm font-medium hover:underline"
+                style={{ color: accent }}
+              >
+                Use a different email
+              </button>
+            </div>
           )}
 
           {step === 'denied' && (
@@ -256,7 +197,7 @@ export default function PartnerLogin() {
                 Please contact the brand to get access.
               </p>
               <button
-                onClick={() => { setStep('email'); setEmail(''); setOtp(''); setError(''); supabase.auth.signOut(); }}
+                onClick={() => { setStep('email'); setEmail(''); setError(''); supabase.auth.signOut(); }}
                 className="text-sm font-medium hover:underline"
                 style={{ color: accent }}
               >

@@ -67,7 +67,21 @@ export default function PartnerDashboard() {
     setLoading(true);
     setError('');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      // Handle magic link redirect: #access_token=... is in the URL hash
+      // supabase-js detects this automatically, but we give it a moment to process
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        // Wait for the auth state change event (magic link processing)
+        await new Promise<void>(resolve => {
+          const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+            if (s) { subscription.unsubscribe(); resolve(); }
+          });
+          // Fallback timeout — if no event in 3s, give up
+          setTimeout(() => { subscription.unsubscribe(); resolve(); }, 3000);
+        });
+        const refreshed = await supabase.auth.getSession();
+        session = refreshed.data.session;
+      }
       if (!session) { navigate(`/partner/${slug}`, { replace: true }); return; }
 
       const res = await fetch(`${supabaseUrl}/functions/v1/get-partner-stats`, {
