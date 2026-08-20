@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Link2, Users, BarChart3, Plus, X, ChevronLeft, Trash2, Edit2,
-  Pause, Play, TrendingUp, ShoppingBag, Copy, ExternalLink, Search,
+  Pause, Play, TrendingUp, ShoppingBag, Copy, ExternalLink, Search, Check,
 } from 'lucide-react';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -811,6 +811,9 @@ export default function AffiliatesPage() {
   const { profile } = useAuth();
   const clientId = profile?.client_id ?? '';
 
+  const [clientSlug, setClientSlug] = useState<string | null>(null);
+  const [portalUrlCopied, setPortalUrlCopied] = useState(false);
+
   const [view, setView] = useState<'list' | 'detail' | 'analytics'>('list');
   const [partners, setPartners] = useState<Partner[]>([]);
   const [orders, setOrders] = useState<ShopifyOrder[]>([]);
@@ -826,7 +829,7 @@ export default function AffiliatesPage() {
   const loadData = useCallback(async () => {
     if (!clientId) return;
     setLoading(true);
-    const [{ data: partnersData }, { data: ordersData }] = await Promise.all([
+    const [{ data: partnersData }, { data: ordersData }, { data: clientData }] = await Promise.all([
       supabase
         .from('affiliate_partners')
         .select('*, affiliate_partner_platforms(*), affiliate_code_assignments(*)')
@@ -837,9 +840,11 @@ export default function AffiliatesPage() {
         .select('shopify_order_id, customer_email, total_price, processed_at, order_data')
         .eq('client_id', clientId)
         .not('order_data', 'is', null),
+      supabase.from('clients').select('slug').eq('id', clientId).maybeSingle(),
     ]);
     setPartners((partnersData as Partner[]) ?? []);
     setOrders((ordersData as ShopifyOrder[]) ?? []);
+    if (clientData && (clientData as any).slug) setClientSlug((clientData as any).slug);
     setLoading(false);
   }, [clientId]);
 
@@ -916,6 +921,43 @@ export default function AffiliatesPage() {
             </button>
           </div>
         </div>
+
+        {/* Partner Portal URL card */}
+        {clientSlug && (
+          <div className="flex items-center justify-between bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                <ExternalLink className="h-4 w-4 text-indigo-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900">Partner Portal</p>
+                <p className="text-xs text-indigo-700 font-mono truncate">
+                  {window.location.origin}/partner/{clientSlug}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 ml-3">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/partner/${clientSlug}`);
+                  setPortalUrlCopied(true);
+                  setTimeout(() => setPortalUrlCopied(false), 1500);
+                }}
+                className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-white border border-indigo-200 rounded-lg px-3 py-1.5"
+              >
+                {portalUrlCopied ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy link</>}
+              </button>
+              <a
+                href={`/partner/${clientSlug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-white border border-indigo-200 rounded-lg px-3 py-1.5"
+              >
+                Preview
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         {loading ? (

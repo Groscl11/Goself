@@ -97,6 +97,8 @@ const AffiliatesPage = lazy(() => import('./pages/client/AffiliatesPage'));
 const CouponCodesPage = lazy(() => import('./pages/client/CouponCodesPage'));
 const UTMLinksPage = lazy(() => import('./pages/client/UTMLinksPage'));
 const AttributionReportsPage = lazy(() => import('./pages/client/AttributionReportsPage'));
+const PartnerLogin = lazy(() => import('./pages/partner/PartnerLogin'));
+const PartnerDashboard = lazy(() => import('./pages/partner/PartnerDashboard'));
 
 function LogoutRoute() {
   const { signOut } = useAuth();
@@ -155,6 +157,9 @@ function App() {
           <Route path="/shopify/install" element={<ShopifyInstall />} />
           <Route path="/join/:clientSlug" element={<PublicRoute><ClientRegistration /></PublicRoute>} />
           <Route path="/join/:clientSlug/programs" element={<ProgramDiscovery />} />
+          {/* Partner portal — public routes */}
+          <Route path="/partner/:slug" element={<Suspense fallback={null}><PartnerLogin /></Suspense>} />
+          <Route path="/partner/:slug/dashboard" element={<Suspense fallback={null}><PartnerDashboard /></Suspense>} />
           <Route path="/redeem" element={<RewardRedemption />} />
           <Route path="/redeem/:token" element={<RedeemRewards />} />
           <Route path="/claim/:token" element={<ClaimReward />} />
