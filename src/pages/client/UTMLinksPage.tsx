@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Link2, Plus, X, Copy, Check, Trash2, Search, MousePointer,
+  Scissors, ExternalLink, Settings2, ChevronDown,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,6 +11,7 @@ import { clientMenuItems } from './clientMenuItems';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type PartnerType = 'influencer' | 'creator' | 'brand' | 'other';
+type SlugPrefix = 'ref' | 'aff' | 'bg_ref' | 'bg_aff';
 
 interface Partner {
   id: string;
@@ -21,7 +23,9 @@ interface UTMLink {
   id: string;
   client_id: string;
   partner_id: string | null;
-  slug: string;
+  slug: string | null;               // short link path — nullable, on-demand
+  attribution_param_name: string;    // e.g. 'bg_ref'
+  attribution_param_value: string | null; // e.g. 'ss_x7k2m9'
   destination_url: string;
   utm_source: string | null;
   utm_medium: string | null;
@@ -61,40 +65,54 @@ function fmtDate(iso: string) {
 
 const TYPE_BADGE: Record<string, string> = {
   influencer: 'bg-pink-100 text-pink-700',
-  creator: 'bg-orange-100 text-orange-700',
-  brand: 'bg-blue-100 text-blue-700',
-  other: 'bg-gray-100 text-gray-600',
+  creator:    'bg-orange-100 text-orange-700',
+  brand:      'bg-blue-100 text-blue-700',
+  other:      'bg-gray-100 text-gray-600',
 };
 
-function buildUtmUrl(destUrl: string, source: string, medium: string, campaign: string, content: string, term: string, slug: string): string {
+const PREFIX_OPTIONS: { value: SlugPrefix; label: string; description: string }[] = [
+  { value: 'ref',    label: 'ref=',    description: 'Generic referral — works everywhere' },
+  { value: 'aff',   label: 'aff=',    description: 'Affiliate — may be blocked by ad blockers' },
+  { value: 'bg_ref', label: 'bg_ref=', description: 'Branded referral — unique to your platform' },
+  { value: 'bg_aff', label: 'bg_aff=', description: 'Branded affiliate — unique to your platform' },
+];
+
+function nanoId(len = 6): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+
+function computeAttributionValue(partnerName: string): string {
+  const pi = partnerName
+    ? partnerName.split(/\s+/).map(w => w[0]?.toLowerCase() ?? '').filter(Boolean).join('')
+    : '';
+  const base = pi ? `${pi}_` : '';
+  return `${base}${nanoId(6)}`;
+}
+
+function buildAttributionUrl(
+  destUrl: string,
+  paramName: string,
+  paramValue: string,
+  source: string,
+  medium: string,
+  campaign: string,
+  content: string,
+  term: string,
+): string {
   if (!destUrl) return '';
   const params: string[] = [];
-  if (source) params.push(`utm_source=${encodeURIComponent(source)}`);
-  if (medium) params.push(`utm_medium=${encodeURIComponent(medium)}`);
+  if (paramValue) params.push(`${paramName}=${encodeURIComponent(paramValue)}`);
+  if (source)   params.push(`utm_source=${encodeURIComponent(source)}`);
+  if (medium)   params.push(`utm_medium=${encodeURIComponent(medium)}`);
   if (campaign) params.push(`utm_campaign=${encodeURIComponent(campaign)}`);
-  if (content) params.push(`utm_content=${encodeURIComponent(content)}`);
-  if (term) params.push(`utm_term=${encodeURIComponent(term)}`);
-  if (slug) params.push(`ref=ATT-${encodeURIComponent(slug)}`);
-  const separator = destUrl.includes('?') ? '&' : '?';
-  return params.length > 0 ? `${destUrl}${separator}${params.join('&')}` : destUrl;
+  if (content)  params.push(`utm_content=${encodeURIComponent(content)}`);
+  if (term)     params.push(`utm_term=${encodeURIComponent(term)}`);
+  const sep = destUrl.includes('?') ? '&' : '?';
+  return params.length > 0 ? `${destUrl}${sep}${params.join('&')}` : destUrl;
 }
 
-function computeSlug(partnerName: string, campaign: string): string {
-  const prefix = partnerName
-    .split(/\s+/)
-    .map(w => w[0]?.toUpperCase() ?? '')
-    .join('');
-  const suffix = campaign
-    .replace(/[^a-zA-Z0-9]/g, '')
-    .toUpperCase()
-    .slice(0, 6);
-  if (!prefix && !suffix) return '';
-  if (!suffix) return prefix;
-  if (!prefix) return suffix;
-  return `${prefix}-${suffix}`;
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
+const SHORT_BASE = 'https://go.goself.app/s';
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-gray-200 rounded ${className}`} />;
@@ -111,26 +129,32 @@ export default function UTMLinksPage() {
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState('');
 
+  // Client-level prefix setting
+  const [slugPrefix, setSlugPrefix] = useState<SlugPrefix>('ref');
+  const [showPrefixSettings, setShowPrefixSettings] = useState(false);
+  const [savingPrefix, setSavingPrefix] = useState(false);
+
   // Builder form state
   const [destUrl, setDestUrl] = useState('');
   const [partnerId, setPartnerId] = useState('');
   const [campaign, setCampaign] = useState('');
   const [medium, setMedium] = useState('');
-  const [slug, setSlug] = useState('');
   const [attrWindow, setAttrWindow] = useState(30);
   const [content, setContent] = useState('');
   const [term, setTerm] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
+  // Per-link state
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [shorteningId, setShorteningId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const loadData = useCallback(async () => {
     if (!clientId) return;
     setLoading(true);
     setPageError('');
-    const [{ data: partnersData, error: pErr }, { data: linksData, error: lErr }] =
+    const [{ data: partnersData, error: pErr }, { data: linksData, error: lErr }, { data: clientData }] =
       await Promise.all([
         supabase
           .from('affiliate_partners')
@@ -143,20 +167,27 @@ export default function UTMLinksPage() {
           .select('*, partner:affiliate_partners(name, partner_type)')
           .eq('client_id', clientId)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('clients')
+          .select('utm_slug_prefix')
+          .eq('id', clientId)
+          .maybeSingle(),
       ]);
     if (pErr) setPageError(pErr.message);
     if (lErr) setPageError(lErr.message);
     setPartners((partnersData as Partner[]) ?? []);
     setLinks((linksData as UTMLink[]) ?? []);
+    if (clientData && (clientData as any).utm_slug_prefix) {
+      setSlugPrefix((clientData as any).utm_slug_prefix as SlugPrefix);
+    }
     setLoading(false);
   }, [clientId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Derived values
   const selectedPartner = useMemo(
     () => partners.find(p => p.id === partnerId) ?? null,
-    [partners, partnerId]
+    [partners, partnerId],
   );
 
   const utmSource = useMemo(() => {
@@ -164,17 +195,25 @@ export default function UTMLinksPage() {
     return 'direct';
   }, [selectedPartner]);
 
-  const computedSlug = useMemo(
-    () => computeSlug(selectedPartner?.name ?? '', campaign),
-    [selectedPartner, campaign]
+  // Attribution value preview (regenerates on partner/campaign change for display only)
+  const previewAttrValue = useMemo(
+    () => computeAttributionValue(selectedPartner?.name ?? campaign),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedPartner?.id, campaign],
   );
 
-  const finalSlugDisplay = slug || computedSlug || 'your-slug';
-  const shortLink = `https://go.goself.app/s/${finalSlugDisplay}`;
-  const fullUtmUrl = useMemo(
-    () => buildUtmUrl(destUrl, utmSource, medium, campaign, content, term, finalSlugDisplay),
-    [destUrl, utmSource, medium, campaign, content, term, finalSlugDisplay]
+  const previewAttrUrl = useMemo(
+    () => buildAttributionUrl(destUrl, slugPrefix, previewAttrValue, utmSource, medium, campaign, content, term),
+    [destUrl, slugPrefix, previewAttrValue, utmSource, medium, campaign, content, term],
   );
+
+  async function handleSavePrefix(prefix: SlugPrefix) {
+    setSavingPrefix(true);
+    await supabase.from('clients').update({ utm_slug_prefix: prefix }).eq('id', clientId);
+    setSlugPrefix(prefix);
+    setSavingPrefix(false);
+    setShowPrefixSettings(false);
+  }
 
   async function handleSave() {
     if (!destUrl.trim()) { setSaveError('Destination URL is required.'); return; }
@@ -184,28 +223,19 @@ export default function UTMLinksPage() {
     setSaveError('');
 
     try {
-      let finalSlug = slug.trim() || computedSlug;
-      if (!finalSlug) finalSlug = `link-${Date.now()}`;
-
-      // Ensure uniqueness
-      let candidate = finalSlug;
-      let suffix = 2;
-      while (true) {
-        const { data: existing } = await supabase
-          .from('attribution_utm_links')
-          .select('id')
-          .eq('client_id', clientId)
-          .eq('slug', candidate)
-          .maybeSingle();
-        if (!existing) break;
-        candidate = `${finalSlug}-${suffix}`;
-        suffix++;
-      }
+      // Generate a unique attribution param value
+      const existingValues = links.map(l => l.attribution_param_value).filter(Boolean) as string[];
+      let attrValue: string;
+      do {
+        attrValue = computeAttributionValue(selectedPartner?.name ?? campaign);
+      } while (existingValues.includes(attrValue));
 
       const { error: e } = await supabase.from('attribution_utm_links').insert({
         client_id: clientId,
         partner_id: partnerId || null,
-        slug: candidate,
+        slug: null,                       // short link generated on demand
+        attribution_param_name: slugPrefix,
+        attribution_param_value: attrValue,
         destination_url: destUrl.trim(),
         utm_source: utmSource || null,
         utm_medium: medium || null,
@@ -217,15 +247,8 @@ export default function UTMLinksPage() {
       });
       if (e) throw e;
 
-      // Reset form
-      setDestUrl('');
-      setPartnerId('');
-      setCampaign('');
-      setMedium('');
-      setSlug('');
-      setAttrWindow(30);
-      setContent('');
-      setTerm('');
+      setDestUrl(''); setPartnerId(''); setCampaign(''); setMedium('');
+      setAttrWindow(30); setContent(''); setTerm('');
       await loadData();
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save link.');
@@ -234,8 +257,34 @@ export default function UTMLinksPage() {
     }
   }
 
+  async function handleShortenLink(link: UTMLink) {
+    setShorteningId(link.id);
+    try {
+      // Generate a unique short slug
+      let shortSlug: string;
+      let attempt = 0;
+      while (true) {
+        shortSlug = nanoId(attempt < 3 ? 6 : 8);
+        const { data: existing } = await supabase
+          .from('attribution_utm_links')
+          .select('id')
+          .eq('slug', shortSlug)
+          .maybeSingle();
+        if (!existing) break;
+        attempt++;
+      }
+      const { error } = await supabase
+        .from('attribution_utm_links')
+        .update({ slug: shortSlug! })
+        .eq('id', link.id);
+      if (!error) loadData();
+    } finally {
+      setShorteningId(null);
+    }
+  }
+
   async function handleDelete(link: UTMLink) {
-    if (!window.confirm(`Delete link /s/${link.slug}? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete this link? This cannot be undone.`)) return;
     const { error: e } = await supabase.from('attribution_utm_links').delete().eq('id', link.id);
     if (!e) loadData();
   }
@@ -252,15 +301,17 @@ export default function UTMLinksPage() {
     const q = search.toLowerCase();
     return links.filter(
       l =>
-        l.slug.toLowerCase().includes(q) ||
+        (l.attribution_param_value ?? '').toLowerCase().includes(q) ||
         (l.utm_campaign ?? '').toLowerCase().includes(q) ||
-        (l.partner?.name ?? '').toLowerCase().includes(q)
+        (l.partner?.name ?? '').toLowerCase().includes(q) ||
+        (l.slug ?? '').toLowerCase().includes(q),
     );
   }, [links, search]);
 
   return (
     <DashboardLayout menuItems={clientMenuItems}>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -268,6 +319,38 @@ export default function UTMLinksPage() {
             <p className="text-sm text-gray-500 mt-0.5">
               Generate trackable links for partners — every click is logged before redirecting
             </p>
+          </div>
+          {/* Prefix settings */}
+          <div className="relative">
+            <button
+              onClick={() => setShowPrefixSettings(s => !s)}
+              className="flex items-center gap-2 text-sm border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 text-gray-600">
+              <Settings2 className="w-4 h-4" />
+              Param: <code className="font-mono text-gray-900">{slugPrefix}=</code>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+            {showPrefixSettings && (
+              <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-20 p-4 space-y-3">
+                <p className="text-xs font-semibold text-gray-700">Attribution Param Prefix</p>
+                <p className="text-xs text-gray-500">Applied to all new links. Existing links keep their original prefix.</p>
+                <div className="space-y-1.5">
+                  {PREFIX_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleSavePrefix(opt.value)}
+                      disabled={savingPrefix}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                        slugPrefix === opt.value
+                          ? 'bg-indigo-50 border border-indigo-200 text-indigo-800'
+                          : 'hover:bg-gray-50 border border-transparent text-gray-700'
+                      }`}>
+                      <span className="font-mono font-medium">{opt.label}</span>
+                      <span className="block text-xs text-gray-400 mt-0.5">{opt.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -278,13 +361,11 @@ export default function UTMLinksPage() {
         {/* Builder Card */}
         <div className="bg-white border border-gray-200 rounded-xl p-6">
           <h2 className="text-sm font-semibold text-gray-900 mb-5">Link Builder</h2>
-
           <div className="space-y-4">
-            {/* Row 1: Destination URL */}
+
+            {/* Destination URL */}
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Destination URL *
-              </label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Destination URL *</label>
               <input
                 value={destUrl}
                 onChange={e => setDestUrl(e.target.value)}
@@ -293,15 +374,14 @@ export default function UTMLinksPage() {
               />
             </div>
 
-            {/* Row 2: Partner + Campaign */}
+            {/* Partner + Campaign */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Partner</label>
                 <select
                   value={partnerId}
                   onChange={e => setPartnerId(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
-                >
+                  className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
                   <option value="">No partner (direct)</option>
                   {partners.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
@@ -309,9 +389,7 @@ export default function UTMLinksPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Campaign Name
-                </label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Campaign Name</label>
                 <input
                   value={campaign}
                   onChange={e => setCampaign(e.target.value)}
@@ -321,15 +399,14 @@ export default function UTMLinksPage() {
               </div>
             </div>
 
-            {/* Row 3: Medium + Window + Slug */}
-            <div className="grid grid-cols-3 gap-4">
+            {/* Medium + Window */}
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Medium</label>
                 <select
                   value={medium}
                   onChange={e => setMedium(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
-                >
+                  className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
                   <option value="">Select medium…</option>
                   {['influencer', 'affiliate', 'email', 'cpc', 'social', 'referral', 'organic'].map(m => (
                     <option key={m} value={m}>{m}</option>
@@ -337,39 +414,23 @@ export default function UTMLinksPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Attribution Window
-                </label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Attribution Window</label>
                 <select
                   value={attrWindow}
                   onChange={e => setAttrWindow(Number(e.target.value))}
-                  className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
-                >
+                  className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
                   <option value={7}>7 days</option>
                   <option value={30}>30 days</option>
                   <option value={90}>90 days</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Custom Slug{' '}
-                  <span className="text-gray-400 font-normal">(optional)</span>
-                </label>
-                <input
-                  value={slug}
-                  onChange={e => setSlug(e.target.value.replace(/\s+/g, '-').toLowerCase())}
-                  placeholder={computedSlug || 'auto-generated'}
-                  className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-gray-900"
-                />
-              </div>
             </div>
 
-            {/* Row 4: Content + Term */}
+            {/* UTM Content + Term */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  UTM Content{' '}
-                  <span className="text-gray-400 font-normal">(optional)</span>
+                  UTM Content <span className="text-gray-400 font-normal">(optional)</span>
                 </label>
                 <input
                   value={content}
@@ -380,8 +441,7 @@ export default function UTMLinksPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  UTM Term{' '}
-                  <span className="text-gray-400 font-normal">(optional)</span>
+                  UTM Term <span className="text-gray-400 font-normal">(optional)</span>
                 </label>
                 <input
                   value={term}
@@ -395,44 +455,36 @@ export default function UTMLinksPage() {
             {/* Preview */}
             {destUrl && (
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
-                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  Preview
-                </p>
+                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Preview</p>
+
+                {/* Attribution URL — primary */}
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Short Link</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-gray-600 font-medium">Attribution URL</p>
+                    <span className="text-xs text-gray-400">Share directly — no redirect needed</span>
+                  </div>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 text-xs bg-white border border-gray-200 rounded-lg px-3 py-2 text-gray-800 truncate">
-                      {shortLink}
+                      {previewAttrUrl}
                     </code>
                     <button
-                      onClick={() => handleCopy(shortLink, 'preview-short')}
-                      className="p-1.5 text-gray-400 hover:text-gray-700 flex-shrink-0"
-                    >
-                      {copiedId === 'preview-short' ? (
-                        <Check className="w-4 h-4 text-green-600" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
+                      onClick={() => handleCopy(previewAttrUrl, 'preview-attr')}
+                      className="p-1.5 text-gray-400 hover:text-gray-700 flex-shrink-0">
+                      {copiedId === 'preview-attr' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
                     </button>
                   </div>
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    Attribution param: <code className="font-mono text-indigo-600">{slugPrefix}=<span className="opacity-60">{previewAttrValue}</span></code>
+                    {' '}— auto-generated unique value, locked on save
+                  </p>
                 </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Full UTM URL</p>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 text-xs bg-white border border-gray-200 rounded-lg px-3 py-2 text-gray-800 truncate">
-                      {fullUtmUrl}
-                    </code>
-                    <button
-                      onClick={() => handleCopy(fullUtmUrl, 'preview-full')}
-                      className="p-1.5 text-gray-400 hover:text-gray-700 flex-shrink-0"
-                    >
-                      {copiedId === 'preview-full' ? (
-                        <Check className="w-4 h-4 text-green-600" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
+
+                {/* Short link — secondary note */}
+                <div className="border-t border-gray-200 pt-3">
+                  <p className="text-xs text-gray-500">
+                    <Scissors className="w-3 h-3 inline mr-1 text-gray-400" />
+                    Short link (<code className="font-mono">go.goself.app/s/…</code>) can be generated after saving — use it for Instagram bios, WhatsApp, or anywhere a long URL looks messy.
+                  </p>
                 </div>
               </div>
             )}
@@ -445,15 +497,8 @@ export default function UTMLinksPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="bg-gray-900 text-white text-sm rounded-xl px-5 py-2 hover:bg-gray-800 disabled:opacity-50 flex items-center gap-2"
-              >
-                {saving ? (
-                  'Saving…'
-                ) : (
-                  <>
-                    <Plus className="w-4 h-4" /> Save Link
-                  </>
-                )}
+                className="bg-gray-900 text-white text-sm rounded-xl px-5 py-2 hover:bg-gray-800 disabled:opacity-50 flex items-center gap-2">
+                {saving ? 'Saving…' : <><Plus className="w-4 h-4" /> Save Link</>}
               </button>
             </div>
           </div>
@@ -464,11 +509,7 @@ export default function UTMLinksPage() {
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
             <h2 className="text-sm font-semibold text-gray-900">
               Saved Links
-              {!loading && (
-                <span className="ml-2 text-xs font-normal text-gray-400">
-                  {links.length} total
-                </span>
-              )}
+              {!loading && <span className="ml-2 text-xs font-normal text-gray-400">{links.length} total</span>}
             </h2>
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -498,11 +539,10 @@ export default function UTMLinksPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    {['Short Link', 'Partner', 'Campaign', 'Medium', 'Clicks', 'Created', 'Actions'].map(h => (
+                    {['Attribution Param', 'Partner', 'Campaign', 'Medium', 'Short Link', 'Clicks', 'Created', 'Actions'].map(h => (
                       <th
                         key={h}
-                        className="text-left text-xs text-gray-500 uppercase tracking-wide px-4 py-3 font-medium whitespace-nowrap"
-                      >
+                        className="text-left text-xs text-gray-500 uppercase tracking-wide px-4 py-3 font-medium whitespace-nowrap">
                         {h}
                       </th>
                     ))}
@@ -510,51 +550,53 @@ export default function UTMLinksPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredLinks.map(link => {
-                    const linkShort = `https://go.goself.app/s/${link.slug}`;
-                    const linkFull = buildUtmUrl(
-                      link.destination_url,
-                      link.utm_source ?? '',
-                      link.utm_medium ?? '',
-                      link.utm_campaign ?? '',
-                      link.utm_content ?? '',
-                      link.utm_term ?? '',
-                      link.slug
-                    );
+                    const paramName = link.attribution_param_name || 'ref';
+                    const paramValue = link.attribution_param_value;
+                    const attrUrl = paramValue
+                      ? buildAttributionUrl(
+                          link.destination_url, paramName, paramValue,
+                          link.utm_source ?? '', link.utm_medium ?? '',
+                          link.utm_campaign ?? '', link.utm_content ?? '', link.utm_term ?? '',
+                        )
+                      : link.destination_url;
+                    const shortUrl = link.slug ? `${SHORT_BASE}/${link.slug}` : null;
+
                     return (
                       <tr key={link.id} className="hover:bg-gray-50">
+
+                        {/* Attribution Param */}
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            <code className="font-mono text-xs text-gray-800">
-                              /s/{link.slug}
-                            </code>
-                            <button
-                              onClick={() => handleCopy(linkShort, `short-${link.id}`)}
-                              className="text-gray-400 hover:text-gray-700 flex-shrink-0"
-                              title="Copy short link"
-                            >
-                              {copiedId === `short-${link.id}` ? (
-                                <Check className="w-3.5 h-3.5 text-green-600" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          </div>
+                          {paramValue ? (
+                            <div className="flex items-center gap-1.5">
+                              <code className="font-mono text-xs text-gray-800 bg-gray-100 px-2 py-0.5 rounded">
+                                {paramName}=<span className="text-indigo-600">{paramValue}</span>
+                              </code>
+                              <button
+                                onClick={() => handleCopy(attrUrl, `attr-${link.id}`)}
+                                className="text-gray-400 hover:text-gray-700 flex-shrink-0"
+                                title="Copy attribution URL">
+                                {copiedId === `attr-${link.id}` ? (
+                                  <Check className="w-3.5 h-3.5 text-green-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">Legacy link</span>
+                          )}
                         </td>
+
+                        {/* Partner */}
                         <td className="px-4 py-3">
                           {link.partner ? (
                             <div className="flex items-center gap-2">
-                              <div
-                                className={`w-6 h-6 rounded-full bg-gradient-to-br ${avatarGradient(link.partner.name)} flex items-center justify-center text-white text-xs font-semibold flex-shrink-0`}
-                              >
+                              <div className={`w-6 h-6 rounded-full bg-gradient-to-br ${avatarGradient(link.partner.name)} flex items-center justify-center text-white text-xs font-semibold flex-shrink-0`}>
                                 {initials(link.partner.name)}
                               </div>
                               <div>
-                                <p className="text-xs font-medium text-gray-900">
-                                  {link.partner.name}
-                                </p>
-                                <span
-                                  className={`text-xs rounded-full px-1.5 py-0.5 font-medium ${TYPE_BADGE[link.partner.partner_type]}`}
-                                >
+                                <p className="text-xs font-medium text-gray-900">{link.partner.name}</p>
+                                <span className={`text-xs rounded-full px-1.5 py-0.5 font-medium ${TYPE_BADGE[link.partner.partner_type]}`}>
                                   {link.partner.partner_type}
                                 </span>
                               </div>
@@ -563,45 +605,72 @@ export default function UTMLinksPage() {
                             <span className="text-gray-400 text-xs">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-gray-700 text-xs">
-                          {link.utm_campaign ?? '—'}
-                        </td>
+
+                        {/* Campaign */}
+                        <td className="px-4 py-3 text-gray-700 text-xs">{link.utm_campaign ?? '—'}</td>
+
+                        {/* Medium */}
                         <td className="px-4 py-3 text-xs">
                           {link.utm_medium ? (
-                            <span className="bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 font-medium">
-                              {link.utm_medium}
-                            </span>
+                            <span className="bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 font-medium">{link.utm_medium}</span>
                           ) : (
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
+
+                        {/* Short Link */}
+                        <td className="px-4 py-3">
+                          {shortUrl ? (
+                            <div className="flex items-center gap-1.5">
+                              <code className="font-mono text-xs text-gray-700">/s/{link.slug}</code>
+                              <button
+                                onClick={() => handleCopy(shortUrl, `short-${link.id}`)}
+                                className="text-gray-400 hover:text-gray-700"
+                                title="Copy short link">
+                                {copiedId === `short-${link.id}` ? (
+                                  <Check className="w-3 h-3 text-green-600" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleShortenLink(link)}
+                              disabled={shorteningId === link.id}
+                              className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium disabled:opacity-50">
+                              <Scissors className="w-3 h-3" />
+                              {shorteningId === link.id ? 'Generating…' : 'Shorten'}
+                            </button>
+                          )}
+                        </td>
+
+                        {/* Clicks */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 text-gray-700">
                             <MousePointer className="w-3 h-3 text-gray-400" />
                             <span className="text-xs">{link.clicks.toLocaleString('en-IN')}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">
-                          {fmtDate(link.created_at)}
-                        </td>
+
+                        {/* Created */}
+                        <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(link.created_at)}</td>
+
+                        {/* Actions */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleCopy(linkFull, `full-${link.id}`)}
+                            <a
+                              href={link.destination_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="p-1.5 text-gray-400 hover:text-gray-700 rounded"
-                              title="Copy full UTM URL"
-                            >
-                              {copiedId === `full-${link.id}` ? (
-                                <Check className="w-3.5 h-3.5 text-green-600" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
-                              )}
-                            </button>
+                              title="Open destination">
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
                             <button
                               onClick={() => handleDelete(link)}
                               className="p-1.5 text-gray-400 hover:text-red-500 rounded"
-                              title="Delete link"
-                            >
+                              title="Delete link">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
@@ -615,6 +684,11 @@ export default function UTMLinksPage() {
           )}
         </div>
       </div>
+
+      {/* Close prefix dropdown on outside click */}
+      {showPrefixSettings && (
+        <div className="fixed inset-0 z-10" onClick={() => setShowPrefixSettings(false)} />
+      )}
     </DashboardLayout>
   );
 }
