@@ -82,12 +82,16 @@ function nanoId(len = 6): string {
   return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
-function computeAttributionValue(partnerName: string): string {
-  const pi = partnerName
-    ? partnerName.split(/\s+/).map(w => w[0]?.toLowerCase() ?? '').filter(Boolean).join('')
-    : '';
-  const base = pi ? `${pi}_` : '';
-  return `${base}${nanoId(6)}`;
+function slugify(text: string): string {
+  return text.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function computeAttributionValue(partnerName: string, campaignName?: string): string {
+  const partnerSlug = slugify(partnerName || 'direct');
+  if (campaignName?.trim()) {
+    return `${partnerSlug}_${slugify(campaignName.trim())}`;
+  }
+  return `${partnerSlug}_${nanoId(4)}`;
 }
 
 function buildAttributionUrl(
@@ -197,7 +201,7 @@ export default function UTMLinksPage() {
 
   // Attribution value preview (regenerates on partner/campaign change for display only)
   const previewAttrValue = useMemo(
-    () => computeAttributionValue(selectedPartner?.name ?? campaign),
+    () => computeAttributionValue(selectedPartner?.name ?? '', campaign),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [selectedPartner?.id, campaign],
   );
@@ -226,8 +230,11 @@ export default function UTMLinksPage() {
       // Generate a unique attribution param value
       const existingValues = links.map(l => l.attribution_param_value).filter(Boolean) as string[];
       let attrValue: string;
+      let suffix = 0;
       do {
-        attrValue = computeAttributionValue(selectedPartner?.name ?? campaign);
+        const base = computeAttributionValue(selectedPartner?.name ?? '', campaign);
+        attrValue = suffix === 0 ? base : `${base}-${suffix}`;
+        suffix++;
       } while (existingValues.includes(attrValue));
 
       const { error: e } = await supabase.from('attribution_utm_links').insert({

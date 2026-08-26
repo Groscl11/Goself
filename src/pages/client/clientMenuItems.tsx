@@ -21,6 +21,8 @@ import {
   Ticket,
   MousePointerClick,
   PieChart,
+  SlidersHorizontal,
+  Layers,
 } from 'lucide-react';
 
 export const clientMenuItems = [
@@ -112,9 +114,21 @@ export const clientMenuItems = [
   },
   {
     section: 'Affiliates',
+    label: 'Campaigns',
+    path: '/client/affiliate/campaigns',
+    icon: <Layers className="w-4 h-4" />,
+  },
+  {
+    section: 'Affiliates',
     label: 'Attribution Reports',
     path: '/client/attribution/reports',
     icon: <PieChart className="w-4 h-4" />,
+  },
+  {
+    section: 'Affiliates',
+    label: 'Affiliate Settings',
+    path: '/client/affiliate/settings',
+    icon: <SlidersHorizontal className="w-4 h-4" />,
   },
 
   // ── COMMUNICATIONS ────────────────────────────────────────────────────────
