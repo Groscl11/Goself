@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Link2, Users, BarChart3, Plus, X, ChevronLeft, Trash2, Edit2,
   Pause, Play, TrendingUp, ShoppingBag, Copy, ExternalLink, Search, Check,
+  Globe, MousePointerClick, LogIn, Save, Activity, Clock, CheckCircle2,
+  DollarSign, AlertCircle, Loader2,
 } from 'lucide-react';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -43,10 +45,21 @@ interface Partner {
   partner_type: PartnerType;
   notes: string | null;
   status: PartnerStatus;
+  commission_rate: number | null;
   created_at: string;
   updated_at: string;
   affiliate_partner_platforms: Platform[];
   affiliate_code_assignments: CodeAssignment[];
+}
+
+interface UtmLink {
+  id: string;
+  slug: string;
+  destination_url: string;
+  utm_campaign: string | null;
+  utm_medium: string | null;
+  clicks: number;
+  created_at: string;
 }
 
 interface ShopifyOrder {
@@ -826,6 +839,20 @@ export default function AffiliatesPage() {
   const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
 
+  // ── Detail view state ──────────────────────────────────────────────────────
+  const [detailPeriod, setDetailPeriod] = useState<7 | 30 | 90 | 0>(30);
+  const [detailUtmLinks, setDetailUtmLinks] = useState<UtmLink[]>([]);
+  const [detailUtmLoading, setDetailUtmLoading] = useState(false);
+  const [sidebarEmail, setSidebarEmail] = useState('');
+  const [sidebarPhone, setSidebarPhone] = useState('');
+  const [sidebarNotes, setSidebarNotes] = useState('');
+  const [sidebarRate, setSidebarRate] = useState('');
+  const [sidebarStatus, setSidebarStatus] = useState<PartnerStatus>('active');
+  const [sidebarType, setSidebarType] = useState<PartnerType>('other');
+  const [sidebarSaving, setSidebarSaving] = useState(false);
+  const [loginLinkLoading, setLoginLinkLoading] = useState(false);
+  const [loginLinkCopied, setLoginLinkCopied] = useState(false);
+
   const loadData = useCallback(async () => {
     if (!clientId) return;
     setLoading(true);
@@ -857,6 +884,20 @@ export default function AffiliatesPage() {
       if (updated) setSelectedPartner(updated);
     }
   }, [partners]);
+
+  // Sync sidebar form state when selectedPartner changes
+  useEffect(() => {
+    if (selectedPartner) {
+      setSidebarEmail(selectedPartner.email ?? '');
+      setSidebarPhone(selectedPartner.phone ?? '');
+      setSidebarNotes(selectedPartner.notes ?? '');
+      setSidebarRate(selectedPartner.commission_rate != null ? String(selectedPartner.commission_rate) : '');
+      setSidebarStatus(selectedPartner.status);
+      setSidebarType(selectedPartner.partner_type);
+      loadPartnerUtmLinks(selectedPartner.id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPartner?.id]);
 
   const redemptionMap = computeRedemptions(partners, orders);
 
@@ -898,6 +939,69 @@ export default function AffiliatesPage() {
     const next = partner.status === 'active' ? 'paused' : 'active';
     const { error } = await supabase.from('affiliate_partners').update({ status: next }).eq('id', partner.id).eq('client_id', clientId);
     if (!error) loadData();
+  }
+
+  async function loadPartnerUtmLinks(partnerId: string) {
+    setDetailUtmLoading(true);
+    const { data } = await supabase
+      .from('attribution_utm_links')
+      .select('id, slug, destination_url, utm_campaign, utm_medium, clicks, created_at')
+      .eq('partner_id', partnerId)
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false });
+    setDetailUtmLinks((data as UtmLink[]) ?? []);
+    setDetailUtmLoading(false);
+  }
+
+  async function handleSavePartnerDetails() {
+    if (!selectedPartner) return;
+    setSidebarSaving(true);
+    const rate = sidebarRate !== '' ? parseFloat(sidebarRate) : null;
+    const { error } = await supabase
+      .from('affiliate_partners')
+      .update({
+        email: sidebarEmail.trim() || null,
+        phone: sidebarPhone.trim() || null,
+        notes: sidebarNotes.trim() || null,
+        commission_rate: rate,
+        status: sidebarStatus,
+        partner_type: sidebarType,
+      })
+      .eq('id', selectedPartner.id)
+      .eq('client_id', clientId);
+    setSidebarSaving(false);
+    if (!error) loadData();
+  }
+
+  async function handleGenerateLoginLink() {
+    if (!selectedPartner || !clientSlug) return;
+    setLoginLinkLoading(true);
+    setLoginLinkCopied(false);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? '';
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/generate-partner-login-link`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            Apikey: supabaseAnonKey,
+          },
+          body: JSON.stringify({ partner_id: selectedPartner.id, client_slug: clientSlug }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate link');
+      await navigator.clipboard.writeText(data.link);
+      setLoginLinkCopied(true);
+      setTimeout(() => setLoginLinkCopied(false), 3000);
+    } catch (err: any) {
+      alert(err.message || 'Could not generate login link');
+    } finally {
+      setLoginLinkLoading(false);
+    }
   }
 
   // ── List View ──────────────────────────────────────────────────────────────
@@ -1069,17 +1173,37 @@ export default function AffiliatesPage() {
   function renderDetail() {
     const p = selectedPartner;
     if (!p) return null;
-    const { count, revenue } = partnerTotals(p, redemptionMap);
-    const avgOrder = count > 0 ? revenue / count : 0;
 
-    // Redemption log orders for this partner
-    const partnerCodes = new Set(p.affiliate_code_assignments.map(a => a.code.toUpperCase()));
-    const partnerOrders = orders.filter(o =>
-      o.order_data?.discount_codes?.some(dc => partnerCodes.has(dc.code.toUpperCase()))
+    // Period-filtered orders for this partner
+    const allPartnerCodes = new Set(
+      p.affiliate_code_assignments.filter(a => a.status !== 'removed').map(a => a.code.toUpperCase())
     );
+    const periodCutoff = detailPeriod > 0
+      ? new Date(Date.now() - detailPeriod * 24 * 60 * 60 * 1000)
+      : null;
+    const periodOrders = orders.filter(o => {
+      if (periodCutoff && new Date(o.processed_at) < periodCutoff) return false;
+      return o.order_data?.discount_codes?.some(dc => allPartnerCodes.has(dc.code.toUpperCase()));
+    });
+    const periodRevenue = periodOrders.reduce((s, o) => s + Number(o.total_price), 0);
+    const commRate = (Number(p.commission_rate) || 0) / 100;
+    const estCommission = periodRevenue * commRate;
+    const totalUtmClicks = detailUtmLinks.reduce((s, l) => s + (l.clicks || 0), 0);
+
+    // Commission status split (14-day return window)
+    const returnCutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const pendingComm = periodOrders
+      .filter(o => new Date(o.processed_at) > returnCutoff)
+      .reduce((s, o) => s + Number(o.total_price) * commRate, 0);
+    const approvedComm = periodOrders
+      .filter(o => new Date(o.processed_at) <= returnCutoff)
+      .reduce((s, o) => s + Number(o.total_price) * commRate, 0);
+
+    const portalBase = window.location.origin;
+    const partnerPortalUrl = clientSlug ? `${portalBase}/partner/${clientSlug}/dashboard` : '';
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Breadcrumb */}
         <button onClick={() => { setView('list'); setSelectedPartner(null); }}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
@@ -1094,14 +1218,15 @@ export default function AffiliatesPage() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h2 className="text-lg font-semibold text-gray-900">{p.name}</h2>
+                <h2 className="text-xl font-semibold text-gray-900">{p.name}</h2>
                 <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${TYPE_BADGE[p.partner_type]}`}>{p.partner_type}</span>
                 <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${STATUS_BADGE[p.status]}`}>{p.status}</span>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                 {p.email && <span>{p.email}</span>}
                 {p.phone && <span>{p.phone}</span>}
-                <span>Added {fmtDate(p.created_at)}</span>
+                <span>Partner since {fmtDate(p.created_at)}</span>
+                {p.commission_rate != null && <span>{p.commission_rate}% commission</span>}
               </div>
               {p.affiliate_partner_platforms.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
@@ -1113,153 +1238,391 @@ export default function AffiliatesPage() {
                 </div>
               )}
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => handleTogglePartnerStatus(p)}
-                className="bg-white border border-gray-300 text-gray-700 px-3 py-1.5 text-xs rounded-lg hover:bg-gray-50 flex items-center gap-1">
-                {p.status === 'active' ? <><Pause className="w-3 h-3" /> Pause</> : <><Play className="w-3 h-3" /> Activate</>}
-              </button>
+            <div className="flex flex-wrap gap-2">
+              {p.email && (
+                <button
+                  onClick={handleGenerateLoginLink}
+                  disabled={loginLinkLoading || !clientSlug}
+                  title="Generate a one-click login link for this affiliate and copy it"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 text-xs rounded-lg flex items-center gap-1.5 disabled:opacity-60">
+                  {loginLinkLoading ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : loginLinkCopied ? (
+                    <><Check className="w-3 h-3" /> Link Copied!</>
+                  ) : (
+                    <><LogIn className="w-3 h-3" /> Login as Affiliate</>
+                  )}
+                </button>
+              )}
               <button onClick={() => setEditPartner(p)}
-                className="bg-white border border-gray-300 text-gray-700 px-3 py-1.5 text-xs rounded-lg hover:bg-gray-50 flex items-center gap-1">
+                className="bg-white border border-gray-300 text-gray-700 px-3 py-1.5 text-xs rounded-lg hover:bg-gray-50 flex items-center gap-1.5">
                 <Edit2 className="w-3 h-3" /> Edit
               </button>
               <button onClick={() => setShowAssignModal(true)}
-                className="bg-gray-900 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-gray-800 flex items-center gap-1">
+                className="bg-gray-900 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-gray-800 flex items-center gap-1.5">
                 <Plus className="w-3 h-3" /> Assign Code
               </button>
             </div>
           </div>
         </div>
 
-        {/* Stat strip */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <StatCard label="Codes Assigned" value={String(p.affiliate_code_assignments.length)} icon={Link2} />
-          <StatCard label="Redemptions" value={String(count)} icon={ShoppingBag} />
-          <StatCard label="Revenue" value={fmtCurrency(revenue)} icon={TrendingUp} />
-          <StatCard label="Avg Order Value" value={avgOrder > 0 ? fmtCurrency(avgOrder) : '—'} icon={BarChart3} />
-          <StatCard label="Conv. Rate" value="—" icon={BarChart3} sub="Phase 2: UTM tracking" />
-        </div>
+        {/* Two-column layout: main + sidebar */}
+        <div className="flex flex-col lg:flex-row gap-5 items-start">
 
-        {/* Tabs */}
-        <div>
-          <div className="flex border-b border-gray-200 mb-4">
-            {([['codes', 'Assigned Codes'], ['log', 'Redemption Log']] as const).map(([key, label]) => (
-              <button key={key} onClick={() => setDetailTab(key)}
-                className={`py-3 px-5 text-sm font-medium border-b-2 -mb-px transition-colors ${detailTab === key ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* ── LEFT: Performance + Assets ─────────────────────────────────── */}
+          <div className="flex-1 min-w-0 space-y-5">
 
-          {detailTab === 'codes' && (
+            {/* Performance section */}
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              {p.affiliate_code_assignments.length === 0 ? (
-                <div className="text-center py-12">
-                  <Link2 className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">No codes assigned yet</p>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-gray-500" />
+                  <h3 className="text-sm font-semibold text-gray-900">Performance</h3>
+                </div>
+                <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+                  {([7, 30, 90, 0] as const).map(d => (
+                    <button key={d}
+                      onClick={() => setDetailPeriod(d)}
+                      className={`px-3 py-1.5 border-r last:border-r-0 border-gray-200 transition-colors ${detailPeriod === d ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                      {d === 0 ? 'All' : `${d}d`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-gray-100">
+                {[
+                  { label: 'Total Sales', value: fmtCurrency(periodRevenue), icon: TrendingUp, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+                  { label: 'Est. Commission', value: commRate > 0 ? fmtCurrency(estCommission) : '—', icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50', sub: commRate > 0 ? `${p.commission_rate}% rate` : 'Set rate in sidebar' },
+                  { label: 'Total Orders', value: String(periodOrders.length), icon: ShoppingBag, color: 'text-orange-600', bg: 'bg-orange-50' },
+                  { label: 'Total Clicks', value: String(totalUtmClicks), icon: MousePointerClick, color: 'text-sky-600', bg: 'bg-sky-50', sub: `${detailUtmLinks.length} link${detailUtmLinks.length !== 1 ? 's' : ''}` },
+                ].map(({ label, value, icon: Icon, color, bg, sub }) => (
+                  <div key={label} className="bg-white p-4">
+                    <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center mb-3`}>
+                      <Icon className={`w-4 h-4 ${color}`} />
+                    </div>
+                    <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+                    <p className="text-xl font-semibold text-gray-900 tabular-nums">{value}</p>
+                    {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Commission status */}
+            {commRate > 0 && (
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
+                  <DollarSign className="w-4 h-4 text-gray-500" />
+                  <h3 className="text-sm font-semibold text-gray-900">Commission Status</h3>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-gray-100">
+                  {[
+                    { label: 'Pending', value: fmtCurrency(pendingComm), icon: Clock, color: 'text-amber-600', sub: '< 14 day return window' },
+                    { label: 'Approved', value: fmtCurrency(approvedComm), icon: CheckCircle2, color: 'text-emerald-600', sub: 'Past return window' },
+                    { label: 'Unpaid', value: fmtCurrency(approvedComm), icon: AlertCircle, color: 'text-red-500', sub: 'Awaiting payout' },
+                    { label: 'Paid', value: fmtCurrency(0), icon: Check, color: 'text-gray-400', sub: 'Payouts not tracked yet' },
+                  ].map(({ label, value, icon: Icon, color, sub }) => (
+                    <div key={label} className="bg-white p-4">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Icon className={`w-3.5 h-3.5 ${color}`} />
+                        <span className="text-xs font-medium text-gray-500">{label}</span>
+                      </div>
+                      <p className="text-lg font-semibold text-gray-900 tabular-nums">{value}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Affiliate Assets */}
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
+                <Link2 className="w-4 h-4 text-gray-500" />
+                <h3 className="text-sm font-semibold text-gray-900">Affiliate Assets</h3>
+              </div>
+
+              {/* Tracking Links */}
+              <div className="px-5 py-4 border-b border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Tracking Links</p>
+                {detailUtmLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Loading…
+                  </div>
+                ) : detailUtmLinks.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-2">No UTM links assigned to this affiliate yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {detailUtmLinks.map(l => {
+                      const url = `${window.location.origin.replace(window.location.hostname, window.location.hostname)}/r/${l.slug}`;
+                      const trackUrl = `${supabaseUrl.replace('/rest/v1', '')}/functions/v1/track?slug=${l.slug}`;
+                      const displayUrl = `https://go.goself.in/${l.slug}`;
+                      return (
+                        <div key={l.id} className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg group">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <Globe className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                              <span className="text-xs font-mono text-gray-700 truncate">{l.destination_url}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              {l.utm_campaign && <span className="text-xs text-gray-400">Campaign: {l.utm_campaign}</span>}
+                              <span className="flex items-center gap-0.5 text-xs text-sky-600 font-medium">
+                                <MousePointerClick className="w-3 h-3" /> {l.clicks} clicks
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => navigator.clipboard.writeText(displayUrl)}
+                              className="text-gray-400 hover:text-gray-700 p-1 rounded" title="Copy link">
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            <a href={l.destination_url} target="_blank" rel="noopener noreferrer"
+                              className="text-gray-400 hover:text-gray-700 p-1 rounded">
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Coupon Codes */}
+              <div className="px-5 py-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Coupon Codes</p>
                   <button onClick={() => setShowAssignModal(true)}
-                    className="mt-3 bg-gray-900 text-white px-4 py-2 text-sm rounded-lg hover:bg-gray-800 inline-flex items-center gap-1.5">
-                    <Plus className="w-4 h-4" /> Assign Code
+                    className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 font-medium">
+                    <Plus className="w-3 h-3" /> Assign
                   </button>
                 </div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      {['Code', 'Discount', 'Source', 'Redemptions', 'Revenue', 'Status', ''].map(h => (
-                        <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wide px-4 py-2.5 font-medium">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {p.affiliate_code_assignments.map(a => {
-                      const stat = redemptionMap[p.id]?.[a.id] ?? { count: 0, revenue: 0 };
-                      return (
-                        <tr key={a.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono font-medium text-gray-900">{a.code}</span>
-                              <button onClick={() => navigator.clipboard.writeText(a.code)} className="text-gray-400 hover:text-gray-600">
-                                <Copy className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-gray-600 text-xs">{a.discount_description ?? '—'}</td>
-                          <td className="px-4 py-3">
-                            <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${a.code_source === 'shopify' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                              {a.code_source}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-gray-700">{stat.count}</td>
-                          <td className="px-4 py-3 text-gray-700">{fmtCurrency(stat.revenue)}</td>
-                          <td className="px-4 py-3">
-                            <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${CODE_STATUS_BADGE[a.status]}`}>{a.status}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1">
-                              <button onClick={() => handleToggleCodeStatus(a)}
-                                className="p-1 text-gray-400 hover:text-amber-600" title={a.status === 'active' ? 'Pause' : 'Activate'}>
-                                {a.status === 'active' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                              </button>
-                              <button onClick={() => handleRemoveCode(a.id)}
-                                className="p-1 text-gray-400 hover:text-red-500" title="Remove">
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
+                {p.affiliate_code_assignments.filter(a => a.status !== 'removed').length === 0 ? (
+                  <div className="text-center py-6">
+                    <Link2 className="w-6 h-6 text-gray-200 mx-auto mb-1.5" />
+                    <p className="text-xs text-gray-400">No codes assigned yet</p>
+                    <button onClick={() => setShowAssignModal(true)}
+                      className="mt-2 text-xs text-indigo-600 hover:underline">Assign a code</button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100">
+                          {['Code', 'Discount', 'Redemptions', 'Revenue', 'Status', ''].map(h => (
+                            <th key={h} className="text-left text-xs text-gray-400 pb-2 font-medium pr-4 last:pr-0">{h}</th>
+                          ))}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {p.affiliate_code_assignments.filter(a => a.status !== 'removed').map(a => {
+                          const stat = redemptionMap[p.id]?.[a.id] ?? { count: 0, revenue: 0 };
+                          return (
+                            <tr key={a.id} className="hover:bg-gray-50">
+                              <td className="py-2.5 pr-4">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono font-medium text-gray-900 text-xs">{a.code}</span>
+                                  <button onClick={() => navigator.clipboard.writeText(a.code)}
+                                    className="text-gray-300 hover:text-gray-600">
+                                    <Copy className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-2.5 pr-4 text-gray-500 text-xs">{a.discount_description ?? '—'}</td>
+                              <td className="py-2.5 pr-4 text-gray-700 text-sm font-medium tabular-nums">{stat.count}</td>
+                              <td className="py-2.5 pr-4 text-gray-700 text-sm tabular-nums">{fmtCurrency(stat.revenue)}</td>
+                              <td className="py-2.5 pr-4">
+                                <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${CODE_STATUS_BADGE[a.status]}`}>{a.status}</span>
+                              </td>
+                              <td className="py-2.5">
+                                <div className="flex items-center gap-0.5">
+                                  <button onClick={() => handleToggleCodeStatus(a)}
+                                    className="p-1 text-gray-300 hover:text-amber-500" title={a.status === 'active' ? 'Pause' : 'Activate'}>
+                                    {a.status === 'active' ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                                  </button>
+                                  <button onClick={() => handleRemoveCode(a.id)}
+                                    className="p-1 text-gray-300 hover:text-red-500" title="Remove">
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
 
-          {detailTab === 'log' && (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              {partnerOrders.length === 0 ? (
-                <div className="text-center py-12">
-                  <ShoppingBag className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">No redemptions recorded yet</p>
+            {/* Order History */}
+            {periodOrders.length > 0 && (
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
+                  <ShoppingBag className="w-4 h-4 text-gray-500" />
+                  <h3 className="text-sm font-semibold text-gray-900">Order History</h3>
+                  <span className="ml-auto text-xs text-gray-400">{periodOrders.length} orders</span>
                 </div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      {['Order ID', 'Code Used', 'Customer', 'Order Value', 'Discount', 'Date'].map(h => (
-                        <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wide px-4 py-2.5 font-medium">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {partnerOrders.slice().sort((a, b) => new Date(b.processed_at).getTime() - new Date(a.processed_at).getTime()).map(o => {
-                      const usedCodes = o.order_data?.discount_codes?.filter(dc => partnerCodes.has(dc.code.toUpperCase())) ?? [];
-                      const discountAmt = usedCodes.reduce((s, dc) => s + Number(dc.amount), 0);
-                      return (
-                        <tr key={o.shopify_order_id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-mono text-xs text-gray-600">#{o.shopify_order_id}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-wrap gap-1">
-                              {usedCodes.map((dc, i) => (
-                                <span key={i} className="font-mono text-xs bg-gray-100 text-gray-700 rounded px-1.5 py-0.5">{dc.code}</span>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-gray-600 text-xs">{maskEmail(o.customer_email)}</td>
-                          <td className="px-4 py-3 text-gray-700">{fmtCurrency(Number(o.total_price))}</td>
-                          <td className="px-4 py-3 text-gray-700">{discountAmt > 0 ? fmtCurrency(discountAmt) : '—'}</td>
-                          <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(o.processed_at)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-100">
+                      <tr>
+                        {['Order', 'Code', 'Customer', 'Value', 'Date'].map(h => (
+                          <th key={h} className="text-left text-xs text-gray-400 uppercase tracking-wide px-4 py-2.5 font-medium">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {periodOrders
+                        .slice()
+                        .sort((a, b) => new Date(b.processed_at).getTime() - new Date(a.processed_at).getTime())
+                        .slice(0, 50)
+                        .map(o => {
+                          const usedCodes = o.order_data?.discount_codes?.filter(dc => allPartnerCodes.has(dc.code.toUpperCase())) ?? [];
+                          return (
+                            <tr key={o.shopify_order_id} className="hover:bg-gray-50">
+                              <td className="px-4 py-2.5 font-mono text-xs text-gray-500">#{o.shopify_order_id}</td>
+                              <td className="px-4 py-2.5">
+                                <div className="flex flex-wrap gap-1">
+                                  {usedCodes.map((dc, i) => (
+                                    <span key={i} className="font-mono text-xs bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5">{dc.code}</span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="px-4 py-2.5 text-gray-400 text-xs">{maskEmail(o.customer_email)}</td>
+                              <td className="px-4 py-2.5 text-gray-800 font-medium tabular-nums">{fmtCurrency(Number(o.total_price))}</td>
+                              <td className="px-4 py-2.5 text-gray-400 text-xs">{fmtDate(o.processed_at)}</td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                  {periodOrders.length > 50 && (
+                    <p className="text-xs text-gray-400 text-center py-3">Showing 50 of {periodOrders.length} orders</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── RIGHT: Sidebar ──────────────────────────────────────────────── */}
+          <div className="w-full lg:w-72 flex-shrink-0 space-y-4">
+
+            {/* Status card */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Status</p>
+              <select
+                value={sidebarStatus}
+                onChange={e => setSidebarStatus(e.target.value as PartnerStatus)}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+
+            {/* Affiliate details card */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Affiliate Details</p>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={sidebarEmail}
+                  onChange={e => setSidebarEmail(e.target.value)}
+                  placeholder="partner@example.com"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Phone</label>
+                <input
+                  type="tel"
+                  value={sidebarPhone}
+                  onChange={e => setSidebarPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Commission Rate (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    value={sidebarRate}
+                    onChange={e => setSidebarRate(e.target.value)}
+                    placeholder="e.g. 10"
+                    className="w-full text-sm border border-gray-200 rounded-lg pl-3 pr-7 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Partner Type</label>
+                <select
+                  value={sidebarType}
+                  onChange={e => setSidebarType(e.target.value as PartnerType)}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50">
+                  <option value="influencer">Influencer</option>
+                  <option value="creator">Creator</option>
+                  <option value="brand">Brand</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <button
+                onClick={handleSavePartnerDetails}
+                disabled={sidebarSaving}
+                className="w-full flex items-center justify-center gap-1.5 bg-gray-900 text-white text-xs font-medium py-2 rounded-lg hover:bg-gray-800 disabled:opacity-60">
+                {sidebarSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                {sidebarSaving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+
+            {/* Notes card */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</p>
+              <textarea
+                value={sidebarNotes}
+                onChange={e => setSidebarNotes(e.target.value)}
+                rows={4}
+                placeholder="Internal notes about this affiliate…"
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 resize-none" />
+              <button
+                onClick={handleSavePartnerDetails}
+                disabled={sidebarSaving}
+                className="w-full text-xs text-gray-600 border border-gray-200 py-1.5 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1">
+                <Save className="w-3 h-3" /> Save Note
+              </button>
+            </div>
+
+            {/* Sign-in method */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Sign-in Method</p>
+              <div className="flex items-center gap-2 text-sm text-gray-700">
+                <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-full px-2.5 py-1">
+                  <LogIn className="w-3 h-3" /> Magic Link
+                </span>
+              </div>
+              <p className="text-xs text-gray-400">Partners log in via a one-click email link — no password needed.</p>
+              {partnerPortalUrl && (
+                <div className="mt-2 pt-2 border-t border-gray-100">
+                  <p className="text-xs text-gray-400 mb-1">Partner portal URL</p>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-mono text-gray-600 truncate flex-1">/partner/{clientSlug}</span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(partnerPortalUrl)}
+                      className="text-gray-400 hover:text-gray-700 p-1 flex-shrink-0">
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
-          )}
-        </div>
 
-        <p className="text-xs text-gray-400 text-center">UTM link tracking coming in Phase 2</p>
+          </div>
+        </div>
       </div>
     );
   }
