@@ -51,6 +51,17 @@ function slugify(text: string): string {
   return text.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
+function mediumSlugify(text: string): string {
+  return text.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
+const COLOR_PALETTE = [
+  '#ec4899', '#f97316', '#f59e0b', '#eab308',
+  '#84cc16', '#22c55e', '#10b981', '#14b8a6',
+  '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
+  '#8b5cf6', '#a855f7', '#d946ef', '#64748b',
+];
+
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-gray-200 rounded ${className}`} />;
 }
@@ -133,7 +144,7 @@ export default function AffiliateSettingsPage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   function startNew() {
-    setEditing({ id: null, name: '', color: '#6366f1', default_utm_medium: 'affiliate', default_utm_source_tpl: '{{partner_name}}' });
+    setEditing({ id: null, name: '', color: COLOR_PALETTE[0], default_utm_medium: '', default_utm_source_tpl: '{{partner_name}}' });
     setSaveError('');
   }
 
@@ -145,9 +156,18 @@ export default function AffiliateSettingsPage() {
   async function handleSaveType() {
     if (!editing) return;
     if (!editing.name.trim()) { setSaveError('Name is required.'); return; }
+    const slug = slugify(editing.name);
+    const medium = mediumSlugify(editing.name);
+    if (!medium) { setSaveError('Name must contain at least one letter or number.'); return; }
+
+    const duplicate = types.find(t => t.id !== editing.id && mediumSlugify(t.default_utm_medium ?? '') === medium);
+    if (duplicate) {
+      setSaveError(`UTM medium "${medium}" is already used by "${duplicate.name}". Choose a different name.`);
+      return;
+    }
+
     setSaving(true);
     setSaveError('');
-    const slug = slugify(editing.name);
 
     try {
       if (editing.id) {
@@ -157,7 +177,7 @@ export default function AffiliateSettingsPage() {
             name: editing.name.trim(),
             slug,
             color: editing.color,
-            default_utm_medium: editing.default_utm_medium || null,
+            default_utm_medium: medium,
           })
           .eq('id', editing.id);
         if (error) throw error;
@@ -169,7 +189,7 @@ export default function AffiliateSettingsPage() {
             name: editing.name.trim(),
             slug,
             color: editing.color,
-            default_utm_medium: editing.default_utm_medium || null,
+            default_utm_medium: medium,
             default_utm_source_tpl: '{{partner_name}}',
             is_system_default: false,
             sort_order: types.length,
@@ -368,29 +388,43 @@ export default function AffiliateSettingsPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Default UTM Medium</label>
-                    <input
-                      type="text"
-                      value={editing.default_utm_medium}
-                      onChange={e => setEditing(v => v ? { ...v, default_utm_medium: e.target.value } : v)}
-                      placeholder="e.g. influencer"
-                      className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900"
-                    />
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Default UTM Medium</label>
+                  <div className="w-full border border-gray-200 bg-gray-50 rounded-lg text-sm px-3 py-2 font-mono text-gray-600">
+                    {mediumSlugify(editing.name) || <span className="text-gray-400 font-sans">derived from name…</span>}
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Color</label>
-                    <div className="flex items-center gap-2">
+                  <p className="text-xs text-gray-400 mt-1">Auto-generated from the name, must be unique per type.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Color</label>
+                  <div className="flex flex-wrap gap-2">
+                    {COLOR_PALETTE.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setEditing(v => v ? { ...v, color: c } : v)}
+                        title={c}
+                        className={`w-7 h-7 rounded-full border-2 ${editing.color === c ? 'border-gray-900' : 'border-transparent'}`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                    <label
+                      title="Custom color"
+                      className={`relative w-7 h-7 rounded-full border-2 cursor-pointer flex items-center justify-center overflow-hidden ${
+                        !COLOR_PALETTE.includes(editing.color) ? 'border-gray-900' : 'border-gray-300'
+                      }`}
+                      style={{ backgroundColor: !COLOR_PALETTE.includes(editing.color) ? editing.color : '#fff' }}>
+                      {COLOR_PALETTE.includes(editing.color) && <Plus className="w-3.5 h-3.5 text-gray-400" />}
                       <input
                         type="color"
                         value={editing.color}
                         onChange={e => setEditing(v => v ? { ...v, color: e.target.value } : v)}
-                        className="w-10 h-9 rounded border border-gray-300 cursor-pointer"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
                       />
-                      <span className="text-xs font-mono text-gray-500">{editing.color}</span>
-                    </div>
+                    </label>
                   </div>
+                  <span className="text-xs font-mono text-gray-400 mt-1 block">{editing.color}</span>
                 </div>
               </div>
 
