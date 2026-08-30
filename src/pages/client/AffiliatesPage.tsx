@@ -1222,7 +1222,7 @@ export default function AffiliatesPage() {
       : null;
     const periodOrders = orders.filter(o => {
       if (periodCutoff && new Date(o.processed_at) < periodCutoff) return false;
-      return o.order_data?.discount_codes?.some(dc => allPartnerCodes.has(dc.code.toUpperCase()));
+      return o.order_data?.discount_codes?.some(dc => dc.code && allPartnerCodes.has(dc.code.toUpperCase()));
     });
     const periodRevenue = periodOrders.reduce((s, o) => s + Number(o.total_price), 0);
     const commRate = (Number(p.commission_rate) || 0) / 100;
@@ -1540,7 +1540,7 @@ export default function AffiliatesPage() {
                         .sort((a, b) => new Date(b.processed_at).getTime() - new Date(a.processed_at).getTime())
                         .slice(0, 50)
                         .map(o => {
-                          const usedCodes = o.order_data?.discount_codes?.filter(dc => allPartnerCodes.has(dc.code.toUpperCase())) ?? [];
+                          const usedCodes = o.order_data?.discount_codes?.filter(dc => dc.code && allPartnerCodes.has(dc.code.toUpperCase())) ?? [];
                           return (
                             <tr key={o.shopify_order_id} className="hover:bg-gray-50">
                               <td className="px-4 py-2.5 font-mono text-xs text-gray-500">#{o.shopify_order_id}</td>
@@ -1551,7 +1551,7 @@ export default function AffiliatesPage() {
                                   ))}
                                 </div>
                               </td>
-                              <td className="px-4 py-2.5 text-gray-400 text-xs">{maskEmail(o.customer_email)}</td>
+                              <td className="px-4 py-2.5 text-gray-400 text-xs">{o.customer_email ? maskEmail(o.customer_email) : '—'}</td>
                               <td className="px-4 py-2.5 text-gray-800 font-medium tabular-nums">{fmtCurrency(Number(o.total_price))}</td>
                               <td className="px-4 py-2.5 text-gray-400 text-xs">{fmtDate(o.processed_at)}</td>
                             </tr>
