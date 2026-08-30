@@ -122,15 +122,23 @@ function StatCard({
 
 // ─── Assign Code Drawer ───────────────────────────────────────────────────────
 
+interface AffiliateCampaign {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 interface AssignDrawerProps {
   clientId: string;
   partners: Partner[];
+  campaigns: AffiliateCampaign[];
   onClose: () => void;
   onSaved: () => void;
 }
 
-function AssignCodeDrawer({ clientId, partners, onClose, onSaved }: AssignDrawerProps) {
+function AssignCodeDrawer({ clientId, partners, campaigns, onClose, onSaved }: AssignDrawerProps) {
   const [partnerId, setPartnerId] = useState('');
+  const [campaignId, setCampaignId] = useState('');
   const [code, setCode] = useState('');
   const [desc, setDesc] = useState('');
   const [saving, setSaving] = useState(false);
@@ -145,6 +153,7 @@ function AssignCodeDrawer({ clientId, partners, onClose, onSaved }: AssignDrawer
       const { error: e } = await supabase.from('affiliate_code_assignments').insert({
         partner_id: partnerId,
         client_id: clientId,
+        campaign_id: campaignId || null,
         code: code.trim().toUpperCase(),
         code_source: 'manual',
         discount_description: desc || null,
@@ -209,6 +218,22 @@ function AssignCodeDrawer({ clientId, partners, onClose, onSaved }: AssignDrawer
             />
           </div>
 
+          {campaigns.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Affiliate Campaign <span className="text-gray-400 font-normal">(optional)</span></label>
+              <select
+                value={campaignId}
+                onChange={e => setCampaignId(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+              >
+                <option value="">No campaign</option>
+                {campaigns.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Source</label>
             <div className="border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-sm text-gray-500">
@@ -244,6 +269,7 @@ export default function CouponCodesPage() {
 
   const [partners, setPartners] = useState<Partner[]>([]);
   const [orders, setOrders] = useState<ShopifyOrder[]>([]);
+  const [campaigns, setCampaigns] = useState<AffiliateCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -258,7 +284,7 @@ export default function CouponCodesPage() {
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-    const [{ data: partnersData, error: pErr }, { data: ordersData, error: oErr }] =
+    const [{ data: partnersData, error: pErr }, { data: ordersData, error: oErr }, { data: campaignsData }] =
       await Promise.all([
         supabase
           .from('affiliate_partners')
@@ -273,12 +299,19 @@ export default function CouponCodesPage() {
           .gte('processed_at', ninetyDaysAgo.toISOString())
           .order('processed_at', { ascending: false })
           .limit(2000),
+        supabase
+          .from('affiliate_campaigns')
+          .select('id, name, slug')
+          .eq('client_id', clientId)
+          .eq('status', 'active')
+          .order('name'),
       ]);
 
     if (pErr) setError(pErr.message);
     if (oErr) setError(oErr.message);
     setPartners((partnersData as Partner[]) ?? []);
     setOrders((ordersData as ShopifyOrder[]) ?? []);
+    setCampaigns((campaignsData as AffiliateCampaign[]) ?? []);
     setLoading(false);
   }, [clientId]);
 
@@ -532,6 +565,7 @@ export default function CouponCodesPage() {
         <AssignCodeDrawer
           clientId={clientId}
           partners={partners}
+          campaigns={campaigns}
           onClose={() => setShowAssignDrawer(false)}
           onSaved={loadData}
         />

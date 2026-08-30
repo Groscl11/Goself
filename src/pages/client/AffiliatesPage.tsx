@@ -843,6 +843,7 @@ export default function AffiliatesPage() {
   const [detailPeriod, setDetailPeriod] = useState<7 | 30 | 90 | 0>(30);
   const [detailUtmLinks, setDetailUtmLinks] = useState<UtmLink[]>([]);
   const [detailUtmLoading, setDetailUtmLoading] = useState(false);
+  const [partnerCampaigns, setPartnerCampaigns] = useState<{ id: string; name: string; slug: string; scope: string; status: string }[]>([]);
   const [sidebarEmail, setSidebarEmail] = useState('');
   const [sidebarPhone, setSidebarPhone] = useState('');
   const [sidebarNotes, setSidebarNotes] = useState('');
@@ -895,6 +896,7 @@ export default function AffiliatesPage() {
       setSidebarStatus(selectedPartner.status);
       setSidebarType(selectedPartner.partner_type);
       loadPartnerUtmLinks(selectedPartner.id);
+      loadPartnerCampaigns(selectedPartner.id);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPartner?.id]);
@@ -939,6 +941,33 @@ export default function AffiliatesPage() {
     const next = partner.status === 'active' ? 'paused' : 'active';
     const { error } = await supabase.from('affiliate_partners').update({ status: next }).eq('id', partner.id).eq('client_id', clientId);
     if (!error) loadData();
+  }
+
+  async function loadPartnerCampaigns(partnerId: string) {
+    // Load campaigns where this partner is directly linked (partner-scoped)
+    // or assigned via campaign_partners (global campaigns)
+    const [{ data: direct }, { data: viaJoin }] = await Promise.all([
+      supabase
+        .from('affiliate_campaigns')
+        .select('id, name, slug, scope, status')
+        .eq('partner_id', partnerId)
+        .eq('client_id', clientId),
+      supabase
+        .from('campaign_partners')
+        .select('affiliate_campaigns(id, name, slug, scope, status)')
+        .eq('partner_id', partnerId),
+    ]);
+    const directCampaigns = (direct ?? []) as { id: string; name: string; slug: string; scope: string; status: string }[];
+    const joinCampaigns = ((viaJoin ?? []) as any[])
+      .map((r: any) => r.affiliate_campaigns)
+      .filter(Boolean) as { id: string; name: string; slug: string; scope: string; status: string }[];
+    const seen = new Set<string>();
+    const all = [...directCampaigns, ...joinCampaigns].filter(c => {
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
+    setPartnerCampaigns(all);
   }
 
   async function loadPartnerUtmLinks(partnerId: string) {
@@ -1455,6 +1484,27 @@ export default function AffiliatesPage() {
                   </div>
                 )}
               </div>
+
+              {/* Linked Campaigns */}
+              {partnerCampaigns.length > 0 && (
+                <div className="px-5 py-4 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Linked Campaigns</p>
+                  <div className="space-y-1.5">
+                    {partnerCampaigns.map(c => (
+                      <div key={c.id} className="flex items-center justify-between gap-3 p-2.5 bg-gray-50 rounded-lg">
+                        <div className="min-w-0 flex-1">
+                          <span className="text-sm font-medium text-gray-800">{c.name}</span>
+                          <span className="ml-2 text-xs text-gray-400 font-mono">/{c.slug}</span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium capitalize">{c.scope}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.status === 'active' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'}`}>{c.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Order History */}

@@ -19,6 +19,15 @@ interface Partner {
   partner_type: PartnerType;
 }
 
+interface AffiliateCampaign {
+  id: string;
+  name: string;
+  slug: string;
+  scope: 'global' | 'partner';
+  status: string;
+  default_utm_campaign: string | null;
+}
+
 interface UTMLink {
   id: string;
   client_id: string;
@@ -130,6 +139,7 @@ export default function UTMLinksPage() {
 
   const [links, setLinks] = useState<UTMLink[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
+  const [campaigns, setCampaigns] = useState<AffiliateCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState('');
 
@@ -141,6 +151,7 @@ export default function UTMLinksPage() {
   // Builder form state
   const [destUrl, setDestUrl] = useState('');
   const [partnerId, setPartnerId] = useState('');
+  const [affiliateCampaignId, setAffiliateCampaignId] = useState('');
   const [campaign, setCampaign] = useState('');
   const [medium, setMedium] = useState('');
   const [attrWindow, setAttrWindow] = useState(30);
@@ -158,7 +169,7 @@ export default function UTMLinksPage() {
     if (!clientId) return;
     setLoading(true);
     setPageError('');
-    const [{ data: partnersData, error: pErr }, { data: linksData, error: lErr }, { data: clientData }] =
+    const [{ data: partnersData, error: pErr }, { data: linksData, error: lErr }, { data: clientData }, { data: campaignsData }] =
       await Promise.all([
         supabase
           .from('affiliate_partners')
@@ -176,11 +187,18 @@ export default function UTMLinksPage() {
           .select('utm_slug_prefix')
           .eq('id', clientId)
           .maybeSingle(),
+        supabase
+          .from('affiliate_campaigns')
+          .select('id, name, slug, scope, status, default_utm_campaign')
+          .eq('client_id', clientId)
+          .eq('status', 'active')
+          .order('name'),
       ]);
     if (pErr) setPageError(pErr.message);
     if (lErr) setPageError(lErr.message);
     setPartners((partnersData as Partner[]) ?? []);
     setLinks((linksData as UTMLink[]) ?? []);
+    setCampaigns((campaignsData as AffiliateCampaign[]) ?? []);
     if (clientData && (clientData as any).utm_slug_prefix) {
       setSlugPrefix((clientData as any).utm_slug_prefix as SlugPrefix);
     }
@@ -240,6 +258,7 @@ export default function UTMLinksPage() {
       const { error: e } = await supabase.from('attribution_utm_links').insert({
         client_id: clientId,
         partner_id: partnerId || null,
+        campaign_id: affiliateCampaignId || null,
         slug: null,                       // short link generated on demand
         attribution_param_name: slugPrefix,
         attribution_param_value: attrValue,
@@ -254,7 +273,7 @@ export default function UTMLinksPage() {
       });
       if (e) throw e;
 
-      setDestUrl(''); setPartnerId(''); setCampaign(''); setMedium('');
+      setDestUrl(''); setPartnerId(''); setAffiliateCampaignId(''); setCampaign(''); setMedium('');
       setAttrWindow(30); setContent(''); setTerm('');
       await loadData();
     } catch (e: unknown) {
@@ -381,7 +400,7 @@ export default function UTMLinksPage() {
               />
             </div>
 
-            {/* Partner + Campaign */}
+            {/* Partner + Affiliate Campaign */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Partner</label>
@@ -396,14 +415,36 @@ export default function UTMLinksPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Campaign Name</label>
-                <input
-                  value={campaign}
-                  onChange={e => setCampaign(e.target.value)}
-                  placeholder="e.g. summer24"
-                  className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900"
-                />
+                <label className="block text-xs font-medium text-gray-700 mb-1">Affiliate Campaign</label>
+                <select
+                  value={affiliateCampaignId}
+                  onChange={e => {
+                    const id = e.target.value;
+                    setAffiliateCampaignId(id);
+                    if (id) {
+                      const c = campaigns.find(c => c.id === id);
+                      if (c?.default_utm_campaign) setCampaign(c.default_utm_campaign);
+                      else if (c) setCampaign(c.slug);
+                    }
+                  }}
+                  className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
+                  <option value="">No campaign</option>
+                  {campaigns.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
               </div>
+            </div>
+
+            {/* utm_campaign name */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Campaign Name <span className="text-gray-400 font-normal">(utm_campaign)</span></label>
+              <input
+                value={campaign}
+                onChange={e => setCampaign(e.target.value)}
+                placeholder="e.g. summer24"
+                className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
             </div>
 
             {/* Medium + Window */}
