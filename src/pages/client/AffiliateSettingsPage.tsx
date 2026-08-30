@@ -5,8 +5,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { clientMenuItems } from './clientMenuItems';
 import {
-  PortalSection, SectionType, SECTION_LABELS, defaultSections, defaultContentFor,
-  PortalSectionRenderer, HeroContent, BenefitsContent, HowItWorksContent, FaqContent, FinalCtaContent,
+  PortalSection, SectionType, PortalTheme, SECTION_LABELS, defaultSections, defaultContentFor,
+  PortalSectionRenderer, HeroContent, BenefitsContent, HowItWorksContent, FaqContent, FinalCtaContent, HeroVariant,
 } from '../../components/affiliate/PortalSections';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -77,8 +77,25 @@ function SectionEditorFields({ section, onChange }: { section: PortalSection; on
   switch (section.type) {
     case 'hero': {
       const c = section.content as HeroContent;
+      const variant: HeroVariant = c.variant ?? 'centered';
       return (
         <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Layout</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['centered', 'split'] as HeroVariant[]).map(v => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => onChange({ ...c, variant: v })}
+                  className={`text-left px-3 py-2 rounded-lg border text-xs font-medium ${
+                    variant === v ? 'bg-indigo-50 border-indigo-300 text-indigo-800' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}>
+                  {v === 'centered' ? 'Centered stack' : 'Split spotlight'}
+                </button>
+              ))}
+            </div>
+          </div>
           <div>
             <label className={labelCls}>Eyebrow tag</label>
             <input className={fieldCls} value={c.eyebrow} onChange={e => onChange({ ...c, eyebrow: e.target.value })} />
@@ -91,6 +108,12 @@ function SectionEditorFields({ section, onChange }: { section: PortalSection; on
             <label className={labelCls}>Subheadline</label>
             <textarea rows={2} className={fieldCls} value={c.subheadline} onChange={e => onChange({ ...c, subheadline: e.target.value })} />
           </div>
+          {variant === 'split' && (
+            <div>
+              <label className={labelCls}>Image URL <span className="text-gray-400 font-normal">(optional — falls back to a gradient panel)</span></label>
+              <input className={fieldCls} value={c.imageUrl ?? ''} onChange={e => onChange({ ...c, imageUrl: e.target.value })} placeholder="https://…" />
+            </div>
+          )}
         </div>
       );
     }
@@ -200,10 +223,12 @@ export default function AffiliateSettingsPage() {
   const [sections, setSections] = useState<PortalSection[]>([]);
   const [expandedSectionId, setExpandedSectionId] = useState<string | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
+  const [dragOverSectionId, setDragOverSectionId] = useState<string | null>(null);
   const [portalSaving, setPortalSaving] = useState(false);
   const [portalSaved, setPortalSaved] = useState(false);
   const [portalLinkCopied, setPortalLinkCopied] = useState(false);
-  const [portalTheme, setPortalTheme] = useState({ primaryColor: '#6366f1', logoUrl: null as string | null, clientName: '' });
+  const [portalTheme, setPortalTheme] = useState<PortalTheme>({ primaryColor: '#6366f1', logoUrl: null, clientName: '' });
 
   const loadData = useCallback(async () => {
     if (!clientId) return;
@@ -218,7 +243,7 @@ export default function AffiliateSettingsPage() {
         .order('sort_order'),
       supabase
         .from('clients')
-        .select('utm_slug_prefix, affiliate_settings, slug, primary_color, logo_url, name')
+        .select('utm_slug_prefix, affiliate_settings, slug, primary_color, logo_url, name, branding_settings')
         .eq('id', clientId)
         .maybeSingle(),
     ]);
@@ -252,10 +277,20 @@ export default function AffiliateSettingsPage() {
       const cd = clientData as {
         utm_slug_prefix?: string; affiliate_settings?: Record<string, unknown>; slug?: string;
         primary_color?: string; logo_url?: string | null; name?: string;
+        branding_settings?: { secondary_color?: string; border_radius?: string; font_heading?: string; font_body?: string };
       };
       if (cd.utm_slug_prefix) setSlugPrefix(cd.utm_slug_prefix as SlugPrefix);
       if (cd.slug) setClientSlug(cd.slug);
-      setPortalTheme({ primaryColor: cd.primary_color || '#6366f1', logoUrl: cd.logo_url ?? null, clientName: cd.name ?? '' });
+      const bs = cd.branding_settings ?? {};
+      setPortalTheme({
+        primaryColor: cd.primary_color || '#6366f1',
+        secondaryColor: bs.secondary_color,
+        borderRadius: bs.border_radius,
+        fontHeading: bs.font_heading,
+        fontBody: bs.font_body,
+        logoUrl: cd.logo_url ?? null,
+        clientName: cd.name ?? '',
+      });
       const settings = cd.affiliate_settings ?? {};
       setRawAffiliateSettings(settings);
       if (typeof settings.auto_fill_utm === 'boolean') {
@@ -388,6 +423,19 @@ export default function AffiliateSettingsPage() {
       if (idx === -1 || swapWith < 0 || swapWith >= s.length) return s;
       const next = [...s];
       [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+      return next;
+    });
+  }
+
+  function reorderSection(draggedId: string, targetId: string) {
+    if (draggedId === targetId) return;
+    setSections(s => {
+      const from = s.findIndex(sec => sec.id === draggedId);
+      const to = s.findIndex(sec => sec.id === targetId);
+      if (from === -1 || to === -1) return s;
+      const next = [...s];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
       return next;
     });
   }
@@ -587,8 +635,24 @@ export default function AffiliateSettingsPage() {
             {/* Sections manager */}
             <div className="p-4 space-y-2">
               {sections.map((section, idx) => (
-                <div key={section.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                  <div className="flex items-center gap-2 px-3 py-2.5 bg-gray-50">
+                <div
+                  key={section.id}
+                  draggable
+                  onDragStart={() => setDraggedSectionId(section.id)}
+                  onDragEnd={() => { setDraggedSectionId(null); setDragOverSectionId(null); }}
+                  onDragOver={e => { e.preventDefault(); if (draggedSectionId && draggedSectionId !== section.id) setDragOverSectionId(section.id); }}
+                  onDragLeave={() => setDragOverSectionId(id => id === section.id ? null : id)}
+                  onDrop={e => {
+                    e.preventDefault();
+                    if (draggedSectionId) reorderSection(draggedSectionId, section.id);
+                    setDraggedSectionId(null);
+                    setDragOverSectionId(null);
+                  }}
+                  className={`border rounded-lg overflow-hidden transition-colors ${
+                    dragOverSectionId === section.id ? 'border-indigo-400 bg-indigo-50/40' : 'border-gray-200'
+                  } ${draggedSectionId === section.id ? 'opacity-40' : ''}`}
+                >
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 cursor-grab active:cursor-grabbing">
                     <GripVertical className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
                     <button
                       onClick={() => setExpandedSectionId(id => id === section.id ? null : section.id)}

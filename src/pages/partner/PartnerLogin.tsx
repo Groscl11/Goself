@@ -9,6 +9,7 @@ interface ClientBranding {
   logo_url: string | null;
   primary_color: string;
   welcome_message: string | null;
+  branding_settings: { border_radius?: string; font_heading?: string; font_body?: string } | null;
 }
 
 type Step = 'email' | 'sent' | 'denied';
@@ -27,12 +28,15 @@ export default function PartnerLogin() {
   const [error, setError] = useState('');
 
   const accent = branding?.primary_color || '#6366f1';
+  const radius = branding?.branding_settings?.border_radius || '8px';
+  const fontHeading = branding?.branding_settings?.font_heading || "'Inter', sans-serif";
+  const fontBody = branding?.branding_settings?.font_body || "'Inter', sans-serif";
 
   useEffect(() => {
     if (!slug) return;
     supabase
       .from('clients')
-      .select('id, name, logo_url, primary_color, welcome_message')
+      .select('id, name, logo_url, primary_color, welcome_message, branding_settings')
       .eq('slug', slug)
       .eq('is_active', true)
       .maybeSingle()
@@ -104,16 +108,16 @@ export default function PartnerLogin() {
               <Building2 className="h-7 w-7" style={{ color: accent }} />
             </div>
           )}
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{branding?.name}</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Partner Portal</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white" style={{ fontFamily: fontHeading }}>{branding?.name}</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400" style={{ fontFamily: fontBody }}>Partner Portal</p>
         </div>
 
         {/* Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
+        <div className="bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 p-8" style={{ borderRadius: radius, fontFamily: fontBody }}>
           {step === 'email' && (
             <>
               <div className="mb-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Sign in</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white" style={{ fontFamily: fontHeading }}>Sign in</h2>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   {branding?.welcome_message || "Enter your email to access your partner dashboard."}
                 </p>
@@ -139,8 +143,8 @@ export default function PartnerLogin() {
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 text-sm"
-                      style={{ '--tw-ring-color': accent } as React.CSSProperties}
+                      className="w-full pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 text-sm"
+                      style={{ '--tw-ring-color': accent, borderRadius: radius } as React.CSSProperties}
                     />
                   </div>
                 </div>
@@ -148,8 +152,8 @@ export default function PartnerLogin() {
                 <button
                   type="submit"
                   disabled={loading || !email}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-white text-sm font-medium transition-opacity disabled:opacity-50"
-                  style={{ backgroundColor: accent }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-white text-sm font-medium transition-opacity disabled:opacity-50"
+                  style={{ backgroundColor: accent, borderRadius: radius }}
                 >
                   {loading ? (
                     <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

@@ -10,6 +10,7 @@ interface ClientData {
   logo_url: string | null;
   primary_color: string;
   affiliate_settings: { portal?: { sections?: PortalSection[] } } | null;
+  branding_settings: { secondary_color?: string; border_radius?: string; font_heading?: string; font_body?: string } | null;
 }
 
 export default function PartnerLandingPage() {
@@ -25,7 +26,7 @@ export default function PartnerLandingPage() {
     if (!slug) return;
     supabase
       .from('clients')
-      .select('id, name, logo_url, primary_color, affiliate_settings')
+      .select('id, name, logo_url, primary_color, affiliate_settings, branding_settings')
       .eq('slug', slug)
       .eq('is_active', true)
       .maybeSingle()
@@ -85,7 +86,15 @@ export default function PartnerLandingPage() {
         <PortalSectionRenderer
           key={section.id}
           section={section}
-          theme={{ primaryColor: accent, logoUrl: client.logo_url, clientName: client.name }}
+          theme={{
+            primaryColor: accent,
+            secondaryColor: client.branding_settings?.secondary_color,
+            borderRadius: client.branding_settings?.border_radius,
+            fontHeading: client.branding_settings?.font_heading,
+            fontBody: client.branding_settings?.font_body,
+            logoUrl: client.logo_url,
+            clientName: client.name,
+          }}
           onApply={() => setShowApply(true)}
           onLogin={() => navigate(`/partner/${slug}`)}
         />
