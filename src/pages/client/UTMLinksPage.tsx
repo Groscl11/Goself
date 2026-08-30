@@ -155,6 +155,8 @@ export default function UTMLinksPage() {
   const [term, setTerm] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [defaultDestUrl, setDefaultDestUrl] = useState('');
+  const [utmSourceInput, setUtmSourceInput] = useState('');
 
   // Per-link state
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -180,7 +182,7 @@ export default function UTMLinksPage() {
           .order('created_at', { ascending: false }),
         supabase
           .from('clients')
-          .select('utm_slug_prefix')
+          .select('utm_slug_prefix, website_url')
           .eq('id', clientId)
           .maybeSingle(),
         supabase
@@ -195,8 +197,9 @@ export default function UTMLinksPage() {
     setPartners((partnersData as Partner[]) ?? []);
     setLinks((linksData as UTMLink[]) ?? []);
     setCampaigns((campaignsData as AffiliateCampaign[]) ?? []);
-    if (clientData && (clientData as any).utm_slug_prefix) {
-      setSlugPrefix((clientData as any).utm_slug_prefix as SlugPrefix);
+    if (clientData) {
+      if ((clientData as any).utm_slug_prefix) setSlugPrefix((clientData as any).utm_slug_prefix as SlugPrefix);
+      if ((clientData as any).website_url) setDefaultDestUrl((clientData as any).website_url);
     }
     setLoading(false);
   }, [clientId]);
@@ -208,10 +211,19 @@ export default function UTMLinksPage() {
     [partners, partnerId],
   );
 
-  const utmSource = useMemo(() => {
-    if (selectedPartner) return selectedPartner.name.toLowerCase().replace(/\s+/g, '-');
-    return 'direct';
-  }, [selectedPartner]);
+  // Auto-fill utm_source from partner name; user can override
+  useEffect(() => {
+    setUtmSourceInput(
+      selectedPartner ? selectedPartner.name.toLowerCase().replace(/\s+/g, '-') : ''
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPartner?.id]);
+
+  // Pre-fill destination URL with store URL on first load
+  useEffect(() => {
+    if (defaultDestUrl && !destUrl) setDestUrl(defaultDestUrl);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultDestUrl]);
 
   // Attribution value preview (regenerates on partner/campaign change for display only)
   const previewAttrValue = useMemo(
@@ -221,8 +233,8 @@ export default function UTMLinksPage() {
   );
 
   const previewAttrUrl = useMemo(
-    () => buildAttributionUrl(destUrl, slugPrefix, previewAttrValue, utmSource, medium, campaign, content, term),
-    [destUrl, slugPrefix, previewAttrValue, utmSource, medium, campaign, content, term],
+    () => buildAttributionUrl(destUrl, slugPrefix, previewAttrValue, utmSourceInput, medium, campaign, content, term),
+    [destUrl, slugPrefix, previewAttrValue, utmSourceInput, medium, campaign, content, term],
   );
 
   async function handleSavePrefix(prefix: SlugPrefix) {
@@ -259,7 +271,7 @@ export default function UTMLinksPage() {
         attribution_param_name: slugPrefix,
         attribution_param_value: attrValue,
         destination_url: destUrl.trim(),
-        utm_source: utmSource || null,
+        utm_source: utmSourceInput || null,
         utm_medium: medium || null,
         utm_campaign: campaign || null,
         utm_content: content || null,
@@ -269,8 +281,8 @@ export default function UTMLinksPage() {
       });
       if (e) throw e;
 
-      setDestUrl(''); setPartnerId(''); setAffiliateCampaignId(''); setCampaign(''); setMedium('');
-      setAttrWindow(30); setContent(''); setTerm('');
+      setDestUrl(defaultDestUrl); setPartnerId(''); setAffiliateCampaignId(''); setCampaign(''); setMedium('');
+      setAttrWindow(30); setContent(''); setTerm(''); setUtmSourceInput('');
       await loadData();
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save link.');
@@ -432,15 +444,26 @@ export default function UTMLinksPage() {
               </div>
             </div>
 
-            {/* utm_campaign name */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Campaign Name <span className="text-gray-400 font-normal">(utm_campaign)</span></label>
-              <input
-                value={campaign}
-                onChange={e => setCampaign(e.target.value)}
-                placeholder="e.g. summer24"
-                className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
+            {/* UTM Source + Campaign Name */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">UTM Source <span className="text-gray-400 font-normal">(utm_source)</span></label>
+                <input
+                  value={utmSourceInput}
+                  onChange={e => setUtmSourceInput(e.target.value)}
+                  placeholder="e.g. meta, newsletter"
+                  className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Campaign Name <span className="text-gray-400 font-normal">(utm_campaign)</span></label>
+                <input
+                  value={campaign}
+                  onChange={e => setCampaign(e.target.value)}
+                  placeholder="e.g. summer24"
+                  className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </div>
             </div>
 
             {/* Medium + Window */}
@@ -583,7 +606,7 @@ export default function UTMLinksPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    {['Attribution Param', 'Partner', 'Campaign', 'Medium', 'Short Link', 'Clicks', 'Created', 'Actions'].map(h => (
+                    {['Partner', 'Attribution Param', 'Source', 'Medium', 'Campaign', 'Short Link', 'Clicks', 'Created', 'Actions'].map(h => (
                       <th
                         key={h}
                         className="text-left text-xs text-gray-500 uppercase tracking-wide px-4 py-3 font-medium whitespace-nowrap">
@@ -608,6 +631,25 @@ export default function UTMLinksPage() {
                     return (
                       <tr key={link.id} className="hover:bg-gray-50">
 
+                        {/* Partner */}
+                        <td className="px-4 py-3">
+                          {link.partner ? (
+                            <div className="flex items-center gap-2">
+                              <div className={`w-6 h-6 rounded-full bg-gradient-to-br ${avatarGradient(link.partner.name)} flex items-center justify-center text-white text-xs font-semibold flex-shrink-0`}>
+                                {initials(link.partner.name)}
+                              </div>
+                              <div>
+                                <p className="text-xs font-medium text-gray-900">{link.partner.name}</p>
+                                <span className={`text-xs rounded-full px-1.5 py-0.5 font-medium ${TYPE_BADGE[link.partner.partner_type]}`}>
+                                  {link.partner.partner_type}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
+                        </td>
+
                         {/* Attribution Param */}
                         <td className="px-4 py-3">
                           {paramValue ? (
@@ -631,27 +673,8 @@ export default function UTMLinksPage() {
                           )}
                         </td>
 
-                        {/* Partner */}
-                        <td className="px-4 py-3">
-                          {link.partner ? (
-                            <div className="flex items-center gap-2">
-                              <div className={`w-6 h-6 rounded-full bg-gradient-to-br ${avatarGradient(link.partner.name)} flex items-center justify-center text-white text-xs font-semibold flex-shrink-0`}>
-                                {initials(link.partner.name)}
-                              </div>
-                              <div>
-                                <p className="text-xs font-medium text-gray-900">{link.partner.name}</p>
-                                <span className={`text-xs rounded-full px-1.5 py-0.5 font-medium ${TYPE_BADGE[link.partner.partner_type]}`}>
-                                  {link.partner.partner_type}
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-gray-400 text-xs">—</span>
-                          )}
-                        </td>
-
-                        {/* Campaign */}
-                        <td className="px-4 py-3 text-gray-700 text-xs">{link.utm_campaign ?? '—'}</td>
+                        {/* Source */}
+                        <td className="px-4 py-3 text-gray-600 text-xs">{link.utm_source ?? '—'}</td>
 
                         {/* Medium */}
                         <td className="px-4 py-3 text-xs">
@@ -661,6 +684,9 @@ export default function UTMLinksPage() {
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
+
+                        {/* Campaign */}
+                        <td className="px-4 py-3 text-gray-700 text-xs">{link.utm_campaign ?? '—'}</td>
 
                         {/* Short Link */}
                         <td className="px-4 py-3">

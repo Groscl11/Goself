@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Link2, Users, BarChart3, Plus, X, ChevronLeft, Trash2, Edit2,
+  Link2, Users, BarChart3, Plus, X, ChevronLeft, Trash2, Edit2, Settings2,
   Pause, Play, TrendingUp, ShoppingBag, Copy, ExternalLink, Search, Check,
   Globe, MousePointerClick, LogIn, Save, Activity, Clock, CheckCircle2,
   DollarSign, AlertCircle, Loader2,
@@ -12,7 +12,7 @@ import { clientMenuItems } from './clientMenuItems';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type PartnerType = 'influencer' | 'creator' | 'brand' | 'other';
+type PartnerType = string;
 type PartnerStatus = 'active' | 'paused' | 'archived';
 type CodeSource = 'shopify' | 'manual';
 type CodeStatus = 'active' | 'paused' | 'removed';
@@ -283,16 +283,17 @@ function PlatformRows({
 interface PartnerDrawerProps {
   clientId: string;
   editPartner?: Partner | null;
+  customPartnerTypes?: string[];
   onClose: () => void;
   onSaved: () => void;
 }
 
-function PartnerDrawer({ clientId, editPartner, onClose, onSaved }: PartnerDrawerProps) {
+function PartnerDrawer({ clientId, editPartner, customPartnerTypes = [], onClose, onSaved }: PartnerDrawerProps) {
   const isEdit = !!editPartner;
   const [name, setName] = useState(editPartner?.name ?? '');
   const [email, setEmail] = useState(editPartner?.email ?? '');
   const [phone, setPhone] = useState(editPartner?.phone ?? '');
-  const [partnerType, setPartnerType] = useState<PartnerType>(editPartner?.partner_type ?? 'influencer');
+  const [partnerType, setPartnerType] = useState<string>(editPartner?.partner_type ?? 'influencer');
   const [notes, setNotes] = useState(editPartner?.notes ?? '');
   const [platforms, setPlatforms] = useState<Platform[]>(editPartner?.affiliate_partner_platforms ?? []);
   const [saving, setSaving] = useState(false);
@@ -339,11 +340,15 @@ function PartnerDrawer({ clientId, editPartner, onClose, onSaved }: PartnerDrawe
     }
   }
 
-  const typeOptions: { value: PartnerType; label: string; desc: string }[] = [
+  const defaultTypeOptions = [
     { value: 'influencer', label: 'Influencer', desc: 'Social media reach' },
     { value: 'creator', label: 'Creator', desc: 'Content creator' },
     { value: 'brand', label: 'Brand', desc: 'Brand partnership' },
     { value: 'other', label: 'Other', desc: 'Other type' },
+  ];
+  const typeOptions = [
+    ...defaultTypeOptions,
+    ...customPartnerTypes.map(t => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1), desc: 'Custom type' })),
   ];
 
   return (
@@ -835,6 +840,9 @@ export default function AffiliatesPage() {
   const [showAddDrawer, setShowAddDrawer] = useState(false);
   const [editPartner, setEditPartner] = useState<Partner | null>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [customPartnerTypes, setCustomPartnerTypes] = useState<string[]>([]);
+  const [showTypeSettings, setShowTypeSettings] = useState(false);
+  const [newTypeName, setNewTypeName] = useState('');
   const [detailTab, setDetailTab] = useState<'codes' | 'log'>('codes');
   const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -868,11 +876,15 @@ export default function AffiliatesPage() {
         .select('shopify_order_id, customer_email, total_price, processed_at, order_data')
         .eq('client_id', clientId)
         .not('order_data', 'is', null),
-      supabase.from('clients').select('slug').eq('id', clientId).maybeSingle(),
+      supabase.from('clients').select('slug, affiliate_settings').eq('id', clientId).maybeSingle(),
     ]);
     setPartners((partnersData as Partner[]) ?? []);
     setOrders((ordersData as ShopifyOrder[]) ?? []);
-    if (clientData && (clientData as any).slug) setClientSlug((clientData as any).slug);
+    if (clientData) {
+      if ((clientData as any).slug) setClientSlug((clientData as any).slug);
+      const pts = (clientData as any).affiliate_settings?.partner_types;
+      if (Array.isArray(pts)) setCustomPartnerTypes(pts);
+    }
     setLoading(false);
   }, [clientId]);
 
@@ -1043,6 +1055,24 @@ export default function AffiliatesPage() {
     }
   }
 
+  async function saveCustomPartnerTypes(types: string[]) {
+    setCustomPartnerTypes(types);
+    const existing = await supabase.from('clients').select('affiliate_settings').eq('id', clientId).maybeSingle();
+    const current = (existing.data as any)?.affiliate_settings ?? {};
+    await supabase.from('clients').update({ affiliate_settings: { ...current, partner_types: types } }).eq('id', clientId);
+  }
+
+  async function handleAddPartnerType() {
+    const val = newTypeName.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!val || customPartnerTypes.includes(val)) return;
+    await saveCustomPartnerTypes([...customPartnerTypes, val]);
+    setNewTypeName('');
+  }
+
+  async function handleRemovePartnerType(type: string) {
+    await saveCustomPartnerTypes(customPartnerTypes.filter(t => t !== type));
+  }
+
   // ── List View ──────────────────────────────────────────────────────────────
   function renderList() {
     return (
@@ -1058,6 +1088,63 @@ export default function AffiliatesPage() {
               className="bg-white border border-gray-300 text-gray-700 px-3 py-1.5 text-sm rounded-lg hover:bg-gray-50 flex items-center gap-1.5">
               <BarChart3 className="w-4 h-4" /> Analytics
             </button>
+            {/* Partner type settings */}
+            <div className="relative">
+              <button
+                onClick={() => setShowTypeSettings(s => !s)}
+                title="Partner type settings"
+                className="bg-white border border-gray-300 text-gray-600 px-3 py-1.5 text-sm rounded-lg hover:bg-gray-50 flex items-center gap-1.5">
+                <Settings2 className="w-4 h-4" /> Types
+              </button>
+              {showTypeSettings && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowTypeSettings(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-20 p-4 space-y-3">
+                    <p className="text-xs font-semibold text-gray-700">Partner Types</p>
+                    <p className="text-xs text-gray-500">Add custom types alongside the defaults.</p>
+                    {/* Default types — read-only */}
+                    <div className="space-y-1">
+                      <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Default</p>
+                      {['influencer', 'creator', 'brand', 'other'].map(t => (
+                        <div key={t} className="flex items-center justify-between px-2 py-1.5 bg-gray-50 rounded-lg">
+                          <span className="text-xs font-medium text-gray-600 capitalize">{t}</span>
+                          <span className="text-xs text-gray-400">built-in</span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Custom types */}
+                    {customPartnerTypes.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Custom</p>
+                        {customPartnerTypes.map(t => (
+                          <div key={t} className="flex items-center justify-between px-2 py-1.5 bg-indigo-50 rounded-lg">
+                            <span className="text-xs font-medium text-indigo-700 capitalize">{t}</span>
+                            <button onClick={() => handleRemovePartnerType(t)} className="text-gray-400 hover:text-red-500 ml-2">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Add new type */}
+                    <div className="flex gap-2 pt-1 border-t border-gray-100">
+                      <input
+                        value={newTypeName}
+                        onChange={e => setNewTypeName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleAddPartnerType(); }}
+                        placeholder="e.g. podcast"
+                        className="flex-1 border border-gray-300 rounded-lg text-xs px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <button
+                        onClick={handleAddPartnerType}
+                        className="bg-gray-900 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-gray-800 flex items-center gap-1">
+                        <Plus className="w-3 h-3" /> Add
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
             <button onClick={() => setShowAddDrawer(true)}
               className="bg-gray-900 text-white px-4 py-2 text-sm rounded-lg hover:bg-gray-800 flex items-center gap-1.5">
               <Plus className="w-4 h-4" /> Add Partner
@@ -1711,10 +1798,10 @@ export default function AffiliatesPage() {
       </div>
 
       {showAddDrawer && (
-        <PartnerDrawer clientId={clientId} onClose={() => setShowAddDrawer(false)} onSaved={loadData} />
+        <PartnerDrawer clientId={clientId} customPartnerTypes={customPartnerTypes} onClose={() => setShowAddDrawer(false)} onSaved={loadData} />
       )}
       {editPartner && (
-        <PartnerDrawer clientId={clientId} editPartner={editPartner} onClose={() => setEditPartner(null)} onSaved={loadData} />
+        <PartnerDrawer clientId={clientId} editPartner={editPartner} customPartnerTypes={customPartnerTypes} onClose={() => setEditPartner(null)} onSaved={loadData} />
       )}
       {showAssignModal && selectedPartner && (
         <AssignCodesModal
