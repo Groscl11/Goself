@@ -310,7 +310,13 @@ export default function AffiliateSettingsPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900">{t.name}</p>
                     <p className="text-xs text-gray-400">
-                      medium: <span className="font-mono">{t.default_utm_medium ?? '—'}</span>
+                      medium:{' '}
+                      <button
+                        onClick={() => startEdit(t)}
+                        className="font-mono text-indigo-600 hover:underline focus:outline-none"
+                        title="Click to edit">
+                        {t.default_utm_medium ?? '—'}
+                      </button>
                       {t.default_utm_source_tpl && (
                         <> · source: <span className="font-mono">{t.default_utm_source_tpl}</span></>
                       )}
@@ -372,15 +378,16 @@ export default function AffiliateSettingsPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Default UTM Medium</label>
-                    <select
+                    <input
+                      list="medium-options"
                       value={editing.default_utm_medium}
                       onChange={e => setEditing(v => v ? { ...v, default_utm_medium: e.target.value } : v)}
-                      className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
-                      <option value="">None</option>
-                      {DEFAULT_MEDIUM_OPTIONS.map(m => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
+                      placeholder="e.g. influencer"
+                      className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    />
+                    <datalist id="medium-options">
+                      {DEFAULT_MEDIUM_OPTIONS.map(m => <option key={m} value={m} />)}
+                    </datalist>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Color</label>
