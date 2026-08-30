@@ -154,6 +154,7 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
           ref={navRef as React.RefObject<HTMLElement>}
           onScroll={handleNavScroll}
           className="flex-1 overflow-y-auto py-2 px-1.5 overflow-x-hidden"
+        >
           <ul className="space-y-0.5">
             {menuItems
               .filter(item => !item.adminOnly || profile?.role === 'admin')
