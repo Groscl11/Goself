@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect, useRef } from 'react';
+import { ReactNode, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
@@ -21,6 +21,9 @@ interface DashboardLayoutProps {
 }
 
 const COLLAPSED_KEY = 'goself_sidebar_collapsed';
+
+// Persists across page navigations (DashboardLayout remounts per page) but resets on full reload.
+let sidebarScrollTop = 0;
 
 // ── Tooltip wrapper (shown only in collapsed mode) ────────────────────────────
 function NavTooltip({ label, section, children }: { label: string; section?: string; children: ReactNode }) {
@@ -72,10 +75,23 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
   const { profile } = useAuth();
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const location = useLocation();
+  const desktopNavRef = useRef<HTMLElement | null>(null);
+  const mobileNavRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (profile?.client_id) loadTheme(profile.client_id);
   }, [profile?.client_id, loadTheme]);
+
+  // Restore sidebar scroll position on mount — the layout remounts on every
+  // page navigation, which otherwise resets the nav scroll back to the top.
+  useLayoutEffect(() => {
+    if (desktopNavRef.current) desktopNavRef.current.scrollTop = sidebarScrollTop;
+    if (mobileNavRef.current) mobileNavRef.current.scrollTop = sidebarScrollTop;
+  }, []);
+
+  function handleNavScroll(e: React.UIEvent<HTMLElement>) {
+    sidebarScrollTop = e.currentTarget.scrollTop;
+  }
 
   function toggleCollapsed() {
     setCollapsed(c => {
@@ -94,7 +110,7 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
   const sidebarW = collapsed ? 'w-14' : 'w-52';
   const mainML  = collapsed ? 'lg:ml-14' : 'lg:ml-52';
 
-  function SidebarContent() {
+  function SidebarContent({ navRef }: { navRef: React.RefObject<HTMLElement | null> }) {
     const sections = new Set<string>();
     return (
       <div className="h-full flex flex-col">
@@ -134,7 +150,10 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
         </div>
 
         {/* Nav items */}
-        <nav className="flex-1 overflow-y-auto py-2 px-1.5 overflow-x-hidden">
+        <nav
+          ref={navRef as React.RefObject<HTMLElement>}
+          onScroll={handleNavScroll}
+          className="flex-1 overflow-y-auto py-2 px-1.5 overflow-x-hidden"
           <ul className="space-y-0.5">
             {menuItems
               .filter(item => !item.adminOnly || profile?.role === 'admin')
@@ -242,7 +261,7 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
         className={`fixed top-0 left-0 bottom-0 ${sidebarW} bg-white border-r border-gray-200 z-50
           hidden lg:block transition-[width] duration-200 ease-in-out overflow-hidden`}
       >
-        <SidebarContent />
+        <SidebarContent navRef={desktopNavRef} />
       </aside>
 
       {/* Mobile sidebar (always w-52, slides in) */}
@@ -250,7 +269,7 @@ export function DashboardLayout({ children, menuItems, title }: DashboardLayoutP
         className={`fixed top-0 left-0 bottom-0 w-52 bg-white border-r border-gray-200 z-50
           lg:hidden transform transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
-        <SidebarContent />
+        <SidebarContent navRef={mobileNavRef} />
       </aside>
 
       {/* Main content */}
