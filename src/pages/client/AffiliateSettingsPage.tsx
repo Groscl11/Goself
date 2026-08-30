@@ -37,9 +37,6 @@ const PREFIX_OPTIONS: { value: SlugPrefix; label: string; description: string }[
   { value: 'bg_aff', label: 'bg_aff=', description: 'Branded affiliate — unique to your platform' },
 ];
 
-const DEFAULT_MEDIUM_OPTIONS = [
-  'influencer', 'affiliate', 'email', 'social', 'referral', 'cpc', 'organic', 'partner',
-];
 
 const SYSTEM_DEFAULTS: Omit<PartnerType, 'id' | 'is_system_default'>[] = [
   { name: 'Influencer',      slug: 'influencer',      color: '#ec4899', default_utm_medium: 'influencer', default_utm_source_tpl: '{{partner_name}}', sort_order: 0 },
@@ -379,15 +376,12 @@ export default function AffiliateSettingsPage() {
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Default UTM Medium</label>
                     <input
-                      list="medium-options"
+                      type="text"
                       value={editing.default_utm_medium}
                       onChange={e => setEditing(v => v ? { ...v, default_utm_medium: e.target.value } : v)}
                       placeholder="e.g. influencer"
                       className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900"
                     />
-                    <datalist id="medium-options">
-                      {DEFAULT_MEDIUM_OPTIONS.map(m => <option key={m} value={m} />)}
-                    </datalist>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Color</label>
@@ -401,19 +395,6 @@ export default function AffiliateSettingsPage() {
                       <span className="text-xs font-mono text-gray-500">{editing.color}</span>
                     </div>
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    UTM Source Template
-                  </label>
-                  <input
-                    value={editing.default_utm_source_tpl}
-                    onChange={e => setEditing(v => v ? { ...v, default_utm_source_tpl: e.target.value } : v)}
-                    placeholder="{{partner_name}}"
-                    className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Use <code className="font-mono bg-gray-100 px-1 rounded">{'{{partner_name}}'}</code> to insert partner name dynamically.</p>
                 </div>
               </div>
 
