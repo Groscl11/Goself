@@ -364,24 +364,48 @@ export default function UTMLinksPage() {
               <ChevronDown className="w-3 h-3" />
             </button>
             {showPrefixSettings && (
-              <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-20 p-4 space-y-3">
-                <p className="text-xs font-semibold text-gray-700">Attribution Param Prefix</p>
-                <p className="text-xs text-gray-500">Applied to all new links. Existing links keep their original prefix.</p>
-                <div className="space-y-1.5">
-                  {PREFIX_OPTIONS.map(opt => (
+              <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-lg z-20 p-4 space-y-4">
+                <div>
+                  <p className="text-xs font-semibold text-gray-700 mb-1">Attribution Param Prefix</p>
+                  <p className="text-xs text-gray-500">Applied to all new links. Existing links keep their original prefix.</p>
+                  <div className="space-y-1.5 mt-2">
+                    {PREFIX_OPTIONS.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => handleSavePrefix(opt.value)}
+                        disabled={savingPrefix}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                          slugPrefix === opt.value
+                            ? 'bg-indigo-50 border border-indigo-200 text-indigo-800'
+                            : 'hover:bg-gray-50 border border-transparent text-gray-700'
+                        }`}>
+                        <span className="font-mono font-medium">{opt.label}</span>
+                        <span className="block text-xs text-gray-400 mt-0.5">{opt.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Default destination URL */}
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="text-xs font-semibold text-gray-700 mb-1">Default Destination URL</p>
+                  <p className="text-xs text-gray-500 mb-2">Pre-fills the URL field for every new link.</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={defaultDestUrl}
+                      onChange={e => setDefaultDestUrl(e.target.value)}
+                      placeholder="https://yourstore.com"
+                      className="flex-1 border border-gray-300 rounded-lg text-xs px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
                     <button
-                      key={opt.value}
-                      onClick={() => handleSavePrefix(opt.value)}
-                      disabled={savingPrefix}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                        slugPrefix === opt.value
-                          ? 'bg-indigo-50 border border-indigo-200 text-indigo-800'
-                          : 'hover:bg-gray-50 border border-transparent text-gray-700'
-                      }`}>
-                      <span className="font-mono font-medium">{opt.label}</span>
-                      <span className="block text-xs text-gray-400 mt-0.5">{opt.description}</span>
+                      onClick={async () => {
+                        await supabase.from('clients').update({ website_url: defaultDestUrl || null }).eq('id', clientId);
+                        if (!destUrl) setDestUrl(defaultDestUrl);
+                      }}
+                      className="bg-gray-900 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-gray-800">
+                      Save
                     </button>
-                  ))}
+                  </div>
                 </div>
               </div>
             )}
