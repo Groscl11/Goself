@@ -9,6 +9,7 @@ import { supabase, supabaseUrl, supabaseAnonKey } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { clientMenuItems } from './clientMenuItems';
+import { PendingApplications } from '../../components/affiliate/PendingApplications';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1152,6 +1153,9 @@ export default function AffiliatesPage() {
           </div>
         </div>
 
+        {/* Pending affiliate portal applications */}
+        {clientId && <PendingApplications clientId={clientId} defaultPartnerType="affiliate" />}
+
         {/* Partner Portal URL card */}
         {clientSlug && (
           <div className="flex items-center justify-between bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
@@ -1184,6 +1188,14 @@ export default function AffiliatesPage() {
                 className="text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-white border border-indigo-200 rounded-lg px-3 py-1.5"
               >
                 Preview
+              </a>
+              <a
+                href={`/partner/${clientSlug}/landing`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-white border border-indigo-200 rounded-lg px-3 py-1.5"
+              >
+                Landing page
               </a>
             </div>
           </div>

@@ -101,6 +101,7 @@ const AffiliateSettingsPage = lazy(() => import('./pages/client/AffiliateSetting
 const AffiliateCampaignsPage = lazy(() => import('./pages/client/AffiliateCampaignsPage'));
 const PartnerLogin = lazy(() => import('./pages/partner/PartnerLogin'));
 const PartnerDashboard = lazy(() => import('./pages/partner/PartnerDashboard'));
+const PartnerLandingPage = lazy(() => import('./pages/partner/PartnerLandingPage'));
 
 function LogoutRoute() {
   const { signOut } = useAuth();
@@ -161,6 +162,7 @@ function App() {
           <Route path="/join/:clientSlug/programs" element={<ProgramDiscovery />} />
           {/* Partner portal — public routes */}
           <Route path="/partner/:slug" element={<Suspense fallback={null}><PartnerLogin /></Suspense>} />
+          <Route path="/partner/:slug/landing" element={<Suspense fallback={null}><PartnerLandingPage /></Suspense>} />
           <Route path="/partner/:slug/dashboard" element={<Suspense fallback={null}><PartnerDashboard /></Suspense>} />
           <Route path="/redeem" element={<RewardRedemption />} />
           <Route path="/redeem/:token" element={<RedeemRewards />} />

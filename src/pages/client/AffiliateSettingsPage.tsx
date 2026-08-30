@@ -1,9 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Save, Settings2, Check, X, Pencil } from 'lucide-react';
+import { Plus, Trash2, Save, Settings2, Check, X, Pencil, ExternalLink, Copy, ChevronDown, ChevronUp, Eye, EyeOff, GripVertical, Layout } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { clientMenuItems } from './clientMenuItems';
+import {
+  PortalSection, SectionType, SECTION_LABELS, defaultSections, defaultContentFor,
+  PortalSectionRenderer, HeroContent, BenefitsContent, HowItWorksContent, FaqContent, FinalCtaContent,
+} from '../../components/affiliate/PortalSections';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,6 +70,109 @@ function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-gray-200 rounded ${className}`} />;
 }
 
+const fieldCls = 'w-full border border-gray-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900';
+const labelCls = 'block text-xs font-medium text-gray-700 mb-1';
+
+function SectionEditorFields({ section, onChange }: { section: PortalSection; onChange: (content: PortalSection['content']) => void }) {
+  switch (section.type) {
+    case 'hero': {
+      const c = section.content as HeroContent;
+      return (
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Eyebrow tag</label>
+            <input className={fieldCls} value={c.eyebrow} onChange={e => onChange({ ...c, eyebrow: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Headline</label>
+            <input className={fieldCls} value={c.headline} onChange={e => onChange({ ...c, headline: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Subheadline</label>
+            <textarea rows={2} className={fieldCls} value={c.subheadline} onChange={e => onChange({ ...c, subheadline: e.target.value })} />
+          </div>
+        </div>
+      );
+    }
+    case 'benefits': {
+      const c = section.content as BenefitsContent;
+      return (
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Title</label>
+            <input className={fieldCls} value={c.title} onChange={e => onChange({ ...c, title: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Benefits (one per line)</label>
+            <textarea
+              rows={4} className={fieldCls} value={c.items.join('\n')}
+              onChange={e => onChange({ ...c, items: e.target.value.split('\n').filter(Boolean) })}
+            />
+          </div>
+        </div>
+      );
+    }
+    case 'how_it_works': {
+      const c = section.content as HowItWorksContent;
+      return (
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Title</label>
+            <input className={fieldCls} value={c.title} onChange={e => onChange({ ...c, title: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Steps (one per line)</label>
+            <textarea
+              rows={4} className={fieldCls} value={c.steps.join('\n')}
+              onChange={e => onChange({ ...c, steps: e.target.value.split('\n').filter(Boolean) })}
+            />
+          </div>
+        </div>
+      );
+    }
+    case 'faq': {
+      const c = section.content as FaqContent;
+      const asText = c.items.map(i => `${i.q} | ${i.a}`).join('\n');
+      return (
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Title</label>
+            <input className={fieldCls} value={c.title} onChange={e => onChange({ ...c, title: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Questions (one per line, format: Question | Answer)</label>
+            <textarea
+              rows={4} className={fieldCls} value={asText}
+              onChange={e => onChange({
+                ...c,
+                items: e.target.value.split('\n').filter(Boolean).map(line => {
+                  const [q, ...rest] = line.split('|');
+                  return { q: (q ?? '').trim(), a: rest.join('|').trim() };
+                }),
+              })}
+            />
+          </div>
+        </div>
+      );
+    }
+    case 'final_cta': {
+      const c = section.content as FinalCtaContent;
+      return (
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Headline</label>
+            <input className={fieldCls} value={c.headline} onChange={e => onChange({ ...c, headline: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Subtext</label>
+            <input className={fieldCls} value={c.subtext} onChange={e => onChange({ ...c, subtext: e.target.value })} />
+          </div>
+        </div>
+      );
+    }
+  }
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AffiliateSettingsPage() {
@@ -87,6 +194,17 @@ export default function AffiliateSettingsPage() {
   const [prefixSaved, setPrefixSaved] = useState(false);
   const [autoFillSaving, setAutoFillSaving] = useState(false);
 
+  // Affiliate portal builder
+  const [clientSlug, setClientSlug] = useState('');
+  const [rawAffiliateSettings, setRawAffiliateSettings] = useState<Record<string, unknown>>({});
+  const [sections, setSections] = useState<PortalSection[]>([]);
+  const [expandedSectionId, setExpandedSectionId] = useState<string | null>(null);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [portalSaving, setPortalSaving] = useState(false);
+  const [portalSaved, setPortalSaved] = useState(false);
+  const [portalLinkCopied, setPortalLinkCopied] = useState(false);
+  const [portalTheme, setPortalTheme] = useState({ primaryColor: '#6366f1', logoUrl: null as string | null, clientName: '' });
+
   const loadData = useCallback(async () => {
     if (!clientId) return;
     setLoading(true);
@@ -100,7 +218,7 @@ export default function AffiliateSettingsPage() {
         .order('sort_order'),
       supabase
         .from('clients')
-        .select('utm_slug_prefix, affiliate_settings')
+        .select('utm_slug_prefix, affiliate_settings, slug, primary_color, logo_url, name')
         .eq('id', clientId)
         .maybeSingle(),
     ]);
@@ -131,11 +249,20 @@ export default function AffiliateSettingsPage() {
     setTypes(resolved);
 
     if (clientData) {
-      const cd = clientData as { utm_slug_prefix?: string; affiliate_settings?: Record<string, unknown> };
+      const cd = clientData as {
+        utm_slug_prefix?: string; affiliate_settings?: Record<string, unknown>; slug?: string;
+        primary_color?: string; logo_url?: string | null; name?: string;
+      };
       if (cd.utm_slug_prefix) setSlugPrefix(cd.utm_slug_prefix as SlugPrefix);
-      if (cd.affiliate_settings && typeof cd.affiliate_settings.auto_fill_utm === 'boolean') {
-        setAutoFill(cd.affiliate_settings.auto_fill_utm as boolean);
+      if (cd.slug) setClientSlug(cd.slug);
+      setPortalTheme({ primaryColor: cd.primary_color || '#6366f1', logoUrl: cd.logo_url ?? null, clientName: cd.name ?? '' });
+      const settings = cd.affiliate_settings ?? {};
+      setRawAffiliateSettings(settings);
+      if (typeof settings.auto_fill_utm === 'boolean') {
+        setAutoFill(settings.auto_fill_utm as boolean);
       }
+      const portal = settings.portal as { sections?: PortalSection[] } | undefined;
+      setSections(portal?.sections?.length ? portal.sections : defaultSections());
     }
 
     setLoading(false);
@@ -225,11 +352,67 @@ export default function AffiliateSettingsPage() {
   async function handleToggleAutoFill(val: boolean) {
     setAutoFill(val);
     setAutoFillSaving(true);
-    await supabase
-      .from('clients')
-      .update({ affiliate_settings: { auto_fill_utm: val } })
-      .eq('id', clientId);
+    const next = { ...rawAffiliateSettings, auto_fill_utm: val };
+    await supabase.from('clients').update({ affiliate_settings: next }).eq('id', clientId);
+    setRawAffiliateSettings(next);
     setAutoFillSaving(false);
+  }
+
+  // ── Affiliate portal builder ──────────────────────────────────────────────
+
+  function addSection(type: SectionType) {
+    const newSection: PortalSection = {
+      id: `${type}-${Date.now()}`,
+      type,
+      visible: true,
+      content: defaultContentFor(type),
+    };
+    setSections(s => [...s, newSection]);
+    setExpandedSectionId(newSection.id);
+    setAddMenuOpen(false);
+  }
+
+  function removeSection(id: string) {
+    if (!window.confirm('Remove this section from the portal page?')) return;
+    setSections(s => s.filter(sec => sec.id !== id));
+  }
+
+  function toggleSectionVisible(id: string) {
+    setSections(s => s.map(sec => sec.id === id ? { ...sec, visible: !sec.visible } : sec));
+  }
+
+  function moveSection(id: string, direction: -1 | 1) {
+    setSections(s => {
+      const idx = s.findIndex(sec => sec.id === id);
+      const swapWith = idx + direction;
+      if (idx === -1 || swapWith < 0 || swapWith >= s.length) return s;
+      const next = [...s];
+      [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+      return next;
+    });
+  }
+
+  function updateSectionContent(id: string, content: PortalSection['content']) {
+    setSections(s => s.map(sec => sec.id === id ? { ...sec, content } : sec));
+  }
+
+  async function handleSavePortal() {
+    setPortalSaving(true);
+    const next = { ...rawAffiliateSettings, portal: { sections } };
+    const { error } = await supabase.from('clients').update({ affiliate_settings: next }).eq('id', clientId);
+    setPortalSaving(false);
+    if (!error) {
+      setRawAffiliateSettings(next);
+      setPortalSaved(true);
+      setTimeout(() => setPortalSaved(false), 2000);
+    }
+  }
+
+  function copyPortalLink() {
+    const url = `${window.location.origin}/partner/${clientSlug}/landing`;
+    navigator.clipboard.writeText(url);
+    setPortalLinkCopied(true);
+    setTimeout(() => setPortalLinkCopied(false), 2000);
   }
 
   return (
@@ -358,6 +541,125 @@ export default function AffiliateSettingsPage() {
               )}
             </div>
           )}
+        </section>
+
+        {/* Affiliate Portal builder */}
+        <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <Layout className="w-4 h-4 text-gray-500" />
+                Affiliate Portal
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Customize the public landing page prospective affiliates see before applying
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {portalSaved && <span className="text-xs text-green-600 flex items-center gap-1"><Check className="w-3 h-3" /> Saved</span>}
+              <button
+                onClick={copyPortalLink}
+                disabled={!clientSlug}
+                className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                <Copy className="w-3.5 h-3.5" />
+                {portalLinkCopied ? 'Copied' : 'Copy link'}
+              </button>
+              {clientSlug && (
+                <a
+                  href={`/partner/${clientSlug}/landing`}
+                  target="_blank" rel="noreferrer"
+                  className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 px-2.5 py-1.5 rounded-lg hover:bg-gray-50">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  View live
+                </a>
+              )}
+              <button
+                onClick={handleSavePortal}
+                disabled={portalSaving}
+                className="flex items-center gap-1.5 text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700 disabled:opacity-50">
+                <Save className="w-3.5 h-3.5" />
+                {portalSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
+            {/* Sections manager */}
+            <div className="p-4 space-y-2">
+              {sections.map((section, idx) => (
+                <div key={section.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-gray-50">
+                    <GripVertical className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+                    <button
+                      onClick={() => setExpandedSectionId(id => id === section.id ? null : section.id)}
+                      className="flex-1 text-left text-sm font-medium text-gray-800 flex items-center gap-1.5 min-w-0">
+                      {SECTION_LABELS[section.type]}
+                      {!section.visible && <span className="text-[10px] text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded flex-shrink-0">hidden</span>}
+                    </button>
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      <button onClick={() => moveSection(section.id, -1)} disabled={idx === 0} className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30">
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => moveSection(section.id, 1)} disabled={idx === sections.length - 1} className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30">
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => toggleSectionVisible(section.id)} className="p-1 text-gray-400 hover:text-gray-700">
+                        {section.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        onClick={() => setExpandedSectionId(id => id === section.id ? null : section.id)}
+                        className="p-1 text-gray-400 hover:text-gray-700">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => removeSection(section.id)} className="p-1 text-gray-400 hover:text-red-600">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  {expandedSectionId === section.id && (
+                    <div className="p-3 border-t border-gray-100">
+                      <SectionEditorFields section={section} onChange={content => updateSectionContent(section.id, content)} />
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              <div className="relative">
+                <button
+                  onClick={() => setAddMenuOpen(o => !o)}
+                  className="w-full flex items-center justify-center gap-1.5 text-sm border border-dashed border-gray-300 text-gray-500 px-3 py-2.5 rounded-lg hover:bg-gray-50">
+                  <Plus className="w-3.5 h-3.5" />
+                  Add section
+                </button>
+                {addMenuOpen && (
+                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+                    {(Object.keys(SECTION_LABELS) as SectionType[]).map(type => (
+                      <button
+                        key={type}
+                        onClick={() => addSection(type)}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        {SECTION_LABELS[type]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Live preview */}
+            <div className="bg-gray-100 p-4">
+              <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-2">Live preview</p>
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden max-h-[600px] overflow-y-auto">
+                {sections.map(section => (
+                  <PortalSectionRenderer
+                    key={section.id}
+                    section={section}
+                    theme={portalTheme}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Edit/Add drawer */}
