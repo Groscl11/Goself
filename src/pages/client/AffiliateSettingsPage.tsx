@@ -39,12 +39,12 @@ const PREFIX_OPTIONS: { value: SlugPrefix; label: string; description: string }[
 
 
 const SYSTEM_DEFAULTS: Omit<PartnerType, 'id' | 'is_system_default'>[] = [
-  { name: 'Influencer',      slug: 'influencer',      color: '#ec4899', default_utm_medium: 'influencer', default_utm_source_tpl: '{{partner_name}}', sort_order: 0 },
-  { name: 'Creator',         slug: 'creator',          color: '#f97316', default_utm_medium: 'influencer', default_utm_source_tpl: '{{partner_name}}', sort_order: 1 },
-  { name: 'Brand',           slug: 'brand',            color: '#3b82f6', default_utm_medium: 'affiliate',  default_utm_source_tpl: '{{partner_name}}', sort_order: 2 },
-  { name: 'Affiliate',       slug: 'affiliate',        color: '#8b5cf6', default_utm_medium: 'affiliate',  default_utm_source_tpl: '{{partner_name}}', sort_order: 3 },
-  { name: 'Coupon Website',  slug: 'coupon-website',   color: '#10b981', default_utm_medium: 'affiliate',  default_utm_source_tpl: '{{partner_name}}', sort_order: 4 },
-  { name: 'Partner',         slug: 'partner',          color: '#6366f1', default_utm_medium: 'partner',   default_utm_source_tpl: '{{partner_name}}', sort_order: 5 },
+  { name: 'Influencer',      slug: 'influencer',      color: '#ec4899', default_utm_medium: 'influencer',     default_utm_source_tpl: '{{partner_name}}', sort_order: 0 },
+  { name: 'Creator',         slug: 'creator',          color: '#f97316', default_utm_medium: 'creator',        default_utm_source_tpl: '{{partner_name}}', sort_order: 1 },
+  { name: 'Brand',           slug: 'brand',            color: '#3b82f6', default_utm_medium: 'brand',          default_utm_source_tpl: '{{partner_name}}', sort_order: 2 },
+  { name: 'Affiliate',       slug: 'affiliate',        color: '#8b5cf6', default_utm_medium: 'affiliate',      default_utm_source_tpl: '{{partner_name}}', sort_order: 3 },
+  { name: 'Coupon Website',  slug: 'coupon-website',   color: '#10b981', default_utm_medium: 'coupon_website', default_utm_source_tpl: '{{partner_name}}', sort_order: 4 },
+  { name: 'Partner',         slug: 'partner',          color: '#6366f1', default_utm_medium: 'partner',        default_utm_source_tpl: '{{partner_name}}', sort_order: 5 },
 ];
 
 function slugify(text: string): string {
