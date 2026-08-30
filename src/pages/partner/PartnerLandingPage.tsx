@@ -9,7 +9,7 @@ interface ClientData {
   name: string;
   logo_url: string | null;
   primary_color: string;
-  affiliate_settings: { portal?: { sections?: PortalSection[] } } | null;
+  affiliate_settings: { portal?: { sections?: PortalSection[]; applicationsEnabled?: boolean; customCss?: string } } | null;
   branding_settings: { secondary_color?: string; border_radius?: string; font_heading?: string; font_body?: string } | null;
 }
 
@@ -20,7 +20,7 @@ export default function PartnerLandingPage() {
   const [client, setClient] = useState<ClientData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showApply, setShowApply] = useState(false);
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -57,12 +57,13 @@ export default function PartnerLandingPage() {
   }
 
   const accent = client.primary_color || '#6366f1';
-  const sections = client.affiliate_settings?.portal?.sections?.length
-    ? client.affiliate_settings.portal.sections
-    : defaultSections();
+  const portal = client.affiliate_settings?.portal;
+  const sections = portal?.sections?.length ? portal.sections : defaultSections();
+  const applicationsEnabled = portal?.applicationsEnabled ?? true;
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
+      {portal?.customCss && <style>{portal.customCss}</style>}
       <header className="px-6 py-4 flex items-center justify-between border-b border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-2.5">
           {client.logo_url ? (
@@ -95,7 +96,8 @@ export default function PartnerLandingPage() {
             logoUrl: client.logo_url,
             clientName: client.name,
           }}
-          onApply={() => setShowApply(true)}
+          showApply={applicationsEnabled}
+          onApply={() => setApplyModalOpen(true)}
           onLogin={() => navigate(`/partner/${slug}`)}
         />
       ))}
@@ -104,8 +106,8 @@ export default function PartnerLandingPage() {
         Powered by <span className="font-medium">Goself</span>
       </p>
 
-      {showApply && (
-        <ApplyModal clientId={client.id} accent={accent} onClose={() => setShowApply(false)} />
+      {applyModalOpen && (
+        <ApplyModal clientId={client.id} accent={accent} onClose={() => setApplyModalOpen(false)} />
       )}
     </div>
   );

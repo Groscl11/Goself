@@ -5,7 +5,7 @@ import { CheckCircle2 } from 'lucide-react';
 
 export type SectionType = 'hero' | 'benefits' | 'how_it_works' | 'faq' | 'final_cta';
 
-export type HeroVariant = 'centered' | 'split';
+export type HeroVariant = 'centered' | 'split' | 'full_bleed';
 export interface HeroContent { eyebrow: string; headline: string; subheadline: string; variant?: HeroVariant; imageUrl?: string; }
 export interface BenefitsContent { title: string; items: string[]; }
 export interface HowItWorksContent { title: string; steps: string[]; }
@@ -79,9 +79,10 @@ interface RenderProps {
   theme: PortalTheme;
   onApply?: () => void;
   onLogin?: () => void;
+  showApply?: boolean;
 }
 
-export function PortalSectionRenderer({ section, theme, onApply, onLogin }: RenderProps) {
+export function PortalSectionRenderer({ section, theme, onApply, onLogin, showApply = true }: RenderProps) {
   if (!section.visible) return null;
   const radius = theme.borderRadius ?? DEFAULT_THEME.borderRadius;
   const fontHeading = theme.fontHeading ?? DEFAULT_THEME.fontHeading;
@@ -95,7 +96,7 @@ export function PortalSectionRenderer({ section, theme, onApply, onLogin }: Rend
       const c = section.content as HeroContent;
       const variant = c.variant ?? 'centered';
 
-      const applyBtn = (
+      const applyBtn = showApply && (
         <button
           onClick={onApply}
           className="px-5 py-2.5 text-white text-sm font-medium"
@@ -121,6 +122,14 @@ export function PortalSectionRenderer({ section, theme, onApply, onLogin }: Rend
           {c.eyebrow}
         </span>
       );
+      const eyebrowLight = (
+        <span
+          className="inline-block text-xs font-semibold px-3 py-1 mb-4 bg-white/20 text-white backdrop-blur-sm"
+          style={{ borderRadius: radius, ...bodyStyle }}
+        >
+          {c.eyebrow}
+        </span>
+      );
 
       if (variant === 'split') {
         return (
@@ -141,6 +150,36 @@ export function PortalSectionRenderer({ section, theme, onApply, onLogin }: Rend
                     style={{ background: `linear-gradient(135deg, ${theme.primaryColor}, ${secondary})` }}
                   />
                 )}
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      if (variant === 'full_bleed') {
+        return (
+          <section
+            className="relative px-6 py-24 sm:py-32 text-center overflow-hidden"
+            style={c.imageUrl ? {
+              backgroundImage: `url(${c.imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center',
+            } : {
+              background: `linear-gradient(135deg, ${theme.primaryColor}, ${secondary})`,
+            }}
+          >
+            {c.imageUrl && <div className="absolute inset-0 bg-black/50" />}
+            <div className="relative max-w-2xl mx-auto">
+              {eyebrowLight}
+              <h1 className="text-3xl sm:text-4xl font-bold text-white mb-3" style={headingStyle}>{c.headline}</h1>
+              <p className="text-base text-white/90 mb-8" style={bodyStyle}>{c.subheadline}</p>
+              <div className="flex items-center justify-center gap-3">
+                {applyBtn}
+                <button
+                  onClick={onLogin}
+                  className="px-5 py-2.5 text-sm font-medium border border-white/40 text-white bg-white/10 backdrop-blur-sm"
+                  style={{ borderRadius: radius, ...bodyStyle }}
+                >
+                  Log in
+                </button>
               </div>
             </div>
           </section>
@@ -225,11 +264,11 @@ export function PortalSectionRenderer({ section, theme, onApply, onLogin }: Rend
             <h2 className="text-2xl font-bold mb-2" style={headingStyle}>{c.headline}</h2>
             <p className="text-sm opacity-90 mb-6" style={bodyStyle}>{c.subtext}</p>
             <button
-              onClick={onApply}
+              onClick={showApply ? onApply : onLogin}
               className="px-6 py-2.5 text-sm font-semibold"
               style={{ color: theme.primaryColor, backgroundColor: '#fff', borderRadius: radius, ...bodyStyle }}
             >
-              Become an affiliate
+              {showApply ? 'Become an affiliate' : 'Log in'}
             </button>
           </div>
         </section>

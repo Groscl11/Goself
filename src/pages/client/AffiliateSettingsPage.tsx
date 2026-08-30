@@ -82,8 +82,8 @@ function SectionEditorFields({ section, onChange }: { section: PortalSection; on
         <div className="space-y-3">
           <div>
             <label className={labelCls}>Layout</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['centered', 'split'] as HeroVariant[]).map(v => (
+            <div className="grid grid-cols-3 gap-2">
+              {(['centered', 'split', 'full_bleed'] as HeroVariant[]).map(v => (
                 <button
                   key={v}
                   type="button"
@@ -91,7 +91,7 @@ function SectionEditorFields({ section, onChange }: { section: PortalSection; on
                   className={`text-left px-3 py-2 rounded-lg border text-xs font-medium ${
                     variant === v ? 'bg-indigo-50 border-indigo-300 text-indigo-800' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                   }`}>
-                  {v === 'centered' ? 'Centered stack' : 'Split spotlight'}
+                  {v === 'centered' ? 'Centered stack' : v === 'split' ? 'Split spotlight' : 'Full-bleed overlay'}
                 </button>
               ))}
             </div>
@@ -108,9 +108,9 @@ function SectionEditorFields({ section, onChange }: { section: PortalSection; on
             <label className={labelCls}>Subheadline</label>
             <textarea rows={2} className={fieldCls} value={c.subheadline} onChange={e => onChange({ ...c, subheadline: e.target.value })} />
           </div>
-          {variant === 'split' && (
+          {(variant === 'split' || variant === 'full_bleed') && (
             <div>
-              <label className={labelCls}>Image URL <span className="text-gray-400 font-normal">(optional — falls back to a gradient panel)</span></label>
+              <label className={labelCls}>Image URL <span className="text-gray-400 font-normal">(optional — falls back to a gradient {variant === 'full_bleed' ? 'background' : 'panel'})</span></label>
               <input className={fieldCls} value={c.imageUrl ?? ''} onChange={e => onChange({ ...c, imageUrl: e.target.value })} placeholder="https://…" />
             </div>
           )}
@@ -221,6 +221,8 @@ export default function AffiliateSettingsPage() {
   const [clientSlug, setClientSlug] = useState('');
   const [rawAffiliateSettings, setRawAffiliateSettings] = useState<Record<string, unknown>>({});
   const [sections, setSections] = useState<PortalSection[]>([]);
+  const [applicationsEnabled, setApplicationsEnabled] = useState(true);
+  const [customCss, setCustomCss] = useState('');
   const [expandedSectionId, setExpandedSectionId] = useState<string | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
@@ -296,8 +298,10 @@ export default function AffiliateSettingsPage() {
       if (typeof settings.auto_fill_utm === 'boolean') {
         setAutoFill(settings.auto_fill_utm as boolean);
       }
-      const portal = settings.portal as { sections?: PortalSection[] } | undefined;
+      const portal = settings.portal as { sections?: PortalSection[]; applicationsEnabled?: boolean; customCss?: string } | undefined;
       setSections(portal?.sections?.length ? portal.sections : defaultSections());
+      setApplicationsEnabled(portal?.applicationsEnabled ?? true);
+      setCustomCss(portal?.customCss ?? '');
     }
 
     setLoading(false);
@@ -446,7 +450,7 @@ export default function AffiliateSettingsPage() {
 
   async function handleSavePortal() {
     setPortalSaving(true);
-    const next = { ...rawAffiliateSettings, portal: { sections } };
+    const next = { ...rawAffiliateSettings, portal: { sections, applicationsEnabled, customCss } };
     const { error } = await supabase.from('clients').update({ affiliate_settings: next }).eq('id', clientId);
     setPortalSaving(false);
     if (!error) {
@@ -708,17 +712,44 @@ export default function AffiliateSettingsPage() {
                   </div>
                 )}
               </div>
+
+              {/* Page settings */}
+              <div className="pt-2 mt-2 border-t border-gray-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-700">Allow affiliate applications</p>
+                    <p className="text-[11px] text-gray-400">When off, "Become an affiliate" is replaced with "Log in" everywhere on the page.</p>
+                  </div>
+                  <button
+                    onClick={() => setApplicationsEnabled(v => !v)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ${applicationsEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}>
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${applicationsEnabled ? 'translate-x-4' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                <div>
+                  <label className={labelCls}>Custom CSS <span className="text-gray-400 font-normal">(advanced, applies to the live page only)</span></label>
+                  <textarea
+                    rows={4}
+                    className={`${fieldCls} font-mono text-xs`}
+                    value={customCss}
+                    onChange={e => setCustomCss(e.target.value)}
+                    placeholder=".hero h1 { letter-spacing: -0.02em; }"
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Live preview */}
             <div className="bg-gray-100 p-4">
               <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-2">Live preview</p>
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden max-h-[600px] overflow-y-auto">
+                {customCss && <style>{customCss}</style>}
                 {sections.map(section => (
                   <PortalSectionRenderer
                     key={section.id}
                     section={section}
                     theme={portalTheme}
+                    showApply={applicationsEnabled}
                   />
                 ))}
               </div>
