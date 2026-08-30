@@ -158,7 +158,6 @@ export default function AffiliateSettingsPage() {
             slug,
             color: editing.color,
             default_utm_medium: editing.default_utm_medium || null,
-            default_utm_source_tpl: editing.default_utm_source_tpl || null,
           })
           .eq('id', editing.id);
         if (error) throw error;
@@ -171,7 +170,7 @@ export default function AffiliateSettingsPage() {
             slug,
             color: editing.color,
             default_utm_medium: editing.default_utm_medium || null,
-            default_utm_source_tpl: editing.default_utm_source_tpl || null,
+            default_utm_source_tpl: '{{partner_name}}',
             is_system_default: false,
             sort_order: types.length,
           });
@@ -314,9 +313,6 @@ export default function AffiliateSettingsPage() {
                         title="Click to edit">
                         {t.default_utm_medium ?? '—'}
                       </button>
-                      {t.default_utm_source_tpl && (
-                        <> · source: <span className="font-mono">{t.default_utm_source_tpl}</span></>
-                      )}
                     </p>
                   </div>
                   {t.is_system_default && (

@@ -157,6 +157,7 @@ export default function UTMLinksPage() {
   const [saveError, setSaveError] = useState('');
   const [defaultDestUrl, setDefaultDestUrl] = useState('');
   const [utmSourceInput, setUtmSourceInput] = useState('');
+  const [mediumOptions, setMediumOptions] = useState<string[]>([]);
 
   // Per-link state
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -167,7 +168,7 @@ export default function UTMLinksPage() {
     if (!clientId) return;
     setLoading(true);
     setPageError('');
-    const [{ data: partnersData, error: pErr }, { data: linksData, error: lErr }, { data: clientData }, { data: campaignsData }] =
+    const [{ data: partnersData, error: pErr }, { data: linksData, error: lErr }, { data: clientData }, { data: campaignsData }, { data: typesData }] =
       await Promise.all([
         supabase
           .from('affiliate_partners')
@@ -191,12 +192,19 @@ export default function UTMLinksPage() {
           .eq('client_id', clientId)
           .eq('status', 'active')
           .order('name'),
+        supabase
+          .from('affiliate_partner_types')
+          .select('default_utm_medium')
+          .eq('client_id', clientId)
+          .not('default_utm_medium', 'is', null),
       ]);
     if (pErr) setPageError(pErr.message);
     if (lErr) setPageError(lErr.message);
     setPartners((partnersData as Partner[]) ?? []);
     setLinks((linksData as UTMLink[]) ?? []);
     setCampaigns((campaignsData as AffiliateCampaign[]) ?? []);
+    const uniqueMediums = [...new Set((typesData ?? []).map((t: any) => t.default_utm_medium).filter(Boolean))] as string[];
+    setMediumOptions(uniqueMediums);
     if (clientData) {
       if ((clientData as any).utm_slug_prefix) setSlugPrefix((clientData as any).utm_slug_prefix as SlugPrefix);
       if ((clientData as any).website_url) setDefaultDestUrl((clientData as any).website_url);
@@ -499,7 +507,7 @@ export default function UTMLinksPage() {
                   onChange={e => setMedium(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
                   <option value="">Select medium…</option>
-                  {['influencer', 'affiliate', 'email', 'cpc', 'social', 'referral', 'organic'].map(m => (
+                  {mediumOptions.map(m => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
