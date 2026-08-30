@@ -944,30 +944,40 @@ export default function AffiliatesPage() {
   }
 
   async function loadPartnerCampaigns(partnerId: string) {
-    // Load campaigns where this partner is directly linked (partner-scoped)
-    // or assigned via campaign_partners (global campaigns)
-    const [{ data: direct }, { data: viaJoin }] = await Promise.all([
-      supabase
+    setPartnerCampaigns([]);
+    try {
+      const { data: direct } = await supabase
         .from('affiliate_campaigns')
         .select('id, name, slug, scope, status')
         .eq('partner_id', partnerId)
-        .eq('client_id', clientId),
-      supabase
+        .eq('client_id', clientId);
+
+      const { data: joinRows } = await supabase
         .from('campaign_partners')
-        .select('affiliate_campaigns(id, name, slug, scope, status)')
-        .eq('partner_id', partnerId),
-    ]);
-    const directCampaigns = (direct ?? []) as { id: string; name: string; slug: string; scope: string; status: string }[];
-    const joinCampaigns = ((viaJoin ?? []) as any[])
-      .map((r: any) => r.affiliate_campaigns)
-      .filter(Boolean) as { id: string; name: string; slug: string; scope: string; status: string }[];
-    const seen = new Set<string>();
-    const all = [...directCampaigns, ...joinCampaigns].filter(c => {
-      if (seen.has(c.id)) return false;
-      seen.add(c.id);
-      return true;
-    });
-    setPartnerCampaigns(all);
+        .select('campaign_id')
+        .eq('partner_id', partnerId);
+
+      const joinIds = (joinRows ?? []).map((r: any) => r.campaign_id).filter(Boolean) as string[];
+      const joinCampaigns: { id: string; name: string; slug: string; scope: string; status: string }[] = [];
+      if (joinIds.length > 0) {
+        const { data: joined } = await supabase
+          .from('affiliate_campaigns')
+          .select('id, name, slug, scope, status')
+          .in('id', joinIds)
+          .eq('client_id', clientId);
+        joinCampaigns.push(...((joined ?? []) as typeof joinCampaigns));
+      }
+
+      const seen = new Set<string>();
+      const all = [...(direct ?? []) as typeof joinCampaigns, ...joinCampaigns].filter(c => {
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+      });
+      setPartnerCampaigns(all);
+    } catch {
+      // silently ignore — campaigns section is non-critical
+    }
   }
 
   async function loadPartnerUtmLinks(partnerId: string) {
@@ -1205,7 +1215,7 @@ export default function AffiliatesPage() {
 
     // Period-filtered orders for this partner
     const allPartnerCodes = new Set(
-      p.affiliate_code_assignments.filter(a => a.status !== 'removed').map(a => a.code.toUpperCase())
+      p.affiliate_code_assignments.filter(a => a.status !== 'removed' && a.code).map(a => a.code.toUpperCase())
     );
     const periodCutoff = detailPeriod > 0
       ? new Date(Date.now() - detailPeriod * 24 * 60 * 60 * 1000)
