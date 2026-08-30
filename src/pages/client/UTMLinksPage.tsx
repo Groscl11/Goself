@@ -95,11 +95,8 @@ function slugify(text: string): string {
   return text.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-function computeAttributionValue(partnerName: string, campaignName?: string): string {
+function computeAttributionValue(partnerName: string): string {
   const partnerSlug = slugify(partnerName || 'direct');
-  if (campaignName?.trim()) {
-    return `${partnerSlug}_${slugify(campaignName.trim())}`;
-  }
   return `${partnerSlug}_${nanoId(4)}`;
 }
 
@@ -219,9 +216,9 @@ export default function UTMLinksPage() {
 
   // Attribution value preview (regenerates on partner/campaign change for display only)
   const previewAttrValue = useMemo(
-    () => computeAttributionValue(selectedPartner?.name ?? '', campaign),
+    () => computeAttributionValue(selectedPartner?.name ?? ''),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedPartner?.id, campaign],
+    [selectedPartner?.id],
   );
 
   const previewAttrUrl = useMemo(
@@ -250,7 +247,7 @@ export default function UTMLinksPage() {
       let attrValue: string;
       let suffix = 0;
       do {
-        const base = computeAttributionValue(selectedPartner?.name ?? '', campaign);
+        const base = computeAttributionValue(selectedPartner?.name ?? '');
         attrValue = suffix === 0 ? base : `${base}-${suffix}`;
         suffix++;
       } while (existingValues.includes(attrValue));
