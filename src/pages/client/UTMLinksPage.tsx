@@ -3,7 +3,7 @@ import {
   Link2, Plus, X, Copy, Check, Trash2, Search, MousePointer,
   Scissors, ExternalLink, Settings2, ChevronDown,
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, supabaseUrl } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { clientMenuItems } from './clientMenuItems';
@@ -121,7 +121,7 @@ function buildAttributionUrl(
   return params.length > 0 ? `${destUrl}${sep}${params.join('&')}` : destUrl;
 }
 
-const SHORT_BASE = 'https://go.goself.app/s';
+const SHORT_BASE = `${supabaseUrl}/functions/v1/track-utm-click`;
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-gray-200 rounded ${className}`} />;
