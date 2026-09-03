@@ -88,6 +88,7 @@ interface OrderAttribution {
   converted_utm_link_id: string | null;
   lt_ref: string | null;
   lt_source: string | null;
+  lt_medium: string | null;
   lt_campaign: string | null;
   created_at: string;
 }
@@ -148,6 +149,38 @@ function fmtCurrency(val: number) {
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+type PeriodPreset = 'today' | '7d' | '30d' | '90d' | 'this_month' | 'last_month' | 'this_quarter' | 'ytd' | 'all' | 'custom';
+
+const PERIOD_PRESET_LABEL: Record<PeriodPreset, string> = {
+  today: 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days',
+  this_month: 'This month', last_month: 'Last month', this_quarter: 'This quarter',
+  ytd: 'Year to date', all: 'All time', custom: 'Custom range',
+};
+
+function periodRange(preset: PeriodPreset, customStart: string, customEnd: string): { start: Date | null; end: Date | null } {
+  const now = new Date();
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  switch (preset) {
+    case 'today': return { start: startOfDay(now), end: now };
+    case '7d': return { start: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), end: now };
+    case '30d': return { start: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000), end: now };
+    case '90d': return { start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000), end: now };
+    case 'this_month': return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: now };
+    case 'last_month': return {
+      start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+      end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59),
+    };
+    case 'this_quarter': return { start: new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1), end: now };
+    case 'ytd': return { start: new Date(now.getFullYear(), 0, 1), end: now };
+    case 'custom': return {
+      start: customStart ? new Date(`${customStart}T00:00:00`) : null,
+      end: customEnd ? new Date(`${customEnd}T23:59:59`) : null,
+    };
+    case 'all':
+    default: return { start: null, end: null };
+  }
 }
 
 function buildPartnerAttributionUrl(l: UtmLink): string {
@@ -876,16 +909,25 @@ export default function AffiliatesPage() {
   const [customPartnerTypes, setCustomPartnerTypes] = useState<string[]>([]);
   const [showTypeSettings, setShowTypeSettings] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
-  const [detailTab, setDetailTab] = useState<'codes' | 'log'>('codes');
+  const [detailTab, setDetailTab] = useState<'overview' | 'orders'>('overview');
   const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
 
   // ── Detail view state ──────────────────────────────────────────────────────
-  const [detailPeriod, setDetailPeriod] = useState<7 | 30 | 90 | 0>(30);
+  // Shared date range — drives both the Performance snapshot and the Orders tab,
+  // so the numbers always agree with the table underneath them.
+  const [detailPeriodPreset, setDetailPeriodPreset] = useState<PeriodPreset>('30d');
+  const [detailCustomStart, setDetailCustomStart] = useState('');
+  const [detailCustomEnd, setDetailCustomEnd] = useState('');
   const [detailUtmLinks, setDetailUtmLinks] = useState<UtmLink[]>([]);
   const [detailUtmLoading, setDetailUtmLoading] = useState(false);
   const [detailAttribution, setDetailAttribution] = useState<OrderAttribution[]>([]);
   const [detailAttributionLoading, setDetailAttributionLoading] = useState(false);
+  // Orders tab — filters on top of the shared date range
+  const [ordersSourceFilter, setOrdersSourceFilter] = useState<'all' | 'coupon' | 'utm'>('all');
+  const [ordersMediumFilter, setOrdersMediumFilter] = useState('all');
+  const [ordersCampaignFilter, setOrdersCampaignFilter] = useState('all');
+  const [ordersSearch, setOrdersSearch] = useState('');
   const [partnerCampaigns, setPartnerCampaigns] = useState<{ id: string; name: string; slug: string; scope: string; status: string }[]>([]);
   const [sidebarEmail, setSidebarEmail] = useState('');
   const [sidebarPhone, setSidebarPhone] = useState('');
@@ -1047,7 +1089,7 @@ export default function AffiliatesPage() {
     setDetailAttributionLoading(true);
     const { data } = await supabase
       .from('order_attribution')
-      .select('id, shopify_order_id, order_revenue, order_currency, converted_by, converted_coupon_code, converted_utm_link_id, lt_ref, lt_source, lt_campaign, created_at')
+      .select('id, shopify_order_id, order_revenue, order_currency, converted_by, converted_coupon_code, converted_utm_link_id, lt_ref, lt_source, lt_medium, lt_campaign, created_at')
       .eq('converted_partner_id', partnerId)
       .eq('client_id', clientId)
       .order('created_at', { ascending: false });
@@ -1341,7 +1383,7 @@ export default function AffiliatesPage() {
                         <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${STATUS_BADGE[p.status]}`}>{p.status}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <button onClick={() => { setSelectedPartner(p); setView('detail'); setDetailTab('codes'); }}
+                        <button onClick={() => { setSelectedPartner(p); setView('detail'); setDetailTab('overview'); }}
                           className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
                           View <ExternalLink className="w-3 h-3" />
                         </button>
@@ -1357,6 +1399,142 @@ export default function AffiliatesPage() {
     );
   }
 
+  // ── Orders tab ─────────────────────────────────────────────────────────────
+  function renderOrdersTab({ availableMediums, availableCampaigns, filteredOrders }: {
+    availableMediums: string[];
+    availableCampaigns: string[];
+    filteredOrders: { shopify_order_id: string; customer_email: string | null; total_price: number; processed_at: string; attribution: OrderAttribution }[];
+  }) {
+    const sorted = filteredOrders.slice().sort((a, b) => new Date(b.processed_at).getTime() - new Date(a.processed_at).getTime());
+    const totalRevenue = filteredOrders.reduce((s, o) => s + Number(o.total_price), 0);
+
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        {/* Filter bar */}
+        <div className="flex flex-wrap items-center gap-2 px-5 py-4 border-b border-gray-100">
+          <select
+            value={detailPeriodPreset}
+            onChange={e => setDetailPeriodPreset(e.target.value as PeriodPreset)}
+            className="text-xs font-medium border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <optgroup label="Quick range">
+              {(['today', '7d', '30d', '90d', 'all'] as const).map(k => (
+                <option key={k} value={k}>{PERIOD_PRESET_LABEL[k]}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Calendar">
+              {(['this_month', 'last_month', 'this_quarter', 'ytd'] as const).map(k => (
+                <option key={k} value={k}>{PERIOD_PRESET_LABEL[k]}</option>
+              ))}
+            </optgroup>
+            <option value="custom">{PERIOD_PRESET_LABEL.custom}</option>
+          </select>
+          {detailPeriodPreset === 'custom' && (
+            <div className="flex items-center gap-1.5">
+              <input type="date" value={detailCustomStart} onChange={e => setDetailCustomStart(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <span className="text-xs text-gray-400">–</span>
+              <input type="date" value={detailCustomEnd} onChange={e => setDetailCustomEnd(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+          )}
+
+          <select
+            value={ordersSourceFilter}
+            onChange={e => setOrdersSourceFilter(e.target.value as 'all' | 'coupon' | 'utm')}
+            className="text-xs font-medium border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="all">All sources</option>
+            <option value="coupon">Coupon code</option>
+            <option value="utm">UTM link</option>
+          </select>
+
+          <select
+            value={ordersMediumFilter}
+            onChange={e => setOrdersMediumFilter(e.target.value)}
+            className="text-xs font-medium border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="all">All mediums</option>
+            {availableMediums.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+
+          <select
+            value={ordersCampaignFilter}
+            onChange={e => setOrdersCampaignFilter(e.target.value)}
+            className="text-xs font-medium border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="all">All campaigns</option>
+            {availableCampaigns.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+
+          <div className="relative flex-1 min-w-[160px]">
+            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              value={ordersSearch}
+              onChange={e => setOrdersSearch(e.target.value)}
+              placeholder="Search order, customer, code, ref…"
+              className="w-full text-xs border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+
+          <div className="ml-auto flex items-center gap-4 text-xs text-gray-500">
+            <span>{filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''}</span>
+            <span className="font-medium text-gray-900">{fmtCurrency(totalRevenue)}</span>
+          </div>
+        </div>
+
+        {/* Table */}
+        {sorted.length === 0 ? (
+          <div className="text-center py-14">
+            <ShoppingBag className="w-6 h-6 text-gray-200 mx-auto mb-2" />
+            <p className="text-xs text-gray-400">No orders match these filters.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  {['Order', 'Source', 'UTM Source', 'Medium', 'Campaign', 'Coupon', 'Customer', 'Value', 'Date'].map(h => (
+                    <th key={h} className="text-left text-xs text-gray-400 uppercase tracking-wide px-4 py-2.5 font-medium whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {sorted.map(o => {
+                  const a = o.attribution;
+                  return (
+                    <tr key={o.shopify_order_id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2.5 font-mono text-xs text-gray-500 whitespace-nowrap">#{o.shopify_order_id}</td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        {a.converted_by === 'coupon' ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium bg-indigo-50 text-indigo-700 rounded-full px-2 py-0.5">Coupon</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium bg-sky-50 text-sky-700 rounded-full px-2 py-0.5">
+                            <MousePointerClick className="w-3 h-3" /> UTM link
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-600 text-xs whitespace-nowrap">{a.lt_source ?? '—'}</td>
+                      <td className="px-4 py-2.5 text-xs whitespace-nowrap">
+                        {a.lt_medium ? (
+                          <span className="bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 font-medium">{a.lt_medium}</span>
+                        ) : <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-700 text-xs whitespace-nowrap">{a.lt_campaign ?? '—'}</td>
+                      <td className="px-4 py-2.5 text-xs whitespace-nowrap">
+                        {a.converted_coupon_code ? (
+                          <span className="font-mono bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5">{a.converted_coupon_code}</span>
+                        ) : <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">{o.customer_email ? maskEmail(o.customer_email) : '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-800 font-medium tabular-nums whitespace-nowrap">{fmtCurrency(Number(o.total_price))}</td>
+                      <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">{fmtDate(o.processed_at)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // ── Detail View ────────────────────────────────────────────────────────────
   function renderDetail() {
     const p = selectedPartner;
@@ -1368,13 +1546,12 @@ export default function AffiliatesPage() {
     // discount codes against orders client-side (which misses UTM-only orders
     // entirely — e.g. partners tracked only via a bg_ref link, no coupon code).
     const ordersByShopifyId = new Map(orders.map(o => [o.shopify_order_id, o]));
-    const periodCutoff = detailPeriod > 0
-      ? new Date(Date.now() - detailPeriod * 24 * 60 * 60 * 1000)
-      : null;
+    const { start: rangeStart, end: rangeEnd } = periodRange(detailPeriodPreset, detailCustomStart, detailCustomEnd);
     const periodAttribution = detailAttribution.filter(a => {
-      if (!periodCutoff) return true;
-      const at = ordersByShopifyId.get(a.shopify_order_id)?.processed_at ?? a.created_at;
-      return new Date(at) >= periodCutoff;
+      const at = new Date(ordersByShopifyId.get(a.shopify_order_id)?.processed_at ?? a.created_at);
+      if (rangeStart && at < rangeStart) return false;
+      if (rangeEnd && at > rangeEnd) return false;
+      return true;
     });
     const periodOrders = periodAttribution.map(a => {
       const matched = ordersByShopifyId.get(a.shopify_order_id);
@@ -1399,6 +1576,23 @@ export default function AffiliatesPage() {
     const approvedComm = periodOrders
       .filter(o => new Date(o.processed_at) <= returnCutoff)
       .reduce((s, o) => s + Number(o.total_price) * commRate, 0);
+
+    // ── Orders tab — same date range, plus source/medium/campaign/search filters ──
+    const availableMediums = [...new Set(periodAttribution.map(a => a.lt_medium).filter((v): v is string => Boolean(v)))].sort();
+    const availableCampaigns = [...new Set(periodAttribution.map(a => a.lt_campaign).filter((v): v is string => Boolean(v)))].sort();
+    const filteredOrders = periodOrders.filter(o => {
+      const a = o.attribution;
+      if (ordersSourceFilter !== 'all' && a.converted_by !== ordersSourceFilter) return false;
+      if (ordersMediumFilter !== 'all' && a.lt_medium !== ordersMediumFilter) return false;
+      if (ordersCampaignFilter !== 'all' && a.lt_campaign !== ordersCampaignFilter) return false;
+      if (ordersSearch.trim()) {
+        const q = ordersSearch.trim().toLowerCase();
+        const haystack = [o.shopify_order_id, o.customer_email, a.converted_coupon_code, a.lt_ref, a.lt_source, a.lt_campaign]
+          .filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
 
     const portalBase = window.location.origin;
     const partnerPortalUrl = clientSlug ? `${portalBase}/partner/${clientSlug}/dashboard` : '';
@@ -1467,6 +1661,26 @@ export default function AffiliatesPage() {
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex items-center gap-1 border-b border-gray-200">
+          {([['overview', 'Overview'], ['orders', 'Orders']] as const).map(([key, label]) => (
+            <button key={key}
+              onClick={() => setDetailTab(key)}
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                detailTab === key ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              {label}
+              {key === 'orders' && periodOrders.length > 0 && (
+                <span className="ml-1.5 text-xs text-gray-400">{periodOrders.length}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {detailTab === 'orders' ? (
+          renderOrdersTab({ availableMediums, availableCampaigns, filteredOrders })
+        ) : (
+        <>
         {/* Two-column layout: main + sidebar */}
         <div className="flex flex-col lg:flex-row gap-5 items-start">
 
@@ -1480,14 +1694,32 @@ export default function AffiliatesPage() {
                   <Activity className="w-4 h-4 text-gray-500" />
                   <h3 className="text-sm font-semibold text-gray-900">Performance</h3>
                 </div>
-                <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
-                  {([7, 30, 90, 0] as const).map(d => (
-                    <button key={d}
-                      onClick={() => setDetailPeriod(d)}
-                      className={`px-3 py-1.5 border-r last:border-r-0 border-gray-200 transition-colors ${detailPeriod === d ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-                      {d === 0 ? 'All' : `${d}d`}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={detailPeriodPreset}
+                    onChange={e => setDetailPeriodPreset(e.target.value as PeriodPreset)}
+                    className="text-xs font-medium border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <optgroup label="Quick range">
+                      {(['today', '7d', '30d', '90d', 'all'] as const).map(k => (
+                        <option key={k} value={k}>{PERIOD_PRESET_LABEL[k]}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Calendar">
+                      {(['this_month', 'last_month', 'this_quarter', 'ytd'] as const).map(k => (
+                        <option key={k} value={k}>{PERIOD_PRESET_LABEL[k]}</option>
+                      ))}
+                    </optgroup>
+                    <option value="custom">{PERIOD_PRESET_LABEL.custom}</option>
+                  </select>
+                  {detailPeriodPreset === 'custom' && (
+                    <div className="flex items-center gap-1.5">
+                      <input type="date" value={detailCustomStart} onChange={e => setDetailCustomStart(e.target.value)}
+                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                      <span className="text-xs text-gray-400">–</span>
+                      <input type="date" value={detailCustomEnd} onChange={e => setDetailCustomEnd(e.target.value)}
+                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-gray-100">
@@ -1685,56 +1917,6 @@ export default function AffiliatesPage() {
               )}
             </div>
 
-            {/* Order History */}
-            {periodOrders.length > 0 && (
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
-                  <ShoppingBag className="w-4 h-4 text-gray-500" />
-                  <h3 className="text-sm font-semibold text-gray-900">Order History</h3>
-                  <span className="ml-auto text-xs text-gray-400">{periodOrders.length} orders</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-100">
-                      <tr>
-                        {['Order', 'Source', 'Customer', 'Value', 'Date'].map(h => (
-                          <th key={h} className="text-left text-xs text-gray-400 uppercase tracking-wide px-4 py-2.5 font-medium">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {periodOrders
-                        .slice()
-                        .sort((a, b) => new Date(b.processed_at).getTime() - new Date(a.processed_at).getTime())
-                        .slice(0, 50)
-                        .map(o => (
-                          <tr key={o.shopify_order_id} className="hover:bg-gray-50">
-                            <td className="px-4 py-2.5 font-mono text-xs text-gray-500">#{o.shopify_order_id}</td>
-                            <td className="px-4 py-2.5">
-                              {o.attribution.converted_by === 'coupon' ? (
-                                <span className="font-mono text-xs bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5">
-                                  {o.attribution.converted_coupon_code}
-                                </span>
-                              ) : (
-                                <span className="flex items-center gap-1 text-xs bg-sky-50 text-sky-700 rounded px-1.5 py-0.5 w-fit">
-                                  <MousePointerClick className="w-3 h-3" />
-                                  {o.attribution.lt_ref ?? 'link'}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5 text-gray-400 text-xs">{o.customer_email ? maskEmail(o.customer_email) : '—'}</td>
-                            <td className="px-4 py-2.5 text-gray-800 font-medium tabular-nums">{fmtCurrency(Number(o.total_price))}</td>
-                            <td className="px-4 py-2.5 text-gray-400 text-xs">{fmtDate(o.processed_at)}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                  {periodOrders.length > 50 && (
-                    <p className="text-xs text-gray-400 text-center py-3">Showing 50 of {periodOrders.length} orders</p>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* ── RIGHT: Sidebar ──────────────────────────────────────────────── */}
@@ -1853,6 +2035,8 @@ export default function AffiliatesPage() {
 
           </div>
         </div>
+        </>
+        )}
       </div>
     );
   }
