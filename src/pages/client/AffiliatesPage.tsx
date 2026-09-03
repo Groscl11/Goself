@@ -70,6 +70,7 @@ interface UtmLink {
 
 interface ShopifyOrder {
   shopify_order_id: string;
+  order_number: string | null;
   customer_email: string;
   total_price: number;
   processed_at: string;
@@ -948,7 +949,7 @@ export default function AffiliatesPage() {
         .order('created_at', { ascending: false }),
       supabase
         .from('shopify_orders')
-        .select('shopify_order_id, customer_email, total_price, processed_at, order_data')
+        .select('shopify_order_id, order_number, customer_email, total_price, processed_at, order_data')
         .eq('client_id', clientId)
         .not('order_data', 'is', null),
       supabase.from('clients').select('slug, affiliate_settings').eq('id', clientId).maybeSingle(),
@@ -1410,7 +1411,7 @@ export default function AffiliatesPage() {
   function renderOrdersTab({ availableMediums, availableCampaigns, filteredOrders }: {
     availableMediums: string[];
     availableCampaigns: string[];
-    filteredOrders: { shopify_order_id: string; customer_email: string | null; total_price: number; processed_at: string; attribution: OrderAttribution }[];
+    filteredOrders: { shopify_order_id: string; order_number: string | null; customer_email: string | null; total_price: number; processed_at: string; attribution: OrderAttribution }[];
   }) {
     const sorted = filteredOrders.slice().sort((a, b) => new Date(b.processed_at).getTime() - new Date(a.processed_at).getTime());
     const totalRevenue = filteredOrders.reduce((s, o) => s + Number(o.total_price), 0);
@@ -1506,7 +1507,7 @@ export default function AffiliatesPage() {
                   const a = o.attribution;
                   return (
                     <tr key={o.shopify_order_id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-mono text-xs text-gray-500 whitespace-nowrap">#{o.shopify_order_id}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-gray-500 whitespace-nowrap">{o.order_number || `#${o.shopify_order_id}`}</td>
                       <td className="px-4 py-2.5 whitespace-nowrap">
                         {a.converted_by === 'coupon' ? (
                           <span className="inline-flex items-center gap-1 text-xs font-medium bg-indigo-50 text-indigo-700 rounded-full px-2 py-0.5">Coupon</span>
@@ -1564,6 +1565,7 @@ export default function AffiliatesPage() {
       const matched = ordersByShopifyId.get(a.shopify_order_id);
       return {
         shopify_order_id: a.shopify_order_id,
+        order_number: matched?.order_number ?? null,
         customer_email: matched?.customer_email ?? null,
         total_price: a.order_revenue,
         processed_at: matched?.processed_at ?? a.created_at,
@@ -1594,7 +1596,7 @@ export default function AffiliatesPage() {
       if (ordersCampaignFilter !== 'all' && a.lt_campaign !== ordersCampaignFilter) return false;
       if (ordersSearch.trim()) {
         const q = ordersSearch.trim().toLowerCase();
-        const haystack = [o.shopify_order_id, o.customer_email, a.converted_coupon_code, a.lt_ref, a.lt_source, a.lt_campaign]
+        const haystack = [o.shopify_order_id, o.order_number, o.customer_email, a.converted_coupon_code, a.lt_ref, a.lt_source, a.lt_campaign]
           .filter(Boolean).join(' ').toLowerCase();
         if (!haystack.includes(q)) return false;
       }
