@@ -233,12 +233,16 @@ export default function UTMLinksPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultDestUrl]);
 
-  // Attribution value preview (regenerates on partner/campaign change for display only)
-  const previewAttrValue = useMemo(
-    () => computeAttributionValue(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedPartner?.id],
-  );
+  // Attribution value shown in the preview — this is the ACTUAL value that will
+  // be saved. It must not be regenerated at save time: merchants copy the
+  // preview link before clicking Save, and a mismatch means their copied link
+  // silently points at an attribution_param_value that was never persisted
+  // (link never appears in Saved Links, clicks never count).
+  const [previewAttrValue, setPreviewAttrValue] = useState(() => computeAttributionValue());
+  useEffect(() => {
+    setPreviewAttrValue(computeAttributionValue());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPartner?.id]);
 
   const previewAttrUrl = useMemo(
     () => buildAttributionUrl(destUrl, slugPrefix, previewAttrValue, utmSourceInput, medium, campaign, content, term),
@@ -261,15 +265,15 @@ export default function UTMLinksPage() {
     setSaveError('');
 
     try {
-      // Generate a unique attribution param value
+      // Reuse the exact value already shown in the preview — merchants may have
+      // copied that link before saving, so the saved row must match it.
       const existingValues = links.map(l => l.attribution_param_value).filter(Boolean) as string[];
-      let attrValue: string;
+      let attrValue = previewAttrValue;
       let suffix = 0;
-      do {
-        const base = computeAttributionValue();
-        attrValue = suffix === 0 ? base : `${base}-${suffix}`;
+      while (existingValues.includes(attrValue)) {
         suffix++;
-      } while (existingValues.includes(attrValue));
+        attrValue = `${previewAttrValue}-${suffix}`;
+      }
 
       const { error: e } = await supabase.from('attribution_utm_links').insert({
         client_id: clientId,
@@ -291,6 +295,7 @@ export default function UTMLinksPage() {
 
       setDestUrl(defaultDestUrl); setPartnerId(''); setAffiliateCampaignId(''); setCampaign(''); setMedium('');
       setAttrWindow(30); setContent(''); setTerm(''); setUtmSourceInput('');
+      setPreviewAttrValue(computeAttributionValue());
       await loadData();
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save link.');
