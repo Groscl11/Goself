@@ -767,11 +767,11 @@ export default function UTMLinksPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
                             <a
-                              href={link.destination_url}
+                              href={attrUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="p-1.5 text-gray-400 hover:text-gray-700 rounded"
-                              title="Open destination">
+                              title="Open attribution link">
                               <ExternalLink className="w-3.5 h-3.5" />
                             </a>
                             <button

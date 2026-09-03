@@ -57,8 +57,13 @@ interface UtmLink {
   id: string;
   slug: string;
   destination_url: string;
-  utm_campaign: string | null;
+  utm_source: string | null;
   utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  utm_term: string | null;
+  attribution_param_name: string | null;
+  attribution_param_value: string | null;
   clicks: number;
   created_at: string;
 }
@@ -71,6 +76,20 @@ interface ShopifyOrder {
   order_data: {
     discount_codes?: { code: string; amount: string; type: string }[];
   } | null;
+}
+
+interface OrderAttribution {
+  id: string;
+  shopify_order_id: string;
+  order_revenue: number;
+  order_currency: string;
+  converted_by: 'coupon' | 'utm' | 'direct';
+  converted_coupon_code: string | null;
+  converted_utm_link_id: string | null;
+  lt_ref: string | null;
+  lt_source: string | null;
+  lt_campaign: string | null;
+  created_at: string;
 }
 
 interface ShopifyPriceRule {
@@ -129,6 +148,19 @@ function fmtCurrency(val: number) {
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function buildPartnerAttributionUrl(l: UtmLink): string {
+  if (!l.destination_url) return l.destination_url;
+  if (!l.attribution_param_value) return l.destination_url;
+  const params: string[] = [`${l.attribution_param_name || 'ref'}=${encodeURIComponent(l.attribution_param_value)}`];
+  if (l.utm_source) params.push(`utm_source=${encodeURIComponent(l.utm_source)}`);
+  if (l.utm_medium) params.push(`utm_medium=${encodeURIComponent(l.utm_medium)}`);
+  if (l.utm_campaign) params.push(`utm_campaign=${encodeURIComponent(l.utm_campaign)}`);
+  if (l.utm_content) params.push(`utm_content=${encodeURIComponent(l.utm_content)}`);
+  if (l.utm_term) params.push(`utm_term=${encodeURIComponent(l.utm_term)}`);
+  const sep = l.destination_url.includes('?') ? '&' : '?';
+  return `${l.destination_url}${sep}${params.join('&')}`;
 }
 
 const TYPE_BADGE: Record<PartnerType, string> = {
@@ -852,6 +884,8 @@ export default function AffiliatesPage() {
   const [detailPeriod, setDetailPeriod] = useState<7 | 30 | 90 | 0>(30);
   const [detailUtmLinks, setDetailUtmLinks] = useState<UtmLink[]>([]);
   const [detailUtmLoading, setDetailUtmLoading] = useState(false);
+  const [detailAttribution, setDetailAttribution] = useState<OrderAttribution[]>([]);
+  const [detailAttributionLoading, setDetailAttributionLoading] = useState(false);
   const [partnerCampaigns, setPartnerCampaigns] = useState<{ id: string; name: string; slug: string; scope: string; status: string }[]>([]);
   const [sidebarEmail, setSidebarEmail] = useState('');
   const [sidebarPhone, setSidebarPhone] = useState('');
@@ -910,6 +944,7 @@ export default function AffiliatesPage() {
       setSidebarType(selectedPartner.partner_type);
       loadPartnerUtmLinks(selectedPartner.id);
       loadPartnerCampaigns(selectedPartner.id);
+      loadPartnerAttribution(selectedPartner.id);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPartner?.id]);
@@ -997,12 +1032,27 @@ export default function AffiliatesPage() {
     setDetailUtmLoading(true);
     const { data } = await supabase
       .from('attribution_utm_links')
-      .select('id, slug, destination_url, utm_campaign, utm_medium, clicks, created_at')
+      .select('id, slug, destination_url, utm_source, utm_medium, utm_campaign, utm_content, utm_term, attribution_param_name, attribution_param_value, clicks, created_at')
       .eq('partner_id', partnerId)
       .eq('client_id', clientId)
       .order('created_at', { ascending: false });
     setDetailUtmLinks((data as UtmLink[]) ?? []);
     setDetailUtmLoading(false);
+  }
+
+  // Orders converted by this partner — covers BOTH coupon-code redemptions and
+  // UTM-link conversions (order_attribution unifies them at write time in
+  // shopify-order-webhook), unlike the discount-code-only matching below.
+  async function loadPartnerAttribution(partnerId: string) {
+    setDetailAttributionLoading(true);
+    const { data } = await supabase
+      .from('order_attribution')
+      .select('id, shopify_order_id, order_revenue, order_currency, converted_by, converted_coupon_code, converted_utm_link_id, lt_ref, lt_source, lt_campaign, created_at')
+      .eq('converted_partner_id', partnerId)
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false });
+    setDetailAttribution((data as OrderAttribution[]) ?? []);
+    setDetailAttributionLoading(false);
   }
 
   async function handleSavePartnerDetails() {
@@ -1154,7 +1204,7 @@ export default function AffiliatesPage() {
         </div>
 
         {/* Pending affiliate portal applications */}
-        {clientId && <PendingApplications clientId={clientId} defaultPartnerType="affiliate" />}
+        {clientId && <PendingApplications clientId={clientId} defaultPartnerType="influencer" onApproved={loadData} />}
 
         {/* Partner Portal URL card */}
         {clientSlug && (
@@ -1312,16 +1362,29 @@ export default function AffiliatesPage() {
     const p = selectedPartner;
     if (!p) return null;
 
-    // Period-filtered orders for this partner
-    const allPartnerCodes = new Set(
-      p.affiliate_code_assignments.filter(a => a.status !== 'removed' && a.code).map(a => a.code.toUpperCase())
-    );
+    // Period-filtered orders for this partner. order_attribution is the source of
+    // truth — it's written server-side (shopify-order-webhook) and already unifies
+    // BOTH coupon-code redemptions and UTM-link conversions, unlike matching
+    // discount codes against orders client-side (which misses UTM-only orders
+    // entirely — e.g. partners tracked only via a bg_ref link, no coupon code).
+    const ordersByShopifyId = new Map(orders.map(o => [o.shopify_order_id, o]));
     const periodCutoff = detailPeriod > 0
       ? new Date(Date.now() - detailPeriod * 24 * 60 * 60 * 1000)
       : null;
-    const periodOrders = orders.filter(o => {
-      if (periodCutoff && new Date(o.processed_at) < periodCutoff) return false;
-      return o.order_data?.discount_codes?.some(dc => dc.code && allPartnerCodes.has(dc.code.toUpperCase()));
+    const periodAttribution = detailAttribution.filter(a => {
+      if (!periodCutoff) return true;
+      const at = ordersByShopifyId.get(a.shopify_order_id)?.processed_at ?? a.created_at;
+      return new Date(at) >= periodCutoff;
+    });
+    const periodOrders = periodAttribution.map(a => {
+      const matched = ordersByShopifyId.get(a.shopify_order_id);
+      return {
+        shopify_order_id: a.shopify_order_id,
+        customer_email: matched?.customer_email ?? null,
+        total_price: a.order_revenue,
+        processed_at: matched?.processed_at ?? a.created_at,
+        attribution: a,
+      };
     });
     const periodRevenue = periodOrders.reduce((s, o) => s + Number(o.total_price), 0);
     const commRate = (Number(p.commission_rate) || 0) / 100;
@@ -1495,6 +1558,9 @@ export default function AffiliatesPage() {
                       const url = `${window.location.origin.replace(window.location.hostname, window.location.hostname)}/r/${l.slug}`;
                       const trackUrl = `${supabaseUrl.replace('/rest/v1', '')}/functions/v1/track?slug=${l.slug}`;
                       const displayUrl = `https://go.goself.in/${l.slug}`;
+                      const attrUrl = buildPartnerAttributionUrl(l);
+                      const linkOrders = detailAttribution.filter(a => a.converted_utm_link_id === l.id);
+                      const linkRevenue = linkOrders.reduce((s, a) => s + Number(a.order_revenue), 0);
                       return (
                         <div key={l.id} className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg group">
                           <div className="min-w-0 flex-1">
@@ -1502,10 +1568,13 @@ export default function AffiliatesPage() {
                               <Globe className="w-3 h-3 text-gray-400 flex-shrink-0" />
                               <span className="text-xs font-mono text-gray-700 truncate">{l.destination_url}</span>
                             </div>
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center gap-3 mt-1">
                               {l.utm_campaign && <span className="text-xs text-gray-400">Campaign: {l.utm_campaign}</span>}
                               <span className="flex items-center gap-0.5 text-xs text-sky-600 font-medium">
                                 <MousePointerClick className="w-3 h-3" /> {l.clicks} clicks
+                              </span>
+                              <span className="flex items-center gap-0.5 text-xs text-emerald-600 font-medium">
+                                <ShoppingBag className="w-3 h-3" /> {linkOrders.length} orders{linkOrders.length > 0 ? ` · ${fmtCurrency(linkRevenue)}` : ''}
                               </span>
                             </div>
                           </div>
@@ -1515,8 +1584,8 @@ export default function AffiliatesPage() {
                               className="text-gray-400 hover:text-gray-700 p-1 rounded" title="Copy link">
                               <Copy className="w-3.5 h-3.5" />
                             </button>
-                            <a href={l.destination_url} target="_blank" rel="noopener noreferrer"
-                              className="text-gray-400 hover:text-gray-700 p-1 rounded">
+                            <a href={attrUrl} target="_blank" rel="noopener noreferrer"
+                              className="text-gray-400 hover:text-gray-700 p-1 rounded" title="Open attribution link">
                               <ExternalLink className="w-3.5 h-3.5" />
                             </a>
                           </div>
@@ -1628,7 +1697,7 @@ export default function AffiliatesPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-100">
                       <tr>
-                        {['Order', 'Code', 'Customer', 'Value', 'Date'].map(h => (
+                        {['Order', 'Source', 'Customer', 'Value', 'Date'].map(h => (
                           <th key={h} className="text-left text-xs text-gray-400 uppercase tracking-wide px-4 py-2.5 font-medium">{h}</th>
                         ))}
                       </tr>
@@ -1638,24 +1707,26 @@ export default function AffiliatesPage() {
                         .slice()
                         .sort((a, b) => new Date(b.processed_at).getTime() - new Date(a.processed_at).getTime())
                         .slice(0, 50)
-                        .map(o => {
-                          const usedCodes = o.order_data?.discount_codes?.filter(dc => dc.code && allPartnerCodes.has(dc.code.toUpperCase())) ?? [];
-                          return (
-                            <tr key={o.shopify_order_id} className="hover:bg-gray-50">
-                              <td className="px-4 py-2.5 font-mono text-xs text-gray-500">#{o.shopify_order_id}</td>
-                              <td className="px-4 py-2.5">
-                                <div className="flex flex-wrap gap-1">
-                                  {usedCodes.map((dc, i) => (
-                                    <span key={i} className="font-mono text-xs bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5">{dc.code}</span>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="px-4 py-2.5 text-gray-400 text-xs">{o.customer_email ? maskEmail(o.customer_email) : '—'}</td>
-                              <td className="px-4 py-2.5 text-gray-800 font-medium tabular-nums">{fmtCurrency(Number(o.total_price))}</td>
-                              <td className="px-4 py-2.5 text-gray-400 text-xs">{fmtDate(o.processed_at)}</td>
-                            </tr>
-                          );
-                        })}
+                        .map(o => (
+                          <tr key={o.shopify_order_id} className="hover:bg-gray-50">
+                            <td className="px-4 py-2.5 font-mono text-xs text-gray-500">#{o.shopify_order_id}</td>
+                            <td className="px-4 py-2.5">
+                              {o.attribution.converted_by === 'coupon' ? (
+                                <span className="font-mono text-xs bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5">
+                                  {o.attribution.converted_coupon_code}
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-xs bg-sky-50 text-sky-700 rounded px-1.5 py-0.5 w-fit">
+                                  <MousePointerClick className="w-3 h-3" />
+                                  {o.attribution.lt_ref ?? 'link'}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-gray-400 text-xs">{o.customer_email ? maskEmail(o.customer_email) : '—'}</td>
+                            <td className="px-4 py-2.5 text-gray-800 font-medium tabular-nums">{fmtCurrency(Number(o.total_price))}</td>
+                            <td className="px-4 py-2.5 text-gray-400 text-xs">{fmtDate(o.processed_at)}</td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                   {periodOrders.length > 50 && (

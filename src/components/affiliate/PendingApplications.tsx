@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Check, X, Mail } from 'lucide-react';
+import { UserPlus, Check, X, Mail, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface Application {
@@ -11,11 +11,14 @@ interface Application {
   created_at: string;
 }
 
-export function PendingApplications({ clientId, defaultPartnerType }: { clientId: string; defaultPartnerType: string }) {
+export function PendingApplications({
+  clientId, defaultPartnerType, onApproved,
+}: { clientId: string; defaultPartnerType: string; onApproved?: () => void }) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [errorById, setErrorById] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!clientId) return;
@@ -33,6 +36,8 @@ export function PendingApplications({ clientId, defaultPartnerType }: { clientId
 
   async function handleApprove(app: Application) {
     setProcessingId(app.id);
+    setErrorById(prev => { const next = { ...prev }; delete next[app.id]; return next; });
+
     const { data: partner, error: insertErr } = await supabase
       .from('affiliate_partners')
       .insert({
@@ -46,22 +51,41 @@ export function PendingApplications({ clientId, defaultPartnerType }: { clientId
       })
       .select('id')
       .single();
-    if (!insertErr && partner) {
-      await supabase
-        .from('affiliate_applications')
-        .update({ status: 'approved', partner_id: partner.id, reviewed_at: new Date().toISOString() })
-        .eq('id', app.id);
+
+    if (insertErr || !partner) {
+      setErrorById(prev => ({ ...prev, [app.id]: insertErr?.message || 'Failed to create partner.' }));
+      setProcessingId(null);
+      return;
     }
+
+    const { error: updateErr } = await supabase
+      .from('affiliate_applications')
+      .update({ status: 'approved', partner_id: partner.id, reviewed_at: new Date().toISOString() })
+      .eq('id', app.id);
+
+    if (updateErr) {
+      setErrorById(prev => ({ ...prev, [app.id]: updateErr.message }));
+      setProcessingId(null);
+      return;
+    }
+
     setProcessingId(null);
+    onApproved?.();
     load();
   }
 
   async function handleReject(id: string) {
     setProcessingId(id);
-    await supabase
+    setErrorById(prev => { const next = { ...prev }; delete next[id]; return next; });
+    const { error } = await supabase
       .from('affiliate_applications')
       .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
       .eq('id', id);
+    if (error) {
+      setErrorById(prev => ({ ...prev, [id]: error.message }));
+      setProcessingId(null);
+      return;
+    }
     setProcessingId(null);
     load();
   }
@@ -95,6 +119,11 @@ export function PendingApplications({ clientId, defaultPartnerType }: { clientId
                   <Mail className="w-3 h-3" /> {app.email}
                 </p>
                 {app.message && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{app.message}</p>}
+                {errorById[app.id] && (
+                  <p className="text-xs text-red-600 flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3 h-3 flex-shrink-0" /> {errorById[app.id]}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
