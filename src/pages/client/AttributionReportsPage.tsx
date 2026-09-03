@@ -15,16 +15,22 @@ interface RawPartner {
   id: string;
   name: string;
   partner_type: PartnerType;
-  affiliate_code_assignments: { code: string }[];
 }
 
 interface ShopifyOrder {
   shopify_order_id: string;
   total_price: number;
   processed_at: string;
-  order_data: {
-    discount_codes?: { code: string; amount: string; type: string }[];
-  } | null;
+}
+
+interface OrderAttributionRow {
+  shopify_order_id: string;
+  order_revenue: number;
+  converted_by: 'coupon' | 'utm' | 'direct';
+  converted_partner_id: string | null;
+  converted_coupon_code: string | null;
+  lt_ref: string | null;
+  created_at: string;
 }
 
 interface UTMRow {
@@ -38,12 +44,11 @@ interface PartnerReport {
   partnerId: string;
   partnerName: string;
   partnerType: PartnerType;
-  couponOrders: number;
-  couponRevenue: number;
   utmClicks: number;
   totalOrders: number;
   totalRevenue: number;
-  codes: { code: string; orders: number; revenue: number }[];
+  // one row per distinct coupon code or UTM ref that converted for this partner
+  codes: { code: string; source: 'coupon' | 'utm'; orders: number; revenue: number }[];
   utmLinks: { slug: string; clicks: number }[];
 }
 
@@ -118,6 +123,7 @@ export default function AttributionReportsPage() {
 
   const [rawPartners, setRawPartners] = useState<RawPartner[]>([]);
   const [orders, setOrders] = useState<ShopifyOrder[]>([]);
+  const [attribution, setAttribution] = useState<OrderAttributionRow[]>([]);
   const [utmLinks, setUtmLinks] = useState<UTMRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState('');
@@ -136,20 +142,29 @@ export default function AttributionReportsPage() {
     const [
       { data: partnersData, error: pErr },
       { data: ordersData, error: oErr },
+      { data: attributionData, error: aErr },
       { data: utmData, error: uErr },
     ] = await Promise.all([
       supabase
         .from('affiliate_partners')
-        .select('id, name, partner_type, affiliate_code_assignments(code)')
+        .select('id, name, partner_type')
         .eq('client_id', clientId)
         .neq('status', 'archived')
         .order('name'),
       supabase
         .from('shopify_orders')
-        .select('shopify_order_id, total_price, processed_at, order_data')
+        .select('shopify_order_id, total_price, processed_at')
         .eq('client_id', clientId)
         .gte('processed_at', cutoff.toISOString())
         .limit(5000),
+      // order_attribution is the source of truth — written server-side for
+      // every order and covers BOTH coupon-code redemptions and UTM-link
+      // conversions, unlike matching discount codes against orders here.
+      supabase
+        .from('order_attribution')
+        .select('shopify_order_id, order_revenue, converted_by, converted_partner_id, converted_coupon_code, lt_ref, created_at')
+        .eq('client_id', clientId)
+        .not('converted_partner_id', 'is', null),
       supabase
         .from('attribution_utm_links')
         .select('id, partner_id, slug, clicks')
@@ -158,9 +173,11 @@ export default function AttributionReportsPage() {
 
     if (pErr) setPageError(pErr.message);
     if (oErr) setPageError(oErr.message);
+    if (aErr) setPageError(aErr.message);
     if (uErr) setPageError(uErr.message);
     setRawPartners((partnersData as RawPartner[]) ?? []);
     setOrders((ordersData as ShopifyOrder[]) ?? []);
+    setAttribution((attributionData as OrderAttributionRow[]) ?? []);
     setUtmLinks((utmData as UTMRow[]) ?? []);
     setLoading(false);
   }, [clientId, dateRange]);
@@ -177,33 +194,28 @@ export default function AttributionReportsPage() {
   }
 
   const { reports, unattributedOrders, totalUtmClicks } = useMemo(() => {
-    // Build code → partnerId map
-    const codeMap: Record<string, string> = {};
-    for (const p of rawPartners) {
-      for (const a of p.affiliate_code_assignments) {
-        codeMap[a.code.toUpperCase()] = p.id;
+    const ordersByShopifyId = new Map(orders.map(o => [o.shopify_order_id, o]));
+
+    // Attribution rows whose order actually falls within the selected date
+    // range (order_attribution itself isn't date-filtered at the query level
+    // since we want the full row set to resolve processed_at per order).
+    const inRangeAttribution = attribution.filter(a => ordersByShopifyId.has(a.shopify_order_id));
+
+    // Per-partner, per-conversion-key (coupon code or UTM ref) accumulation
+    const partnerKeyOrders: Record<string, Record<string, { source: 'coupon' | 'utm'; orders: OrderAttributionRow[] }>> = {};
+    for (const a of inRangeAttribution) {
+      if (!a.converted_partner_id) continue;
+      const isCoupon = a.converted_by === 'coupon';
+      const key = (isCoupon ? a.converted_coupon_code : a.lt_ref) || (isCoupon ? 'coupon' : 'link');
+      if (!partnerKeyOrders[a.converted_partner_id]) partnerKeyOrders[a.converted_partner_id] = {};
+      if (!partnerKeyOrders[a.converted_partner_id][key]) {
+        partnerKeyOrders[a.converted_partner_id][key] = { source: isCoupon ? 'coupon' : 'utm', orders: [] };
       }
+      partnerKeyOrders[a.converted_partner_id][key].orders.push(a);
     }
 
-    // Per-partner, per-code order accumulation
-    const partnerCodeOrders: Record<string, Record<string, ShopifyOrder[]>> = {};
-    const unattributed: ShopifyOrder[] = [];
-
-    for (const order of orders) {
-      const codes = order.order_data?.discount_codes ?? [];
-      let attributed = false;
-      for (const dc of codes) {
-        const pid = codeMap[dc.code.toUpperCase()];
-        if (pid) {
-          attributed = true;
-          if (!partnerCodeOrders[pid]) partnerCodeOrders[pid] = {};
-          const codeKey = dc.code.toUpperCase();
-          if (!partnerCodeOrders[pid][codeKey]) partnerCodeOrders[pid][codeKey] = [];
-          partnerCodeOrders[pid][codeKey].push(order);
-        }
-      }
-      if (!attributed) unattributed.push(order);
-    }
+    const attributedOrderIds = new Set(inRangeAttribution.map(a => a.shopify_order_id));
+    const unattributed = orders.filter(o => !attributedOrderIds.has(o.shopify_order_id));
 
     // Build UTM clicks per partner
     const partnerUtmClicks: Record<string, { slug: string; clicks: number }[]> = {};
@@ -218,14 +230,15 @@ export default function AttributionReportsPage() {
 
     // Build reports
     const reports: PartnerReport[] = rawPartners.map(p => {
-      const codeOrderMap = partnerCodeOrders[p.id] ?? {};
-      const codes = Object.entries(codeOrderMap).map(([code, orderList]) => ({
+      const keyMap = partnerKeyOrders[p.id] ?? {};
+      const codes = Object.entries(keyMap).map(([code, { source, orders: orderList }]) => ({
         code,
+        source,
         orders: orderList.length,
-        revenue: orderList.reduce((s, o) => s + Number(o.total_price), 0),
+        revenue: orderList.reduce((s, o) => s + Number(o.order_revenue), 0),
       }));
-      const couponOrders = codes.reduce((s, c) => s + c.orders, 0);
-      const couponRevenue = codes.reduce((s, c) => s + c.revenue, 0);
+      const totalOrders = codes.reduce((s, c) => s + c.orders, 0);
+      const totalRevenue = codes.reduce((s, c) => s + c.revenue, 0);
       const utmLinksList = partnerUtmClicks[p.id] ?? [];
       const utmClicks = utmLinksList.reduce((s, l) => s + l.clicks, 0);
 
@@ -233,11 +246,9 @@ export default function AttributionReportsPage() {
         partnerId: p.id,
         partnerName: p.name,
         partnerType: p.partner_type,
-        couponOrders,
-        couponRevenue,
         utmClicks,
-        totalOrders: couponOrders,
-        totalRevenue: couponRevenue,
+        totalOrders,
+        totalRevenue,
         codes,
         utmLinks: utmLinksList,
       };
@@ -247,7 +258,7 @@ export default function AttributionReportsPage() {
     reports.sort((a, b) => b.totalRevenue - a.totalRevenue);
 
     return { reports, unattributedOrders: unattributed, totalUtmClicks };
-  }, [rawPartners, orders, utmLinks]);
+  }, [rawPartners, orders, attribution, utmLinks]);
 
   const totalAttributedRevenue = reports.reduce((s, r) => s + r.totalRevenue, 0);
   const totalAttributedOrders = reports.reduce((s, r) => s + r.totalOrders, 0);
@@ -296,7 +307,7 @@ export default function AttributionReportsPage() {
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Attribution Reports</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Coupon code redemptions and UTM click attribution, broken down by partner
+              Coupon code redemptions and UTM-link conversions, broken down by partner
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -380,7 +391,7 @@ export default function AttributionReportsPage() {
               <TrendingUp className="w-10 h-10 text-gray-300 mx-auto mb-3" />
               <p className="text-sm font-medium text-gray-600">No data for this period</p>
               <p className="text-xs text-gray-400 mt-1">
-                Assign coupon codes to partners and process orders to see attribution
+                Assign coupon codes or tracking links to partners and process orders to see attribution
               </p>
             </div>
           ) : (
@@ -481,9 +492,15 @@ export default function AttributionReportsPage() {
                               <tr key={`${r.partnerId}-${c.code}`} className="bg-gray-50/70">
                                 <td className="px-4 py-2 pl-14">
                                   <span className="text-xs text-gray-500">↳</span>{' '}
-                                  <code className="text-xs font-mono font-medium text-gray-700 ml-1">
-                                    {c.code}
-                                  </code>
+                                  {c.source === 'coupon' ? (
+                                    <code className="text-xs font-mono font-medium text-gray-700 ml-1">
+                                      {c.code}
+                                    </code>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-xs font-mono font-medium text-sky-700 ml-1">
+                                      <MousePointer className="w-3 h-3" /> {c.code}
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="px-4 py-2" />
                                 <td className="px-4 py-2" />
@@ -559,7 +576,7 @@ export default function AttributionReportsPage() {
         {/* Attribution note */}
         {!loading && (
           <p className="text-xs text-gray-400 text-center">
-            Attribution is based on discount code usage in the last {dateRange} days. UTM click data is all-time.
+            Orders and revenue cover coupon redemptions and UTM-link conversions in the last {dateRange} days. UTM click data is all-time.
           </p>
         )}
       </div>
