@@ -84,6 +84,7 @@ interface OrderAttribution {
   order_revenue: number;
   order_currency: string;
   converted_by: 'coupon' | 'utm' | 'direct';
+  converted_partner_id?: string | null;
   converted_coupon_code: string | null;
   converted_utm_link_id: string | null;
   lt_ref: string | null;
@@ -260,6 +261,22 @@ function partnerTotals(
     revenue += stat.revenue;
   }
   return { count, revenue };
+}
+
+// Per-partner order + revenue totals from order_attribution — the source of
+// truth that covers BOTH coupon-code redemptions and UTM-link conversions.
+// Used for every partner-level total (list, summary cards, analytics);
+// computeRedemptions/partnerTotals above stay coupon-only on purpose, for the
+// per-code redemption stat inside a partner's Coupon Codes table.
+function computeAttributionTotals(rows: OrderAttribution[]): Record<string, { count: number; revenue: number }> {
+  const result: Record<string, { count: number; revenue: number }> = {};
+  for (const a of rows) {
+    if (!a.converted_partner_id) continue;
+    if (!result[a.converted_partner_id]) result[a.converted_partner_id] = { count: 0, revenue: 0 };
+    result[a.converted_partner_id].count += 1;
+    result[a.converted_partner_id].revenue += Number(a.order_revenue) || 0;
+  }
+  return result;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -659,63 +676,39 @@ function AssignCodesModal({ clientId, partner, allPartners, onClose, onSaved }: 
 interface AnalyticsViewProps {
   partners: Partner[];
   orders: ShopifyOrder[];
-  redemptionMap: Record<string, Record<string, RedemptionStat>>;
+  attribution: OrderAttribution[];
 }
 
-function AnalyticsView({ partners, orders, redemptionMap }: AnalyticsViewProps) {
+function AnalyticsView({ partners, orders, attribution }: AnalyticsViewProps) {
   const [dateRange, setDateRange] = useState<7 | 30 | 90>(30);
   const [partnerFilter, setPartnerFilter] = useState<string>('all');
 
+  const ordersByShopifyId = new Map(orders.map(o => [o.shopify_order_id, o]));
+  const atOf = (a: OrderAttribution) => new Date(ordersByShopifyId.get(a.shopify_order_id)?.processed_at ?? a.created_at);
+
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - dateRange);
-
   const prevCutoff = new Date(cutoff);
   prevCutoff.setDate(prevCutoff.getDate() - dateRange);
 
-  // Build set of all assigned codes for current period
-  const allCodes = new Set<string>();
-  for (const p of partners) {
-    for (const a of p.affiliate_code_assignments) allCodes.add(a.code.toUpperCase());
+  // order_attribution already covers both coupon and UTM conversions — no more
+  // matching discount codes against orders client-side.
+  const inRange = attribution.filter(a => atOf(a) >= cutoff && (partnerFilter === 'all' || a.converted_partner_id === partnerFilter));
+  const prevRange = attribution.filter(a => atOf(a) >= prevCutoff && atOf(a) < cutoff && (partnerFilter === 'all' || a.converted_partner_id === partnerFilter));
+
+  const emailOf = (a: OrderAttribution) => ordersByShopifyId.get(a.shopify_order_id)?.customer_email ?? null;
+  const totalRevenue = inRange.reduce((s, a) => s + Number(a.order_revenue), 0);
+  const uniqueCustomers = new Set(inRange.map(emailOf).filter(Boolean)).size;
+  const avgOrder = inRange.length > 0 ? totalRevenue / inRange.length : 0;
+  const utmShare = inRange.length > 0 ? inRange.filter(a => a.converted_by === 'utm').length / inRange.length : 0;
+
+  // Top converter — either a coupon code or a UTM ref, whichever leads
+  const convCount: Record<string, number> = {};
+  for (const a of inRange) {
+    const key = a.converted_by === 'coupon' ? (a.converted_coupon_code ?? '') : (a.lt_ref ?? '');
+    if (key) convCount[key] = (convCount[key] ?? 0) + 1;
   }
-
-  // code -> partnerId lookup
-  const codeToPartner: Record<string, string> = {};
-  for (const p of partners) {
-    for (const a of p.affiliate_code_assignments) codeToPartner[a.code.toUpperCase()] = p.id;
-  }
-
-  const filteredOrders = orders.filter(o => {
-    const d = new Date(o.processed_at);
-    if (d < cutoff) return false;
-    const codes = o.order_data?.discount_codes?.map(dc => dc.code.toUpperCase()) ?? [];
-    const hit = codes.some(c => allCodes.has(c));
-    if (!hit) return false;
-    if (partnerFilter !== 'all') {
-      return codes.some(c => codeToPartner[c] === partnerFilter);
-    }
-    return true;
-  });
-
-  const prevOrders = orders.filter(o => {
-    const d = new Date(o.processed_at);
-    if (d < prevCutoff || d >= cutoff) return false;
-    const codes = o.order_data?.discount_codes?.map(dc => dc.code.toUpperCase()) ?? [];
-    return codes.some(c => allCodes.has(c));
-  });
-
-  const totalRevenue = filteredOrders.reduce((s, o) => s + Number(o.total_price), 0);
-  const uniqueCustomers = new Set(filteredOrders.map(o => o.customer_email)).size;
-  const avgOrder = filteredOrders.length > 0 ? totalRevenue / filteredOrders.length : 0;
-
-  // Top code
-  const codeCount: Record<string, number> = {};
-  for (const o of filteredOrders) {
-    for (const dc of o.order_data?.discount_codes ?? []) {
-      const k = dc.code.toUpperCase();
-      if (allCodes.has(k)) codeCount[k] = (codeCount[k] ?? 0) + 1;
-    }
-  }
-  const topCode = Object.entries(codeCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '—';
+  const topConverter = Object.entries(convCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '—';
 
   // Daily bars for the chart
   const days: { label: string; count: number }[] = [];
@@ -723,35 +716,35 @@ function AnalyticsView({ partners, orders, redemptionMap }: AnalyticsViewProps) 
     const d = new Date();
     d.setDate(d.getDate() - i);
     const label = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-    const count = filteredOrders.filter(o => {
-      const od = new Date(o.processed_at);
-      return od.toDateString() === d.toDateString();
-    }).length;
+    const count = inRange.filter(a => atOf(a).toDateString() === d.toDateString()).length;
     days.push({ label, count });
   }
   const maxBar = Math.max(...days.map(d => d.count), 1);
 
-  // Code breakdown
-  const codeBreakdown: { code: string; partnerId: string; redemptions: number; uniqueCustomers: number; revenue: number; prevRedemptions: number }[] = [];
-  const codesSet = new Set<string>();
-  for (const o of [...filteredOrders, ...prevOrders]) {
-    for (const dc of o.order_data?.discount_codes ?? []) {
-      if (allCodes.has(dc.code.toUpperCase())) codesSet.add(dc.code.toUpperCase());
-    }
-  }
-  for (const code of codesSet) {
-    const curr = filteredOrders.filter(o => o.order_data?.discount_codes?.some(dc => dc.code.toUpperCase() === code));
-    const prev = prevOrders.filter(o => o.order_data?.discount_codes?.some(dc => dc.code.toUpperCase() === code));
-    codeBreakdown.push({
-      code,
-      partnerId: codeToPartner[code] ?? '',
-      redemptions: curr.length,
-      uniqueCustomers: new Set(curr.map(o => o.customer_email)).size,
-      revenue: curr.reduce((s, o) => s + Number(o.total_price), 0),
-      prevRedemptions: prev.length,
+  // Conversion breakdown — one row per coupon code or UTM ref
+  const breakdown: { key: string; source: 'coupon' | 'utm'; partnerId: string; count: number; uniqueCustomers: number; revenue: number; prevCount: number }[] = [];
+  const seen = new Set<string>();
+  for (const a of [...inRange, ...prevRange]) {
+    const isCoupon = a.converted_by === 'coupon';
+    const key = isCoupon ? a.converted_coupon_code : a.lt_ref;
+    if (!key) continue;
+    const dedupeKey = `${isCoupon ? 'coupon' : 'utm'}:${key}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    const curr = inRange.filter(x => (isCoupon ? x.converted_coupon_code : x.lt_ref) === key && x.converted_by === a.converted_by);
+    const prev = prevRange.filter(x => (isCoupon ? x.converted_coupon_code : x.lt_ref) === key && x.converted_by === a.converted_by);
+    breakdown.push({
+      key, source: isCoupon ? 'coupon' : 'utm', partnerId: a.converted_partner_id ?? '',
+      count: curr.length,
+      uniqueCustomers: new Set(curr.map(emailOf).filter(Boolean)).size,
+      revenue: curr.reduce((s, x) => s + Number(x.order_revenue), 0),
+      prevCount: prev.length,
     });
   }
-  codeBreakdown.sort((a, b) => b.redemptions - a.redemptions);
+  breakdown.sort((a, b) => b.count - a.count);
+
+  // Partner breakdown
+  const partnerStats = computeAttributionTotals(inRange);
 
   return (
     <div className="space-y-6">
@@ -774,16 +767,16 @@ function AnalyticsView({ partners, orders, redemptionMap }: AnalyticsViewProps) 
 
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <StatCard label="Total Redemptions" value={String(filteredOrders.length)} icon={ShoppingBag} />
+        <StatCard label="Total Orders" value={String(inRange.length)} icon={ShoppingBag} sub={`${Math.round(utmShare * 100)}% via UTM links`} />
         <StatCard label="Unique Customers" value={String(uniqueCustomers)} icon={Users} />
         <StatCard label="Revenue Influenced" value={fmtCurrency(totalRevenue)} icon={TrendingUp} />
         <StatCard label="Avg Order Value" value={avgOrder > 0 ? fmtCurrency(avgOrder) : '—'} icon={BarChart3} />
-        <StatCard label="Top Code" value={topCode} icon={Link2} />
+        <StatCard label="Top Converter" value={topConverter} icon={Link2} />
       </div>
 
       {/* Bar chart */}
       <div className="bg-white border border-gray-200 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">Daily Redemptions</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-4">Daily Orders</h3>
         <div className="flex items-end gap-1 h-32">
           {days.map((d, i) => (
             <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
@@ -802,42 +795,50 @@ function AnalyticsView({ partners, orders, redemptionMap }: AnalyticsViewProps) 
         )}
       </div>
 
-      {/* Code breakdown */}
+      {/* Conversion breakdown */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-900">Code Breakdown</h3>
+          <h3 className="text-sm font-semibold text-gray-900">Conversion Breakdown</h3>
         </div>
-        {codeBreakdown.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-8">No redemptions in this period.</p>
+        {breakdown.length === 0 ? (
+          <p className="text-sm text-gray-500 text-center py-8">No conversions in this period.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                {['Code', 'Partner', 'Redemptions', 'Unique Customers', 'Revenue', 'AOV', 'Trend'].map(h => (
-                  <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wide px-4 py-2.5 font-medium">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {codeBreakdown.map(row => {
-                const partner = partners.find(p => p.id === row.partnerId);
-                const aov = row.redemptions > 0 ? row.revenue / row.redemptions : 0;
-                const trend = row.redemptions > row.prevRedemptions ? '↑' : row.redemptions < row.prevRedemptions ? '↓' : '—';
-                const trendColor = trend === '↑' ? 'text-green-600' : trend === '↓' ? 'text-red-500' : 'text-gray-400';
-                return (
-                  <tr key={row.code} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-mono font-medium text-gray-900">{row.code}</td>
-                    <td className="px-4 py-3 text-gray-700">{partner?.name ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{row.redemptions}</td>
-                    <td className="px-4 py-3 text-gray-700">{row.uniqueCustomers}</td>
-                    <td className="px-4 py-3 text-gray-700">{fmtCurrency(row.revenue)}</td>
-                    <td className="px-4 py-3 text-gray-700">{aov > 0 ? fmtCurrency(aov) : '—'}</td>
-                    <td className={`px-4 py-3 font-semibold ${trendColor}`}>{trend}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  {['Source', 'Partner', 'Orders', 'Unique Customers', 'Revenue', 'AOV', 'Trend'].map(h => (
+                    <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wide px-4 py-2.5 font-medium whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {breakdown.map(row => {
+                  const partner = partners.find(p => p.id === row.partnerId);
+                  const aov = row.count > 0 ? row.revenue / row.count : 0;
+                  const trend = row.count > row.prevCount ? '↑' : row.count < row.prevCount ? '↓' : '—';
+                  const trendColor = trend === '↑' ? 'text-green-600' : trend === '↓' ? 'text-red-500' : 'text-gray-400';
+                  return (
+                    <tr key={`${row.source}:${row.key}`} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        {row.source === 'coupon' ? (
+                          <span className="font-mono font-medium text-gray-900">{row.key}</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 font-mono text-sky-700"><MousePointerClick className="w-3 h-3" />{row.key}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{partner?.name ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-700">{row.count}</td>
+                      <td className="px-4 py-3 text-gray-700">{row.uniqueCustomers}</td>
+                      <td className="px-4 py-3 text-gray-700">{fmtCurrency(row.revenue)}</td>
+                      <td className="px-4 py-3 text-gray-700">{aov > 0 ? fmtCurrency(aov) : '—'}</td>
+                      <td className={`px-4 py-3 font-semibold ${trendColor}`}>{trend}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -846,44 +847,40 @@ function AnalyticsView({ partners, orders, redemptionMap }: AnalyticsViewProps) 
         <div className="px-5 py-4 border-b border-gray-200">
           <h3 className="text-sm font-semibold text-gray-900">Partner Breakdown</h3>
         </div>
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              {['Partner', 'Type', 'Codes', 'Redemptions', 'Revenue', 'Conv. Rate'].map(h => (
-                <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wide px-4 py-2.5 font-medium">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {partners.map(p => {
-              const pOrders = filteredOrders.filter(o =>
-                o.order_data?.discount_codes?.some(dc =>
-                  p.affiliate_code_assignments.some(a => a.code.toUpperCase() === dc.code.toUpperCase())
-                )
-              );
-              const revenue = pOrders.reduce((s, o) => s + Number(o.total_price), 0);
-              return (
-                <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${avatarGradient(p.name)} flex items-center justify-center text-white text-xs font-semibold`}>
-                        {initials(p.name)}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                {['Partner', 'Type', 'Codes', 'Orders', 'Revenue'].map(h => (
+                  <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wide px-4 py-2.5 font-medium">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {partners.map(p => {
+                const stat = partnerStats[p.id] ?? { count: 0, revenue: 0 };
+                return (
+                  <tr key={p.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${avatarGradient(p.name)} flex items-center justify-center text-white text-xs font-semibold`}>
+                          {initials(p.name)}
+                        </div>
+                        <span className="font-medium text-gray-900">{p.name}</span>
                       </div>
-                      <span className="font-medium text-gray-900">{p.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${TYPE_BADGE[p.partner_type]}`}>{p.partner_type}</span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-700">{p.affiliate_code_assignments.length}</td>
-                  <td className="px-4 py-3 text-gray-700">{pOrders.length}</td>
-                  <td className="px-4 py-3 text-gray-700">{fmtCurrency(revenue)}</td>
-                  <td className="px-4 py-3 text-gray-500">—</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${TYPE_BADGE[p.partner_type]}`}>{p.partner_type}</span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{p.affiliate_code_assignments.length}</td>
+                    <td className="px-4 py-3 text-gray-700">{stat.count}</td>
+                    <td className="px-4 py-3 text-gray-700">{fmtCurrency(stat.revenue)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -901,6 +898,7 @@ export default function AffiliatesPage() {
   const [view, setView] = useState<'list' | 'detail' | 'analytics'>('list');
   const [partners, setPartners] = useState<Partner[]>([]);
   const [orders, setOrders] = useState<ShopifyOrder[]>([]);
+  const [allAttribution, setAllAttribution] = useState<OrderAttribution[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   const [showAddDrawer, setShowAddDrawer] = useState(false);
@@ -942,7 +940,7 @@ export default function AffiliatesPage() {
   const loadData = useCallback(async () => {
     if (!clientId) return;
     setLoading(true);
-    const [{ data: partnersData }, { data: ordersData }, { data: clientData }] = await Promise.all([
+    const [{ data: partnersData }, { data: ordersData }, { data: clientData }, { data: attributionData }] = await Promise.all([
       supabase
         .from('affiliate_partners')
         .select('*, affiliate_partner_platforms(*), affiliate_code_assignments(*)')
@@ -954,9 +952,15 @@ export default function AffiliatesPage() {
         .eq('client_id', clientId)
         .not('order_data', 'is', null),
       supabase.from('clients').select('slug, affiliate_settings').eq('id', clientId).maybeSingle(),
+      supabase
+        .from('order_attribution')
+        .select('id, shopify_order_id, order_revenue, order_currency, converted_by, converted_partner_id, converted_coupon_code, converted_utm_link_id, lt_ref, lt_source, lt_medium, lt_campaign, created_at')
+        .eq('client_id', clientId)
+        .not('converted_partner_id', 'is', null),
     ]);
     setPartners((partnersData as Partner[]) ?? []);
     setOrders((ordersData as ShopifyOrder[]) ?? []);
+    setAllAttribution((attributionData as OrderAttribution[]) ?? []);
     if (clientData) {
       if ((clientData as any).slug) setClientSlug((clientData as any).slug);
       const pts = (clientData as any).affiliate_settings?.partner_types;
@@ -991,18 +995,21 @@ export default function AffiliatesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPartner?.id]);
 
+  // redemptionMap stays coupon-only on purpose — it backs the per-code
+  // redemption stat inside a partner's Coupon Codes table. Every other total
+  // (summary cards, list rows, analytics) comes from order_attribution, which
+  // covers coupon AND UTM-link conversions.
   const redemptionMap = computeRedemptions(partners, orders);
+  const attributionTotals = computeAttributionTotals(allAttribution);
 
   // Summary stats
   const totalActive = partners.filter(p => p.status === 'active').length;
   const totalCodes = partners.reduce((s, p) => s + p.affiliate_code_assignments.filter(a => a.status === 'active').length, 0);
   let totalRedemptions = 0;
   let totalRevenue = 0;
-  for (const byAssignment of Object.values(redemptionMap)) {
-    for (const stat of Object.values(byAssignment)) {
-      totalRedemptions += stat.count;
-      totalRevenue += stat.revenue;
-    }
+  for (const stat of Object.values(attributionTotals)) {
+    totalRedemptions += stat.count;
+    totalRevenue += stat.revenue;
   }
 
   // Filter + search
@@ -1351,14 +1358,14 @@ export default function AffiliatesPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['Partner', 'Type', 'Codes', 'Redemptions', 'Revenue', 'Status', ''].map(h => (
+                  {['Partner', 'Type', 'Codes', 'Orders', 'Revenue', 'Status', ''].map(h => (
                     <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wide px-4 py-3 font-medium">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {displayed.map(p => {
-                  const { count, revenue } = partnerTotals(p, redemptionMap);
+                  const { count, revenue } = attributionTotals[p.id] ?? { count: 0, revenue: 0 };
                   const handle = p.affiliate_partner_platforms[0]?.handle;
                   return (
                     <tr key={p.id} className="hover:bg-gray-50">
@@ -2059,7 +2066,7 @@ export default function AffiliatesPage() {
                 <ChevronLeft className="w-4 h-4" /> Back to Partners
               </button>
             </div>
-            <AnalyticsView partners={partners} orders={orders} redemptionMap={redemptionMap} />
+            <AnalyticsView partners={partners} orders={orders} attribution={allAttribution} />
           </div>
         )}
       </div>
